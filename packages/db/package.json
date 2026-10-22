@@ -16,6 +16,7 @@
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node src/migrate.ts",
+    "db:seed": "node src/seed.ts",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run --project unit --project ui",
     "test:integration": "vitest run --project integration",
