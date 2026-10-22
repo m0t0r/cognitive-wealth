@@ -3,7 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": {},
+  "exports": {
+    ".": "./src/index.ts",
+    "./access": "./src/access.ts",
+    "./client": "./src/client.ts",
+    "./constants": "./src/constants.ts",
+    "./env": "./src/env.ts",
+    "./next": "./src/next.ts",
+    "./redis": "./src/storage/redis.ts",
+    "./testing": "./src/testing.ts"
+  },
   "scripts": {
     "check-types": "tsc --noEmit",
     "test": "vitest run --project unit --project ui",
