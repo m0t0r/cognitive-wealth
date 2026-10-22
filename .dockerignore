@@ -1,0 +1,21 @@
+# Keep the build context to source only: no secrets, local state, or host-built artifacts.
+# Patterns are anchored at the context root, so nested files need `**/`.
+.git
+**/.env*
+**/*.pem
+**/.secrets
+
+**/node_modules
+**/.next
+**/.turbo
+**/out
+**/coverage
+**/playwright-report
+**/test-results
+**/*.tsbuildinfo
+.DS_Store
+
+.agents
+.claude
+.playwright
+.playwright-cli
