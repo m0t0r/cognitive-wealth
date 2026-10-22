@@ -6,7 +6,9 @@
   "exports": {
     "./vitest": "./src/vitest.ts",
     "./react": "./src/react.tsx",
-    "./pglite": "./src/pglite.ts"
+    "./pglite": "./src/pglite.ts",
+    "./mailpit": "./src/mailpit.ts",
+    "./sign-in": "./src/sign-in.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",

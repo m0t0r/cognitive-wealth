@@ -1,15 +1,12 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { connect } from "@repo/db/connect";
+import { REPO_ROOT, requiredEnv } from "./compose";
 
 /** Migrated once per run by global setup; every worker database is a copy of it. */
 export const TEMPLATE_DATABASE = "e2e_template";
 
 /** The same role setup `compose.yaml` runs, so e2e exercises the production grants. */
-export const ROLES_SCRIPT = join(
-  import.meta.dirname,
-  "../../../packages/db/docker/initdb/01-roles.sh",
-);
+export const ROLES_SCRIPT = join(REPO_ROOT, "packages/db/docker/initdb/01-roles.sh");
 
 const SAFE_NAME = /^[a-z0-9_]+$/;
 
@@ -24,20 +21,6 @@ const TRUNCATE_ALL = `
       execute 'truncate ' || tables || ' restart identity cascade';
     end if;
   end $$`;
-
-/** The Postgres image `compose.yaml` pins, so e2e runs against exactly what the stack runs. */
-export function composePostgresImage(): string {
-  const compose = readFileSync(join(import.meta.dirname, "../../../compose.yaml"), "utf8");
-  const image = /^\s*image:\s*(postgres:\S+)\s*$/m.exec(compose)?.[1];
-  if (!image) throw new Error("compose.yaml has no postgres image");
-  return image;
-}
-
-function requiredEnv(name: "PLAYWRIGHT_DATABASE_URL" | "PLAYWRIGHT_DATABASE_APP_PASSWORD") {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set; did global-setup.ts run?`);
-  return value;
-}
 
 /** A URL for `database` on the run's Postgres: the superuser's (from global setup) or `user`'s. */
 export function databaseUrl(

@@ -23,6 +23,7 @@
         "BETTER_AUTH_SECRET",
         "BETTER_AUTH_SECRET_FILE",
         "AUTH_TRUSTED_IP_HEADER",
+        "AUTH_TRUSTED_PROXIES",
         "REDIS_URL",
         "REDIS_PASSWORD_FILE",
         "REDIS_KEY_PREFIX",
@@ -57,7 +58,7 @@
       "dependsOn": ["^build"],
       "passThroughEnv": ["CI", "PLAYWRIGHT_*", "DOCKER_*", "TESTCONTAINERS_*", "RYUK_*"],
       "outputs": ["playwright-report/**", "test-results/**"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/compose.yaml"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/compose.yaml", "$TURBO_ROOT$/docker/**"]
     }
   }
 }

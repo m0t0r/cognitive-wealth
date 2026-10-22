@@ -1,10 +1,14 @@
-# Production-like stack: Postgres 18, a one-shot migration job, and the web app.
-#   (umask 077 && mkdir -p .secrets) && for s in postgres_password db_migrator_password db_app_password; do
+# Production-like stack: Postgres 18, a one-shot migration job, Redis, Mailpit and the web app.
+#   (umask 077 && mkdir -p .secrets) && for s in postgres_password db_migrator_password db_app_password \
+#     redis_password better_auth_secret; do
 #     [ -s .secrets/$s ] || (openssl rand -hex 32 > .secrets/$s && chmod 644 .secrets/$s); done
 #   docker compose up --build
 # Roles are created from these files on the first start of an empty `pgdata` volume; changing a
 # password later needs `alter role ... password` (or `docker compose down -v` to start over).
-# The database is only reachable from the stack. For `pnpm dev` on the host, also load compose.dev.yaml.
+# Redis rebuilds its ACL from `redis_password` on every start. Mailpit catches all mail, with its
+# UI and API on http://127.0.0.1:8025.
+# Postgres, Redis and SMTP are only reachable from the stack. For `pnpm dev` on the host, also load
+# compose.dev.yaml.
 
 name: cognitive-wealth
 
@@ -42,6 +46,74 @@ services:
     networks: [data]
     restart: unless-stopped
 
+  redis:
+    <<: *hardening
+    image: redis:8.8.3-alpine@sha256:dc95ea2fcf5d5c4253be0f967c28143d0f625846197eed2fd32c748eb99abfca
+    # The image's `redis` user, so nothing runs as root (the script replaces the image entrypoint).
+    user: "999:1000"
+    entrypoint: ["/bin/sh", "/usr/local/bin/cw-redis-entrypoint.sh"]
+    command:
+      # Rate-limit counters and cached sessions only (Postgres is the source of truth), so nothing
+      # is worth persisting: no RDB snapshots, no AOF.
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      # Every key has a TTL and every key is safe to lose, so under memory pressure evict the least
+      # recently used one rather than refuse writes (`noeviction` would turn a full cache into
+      # failed sign-ins). LRU keeps hot rate-limit counters, which an attacker's own requests keep
+      # touching; `volatile-ttl` would evict exactly those, as they're closest to expiry.
+      - --maxmemory
+      - 128mb
+      - --maxmemory-policy
+      - allkeys-lru
+    secrets: [redis_password]
+    volumes:
+      - ./docker/redis/entrypoint.sh:/usr/local/bin/cw-redis-entrypoint.sh:ro
+    tmpfs:
+      # The generated ACL file (hashes only), in memory and private to the `redis` user.
+      - /run/redis:uid=999,gid=1000,mode=0700
+      - /data:uid=999,gid=1000,mode=0700
+    healthcheck:
+      # Authenticates as `app`, so it also proves the ACL loaded. The password goes to redis-cli
+      # through its own environment, not argv, and never into the container's config.
+      test:
+        - CMD-SHELL
+        - REDISCLI_AUTH="$$(cat /run/secrets/redis_password)" redis-cli --no-auth-warning --user app ping | grep -q PONG
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [data]
+    restart: unless-stopped
+
+  mailpit:
+    <<: *hardening
+    image: axllent/mailpit:v1.31.6@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387
+    # The image has no user of its own and runs as root; Mailpit needs no privileges (ports > 1024).
+    user: "65534:65534"
+    environment:
+      # Without MP_DATABASE, Mailpit keeps a temporary database in /tmp (a tmpfs below), so mail
+      # lives in memory and is gone on restart. The cap bounds that memory.
+      MP_MAX_MESSAGES: 500
+      MP_DISABLE_VERSION_CHECK: "true"
+      MP_SMTP_DISABLE_RDNS: "true"
+      # Sign-in links land here: reject other Host headers so a DNS-rebinding page can't read them.
+      MP_ALLOWED_HOSTS: localhost,127.0.0.1
+    tmpfs:
+      - /tmp:uid=65534,gid=65534,mode=1777
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:8025:8025"
+    # SMTP (1025) is only published in compose.dev.yaml; the stack reaches it over `mail`.
+    # Publishing the UI needs a network with a route to the host, which also gives Mailpit outbound
+    # access (it needs none: no relay is configured). Only Mailpit is on `mail-ui`.
+    networks: [mail, mail-ui]
+    restart: unless-stopped
+
   migrate:
     <<: *hardening
     build:
@@ -67,7 +139,21 @@ services:
     environment:
       DATABASE_URL: postgres://app@db:5432/cognitive_wealth
       DATABASE_PASSWORD_FILE: /run/secrets/db_app_password
-    secrets: [db_app_password]
+      REDIS_URL: redis://app@redis:6379
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      SMTP_URL: smtp://mailpit:1025
+      EMAIL_TRANSPORT: smtp
+      EMAIL_FROM: Cognitive Wealth <no-reply@cognitive-wealth.localhost>
+      # The published address; Better Auth builds links and checks Origin against it. Secure
+      # cookies still work over plain http here: browsers treat localhost as a secure context.
+      BETTER_AUTH_URL: http://localhost:${WEB_PORT:-3000}
+      BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
+      # Rate limits key on this header, and production refuses to start without one (Next route
+      # handlers can't see the socket address). Nothing sits in front of `web` here, so a client
+      # could forge it; that's acceptable only because the stack is published on loopback. A real
+      # deployment names a header its edge proxy overwrites, or sets AUTH_TRUSTED_PROXIES.
+      AUTH_TRUSTED_IP_HEADER: x-forwarded-for
+    secrets: [db_app_password, redis_password, better_auth_secret]
     tmpfs:
       - /app/apps/web/.next/cache:uid=65532,gid=65532,mode=0700
       - /tmp:uid=65532,gid=65532,mode=1777
@@ -76,13 +162,21 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    networks: [edge, data]
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    networks: [edge, data, mail]
     restart: unless-stopped
 
 networks:
-  # No route out of this network: Postgres can't reach the internet, and only the stack reaches it.
+  # No route out of these networks: Postgres, Redis and SMTP can't reach the internet, and only the
+  # stack reaches them.
   data:
     internal: true
+  mail:
+    internal: true
+  mail-ui: {}
   edge: {}
 
 volumes:
@@ -97,3 +191,7 @@ secrets:
     file: ./.secrets/db_migrator_password
   db_app_password:
     file: ./.secrets/db_app_password
+  redis_password:
+    file: ./.secrets/redis_password
+  better_auth_secret:
+    file: ./.secrets/better_auth_secret

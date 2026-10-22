@@ -8,6 +8,7 @@
     "./client": "./src/client.ts",
     "./connect": "./src/connect.ts",
     "./migrator": "./src/migrator.ts",
+    "./schema": "./src/schema/index.ts",
     "./schema/*": "./src/schema/*.ts",
     "./testing": "./src/testing.ts"
   },

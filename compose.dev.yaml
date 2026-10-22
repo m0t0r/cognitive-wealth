@@ -1,8 +1,19 @@
-# Local development: exposes Postgres on the loopback interface for `pnpm dev` and drizzle-kit.
-#   docker compose -f compose.yaml -f compose.dev.yaml up -d db migrate
+# Local development: exposes Postgres, Redis and Mailpit's SMTP on the loopback interface for
+# `pnpm dev` and drizzle-kit (Mailpit's UI is already on http://127.0.0.1:8025).
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d db migrate redis mailpit
 # Then in apps/web/.env.local:
 #   DATABASE_URL=postgres://app@localhost:5432/cognitive_wealth
 #   DATABASE_PASSWORD_FILE=../../.secrets/db_app_password
+#   REDIS_URL=redis://app@localhost:6379
+#   REDIS_PASSWORD_FILE=../../.secrets/redis_password
+#   SMTP_URL=smtp://localhost:1025
+#   BETTER_AUTH_SECRET_FILE=../../.secrets/better_auth_secret
+#   AUTH_TRUSTED_IP_HEADER=x-forwarded-for
+# portless is the trusted proxy in front of `pnpm dev`: it appends the socket address to
+# x-forwarded-for, so the app sees the client's address rather than the proxy's. A client can
+# prepend its own entries, which only matters on this machine. BETTER_AUTH_URL can stay unset:
+# the app falls back to PORTLESS_URL outside production.
+# `pnpm dev:sign-in <email>` then signs in through the real flow (see packages/testing).
 
 services:
   db:
@@ -11,6 +22,17 @@ services:
     # Publishing a port needs a network with a route to the host, which also gives Postgres
     # outbound access. That's a dev-only trade-off; compose.yaml alone keeps `db` egress-free.
     networks: [data, host-access]
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+    # The same dev-only trade-off as `db`.
+    networks: [data, host-access]
+
+  mailpit:
+    ports:
+      # Appended to compose.yaml's UI port. `mail-ui` already routes to the host.
+      - "127.0.0.1:1025:1025"
 
 networks:
   host-access: {}
