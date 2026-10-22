@@ -6,6 +6,7 @@
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*", "!**/*.test.{ts,tsx}", "!vitest.config.ts"],
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"],
+      "env": ["NODE_ENV"],
       "passThroughEnv": ["NEXT_TELEMETRY_DISABLED"]
     },
     "check-types": {

@@ -1,6 +1,5 @@
 import { expect, summarize, test } from "../fixtures";
-
-const ROUTES = ["/"];
+import { ROUTES } from "../support/routes";
 
 for (const colorScheme of ["light", "dark"] as const) {
   test.describe(`${colorScheme} theme`, () => {
