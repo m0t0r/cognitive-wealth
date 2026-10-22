@@ -5,11 +5,17 @@ import { describe, expect, it } from "vitest";
 import { InvitationEmail } from "./invitation";
 import { SignInEmail } from "./sign-in";
 
-/** Renders the email to its final HTML and loads it as the jsdom document. */
+// An email isn't a page: it has no `<main>` landmark, and clients drop such elements anyway.
+const EMAIL_AXE_OPTIONS = { rules: { "landmark-one-main": { enabled: false } } };
+
+/** Renders the email to its final HTML and loads it as the test document. */
 async function renderEmail(email: ReactElement): Promise<HTMLElement> {
   const html = await render(email);
   const parsed = new DOMParser().parseFromString(html, "text/html");
-  document.replaceChild(document.adoptNode(parsed.documentElement), document.documentElement);
+  const root = document.adoptNode(parsed.documentElement);
+  // Remove, then append: happy-dom's `replaceChild` inserts first and refuses a second root.
+  document.documentElement.remove();
+  document.append(root);
   return document.documentElement;
 }
 
@@ -18,7 +24,7 @@ describe("SignInEmail", () => {
     const root = await renderEmail(<SignInEmail {...SignInEmail.PreviewProps} />);
     const body = within(document.body);
 
-    await expect(root).toHaveNoA11yViolations();
+    await expect(root).toHaveNoA11yViolations(EMAIL_AXE_OPTIONS);
     expect(root).toHaveAttribute("lang", "en");
     expect(document.title).toBe("Your Cognitive Wealth sign-in link");
     expect(
@@ -43,7 +49,7 @@ describe("InvitationEmail", () => {
     const root = await renderEmail(<InvitationEmail {...InvitationEmail.PreviewProps} />);
     const body = within(document.body);
 
-    await expect(root).toHaveNoA11yViolations();
+    await expect(root).toHaveNoA11yViolations(EMAIL_AXE_OPTIONS);
     expect(root).toHaveAttribute("lang", "en");
     expect(
       body.getByRole("heading", { level: 1, name: "Join Acme on Cognitive Wealth" }),
