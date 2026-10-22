@@ -12,9 +12,12 @@ import { desc, eq } from "drizzle-orm";
 import { ac, roles } from "./access";
 import { writeAuditEvent } from "./audit";
 import { AUTH_BASE_PATH, COOKIE_PREFIX } from "./constants";
+import { setDeviceCookie } from "./device";
 import {
   SIGN_IN_EXPIRES_IN,
   createSignInFlow,
+  runInBackground,
+  type BackgroundRunner,
   deleteSiblingCredentials,
   hasPendingInvitation,
   normalizeEmail,
@@ -54,6 +57,12 @@ export interface AuthDeps {
   trustedProxies?: string[] | undefined;
   /** Default: only when `baseURL` is https. `authOptionsFromEnv` also turns it on in production. */
   secureCookies?: boolean | undefined;
+  /**
+   * Runs a sign-in request's address-dependent work after the response, so its timing doesn't
+   * reveal which addresses can sign in. Default: in this process, which suits a long-lived Node
+   * server (the standalone server); a serverless deploy must pass its `waitUntil`.
+   */
+  runInBackground?: BackgroundRunner | undefined;
   /** Appended after ours, e.g. `nextCookies()`, which must come last. */
   plugins?: BetterAuthPlugin[] | undefined;
 }
@@ -80,6 +89,7 @@ export function createAuth(deps: AuthDeps) {
     storage,
     baseURL: origin,
     issueOtp: (email) => issueOtp(email),
+    runInBackground: deps.runInBackground ?? runInBackground,
   });
 
   const ourPlugins = [
@@ -172,7 +182,7 @@ export function createAuth(deps: AuthDeps) {
         ipAddressHeaders: [deps.trustedIpHeader ?? UNSET_IP_HEADER],
         trustedProxies: deps.trustedProxies,
       },
-      // No `backgroundTasks`: the combined email needs the emailOTP callback awaited in-request.
+      // No `backgroundTasks`: `sendMagicLink` schedules its own work through `runInBackground`.
     },
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
@@ -195,6 +205,12 @@ export function createAuth(deps: AuthDeps) {
         // The credential just used is consumed; the other one (link or code) must die too. Not
         // caught: if this fails, the sign-in fails rather than leave a live sibling behind.
         await deleteSiblingCredentials(db, storage, created.user.email);
+        // Mark this browser as one the user signs in from, so it keeps getting sign-in emails
+        // while others flood the address (`sendMagicLink`). Reissued on every sign-in to restart
+        // its 180 days.
+        const { publicId } = created.user as typeof created.user & { publicId?: unknown };
+        if (typeof publicId !== "string") throw new Error("Signed-in user has no publicId");
+        await setDeviceCookie(ctx, publicId);
         const headers = ctx.request?.headers ?? ctx.headers;
         await writeAuditEvent(db, {
           action: "auth.sign_in",

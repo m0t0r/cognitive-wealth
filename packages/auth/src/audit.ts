@@ -3,6 +3,7 @@ import { auditEvent } from "@repo/db/schema";
 
 export type AuditAction =
   | "auth.sign_in"
+  | "auth.sign_in_throttled"
   | "auth.sign_out"
   | "org.invitation.created"
   | "org.invitation.accepted"

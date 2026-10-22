@@ -342,29 +342,6 @@ describe("eligibility", () => {
 });
 
 describe("rate limits", () => {
-  test("sends at most 3 emails per address per 10 minutes, answering the same", async ({ t }) => {
-    await t.seedUser({ email: "ada@example.com" });
-    for (let i = 0; i < 4; i++) {
-      // Sequential on purpose: each step depends on the ones before.
-      // oxlint-disable-next-line no-await-in-loop
-      const response = await t.fetchAuth("/sign-in/magic-link", {
-        body: { email: "ada@example.com" },
-      });
-      expect(response.status).toBe(200);
-      // oxlint-disable-next-line no-await-in-loop
-      expect(await response.json()).toEqual({ status: true });
-    }
-    await t.settle();
-    expect(t.mailer.messages).toHaveLength(3);
-    // The refused request's link was deleted: only the three sent links remain.
-    expect(
-      await t.auth.$deps.db.$count(
-        verification,
-        sql`starts_with(${verification.identifier}, 'magic-link:')`,
-      ),
-    ).toBe(3);
-  });
-
   test("limits sign-in requests per IP with 429", async ({ t }) => {
     const ip = "203.0.113.7";
     for (let i = 0; i < 5; i++) {

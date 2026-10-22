@@ -9,6 +9,7 @@ import { parseSignInEmail } from "@repo/testing/mailpit";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Role } from "./access";
 import { createAuth, type AuthDeps } from "./auth";
+import type { BackgroundRunner } from "./sign-in";
 import { AUTH_BASE_PATH } from "./constants";
 import { createAuthRouteHandler } from "./route-handler";
 import { createMemoryStorage } from "./storage/memory";
@@ -18,9 +19,6 @@ export { createMemoryStorage, type MemoryStorage } from "./storage/memory";
 export const TEST_BASE_URL = "http://localhost:3000";
 export const TEST_SECRET = "test-secret-that-is-at-least-32-characters-long";
 export const TEST_IP_HEADER = "x-forwarded-for";
-
-/** Lets fire-and-forget sends finish, before asserting that nothing was sent. */
-export const settle = () => sleep(100);
 
 /**
  * Keys anywhere in `value` that look like internal IDs: `id`, or ending in `Id`, except
@@ -51,12 +49,40 @@ export interface TestRequestInit {
 }
 
 /**
- * Better Auth on `orm` with a memory mailer and memory storage, a fixed base URL and secret, and
- * `x-forwarded-for` as the trusted IP header. Build one per test.
+ * A background runner that starts each task at once and remembers it until it settles, so tests
+ * can wait for all of them (`settle`) instead of sleeping.
+ */
+export function createTrackingRunner() {
+  const pending = new Set<Promise<void>>();
+  const runInBackground: BackgroundRunner = (task) => {
+    const run: Promise<void> = Promise.resolve()
+      .then(task)
+      .catch((error: unknown) => {
+        console.error("Background task failed", error);
+      })
+      .finally(() => pending.delete(run));
+    pending.add(run);
+  };
+  /** Resolves once every task, including ones started by other tasks, has settled. */
+  async function settle(): Promise<void> {
+    while (pending.size > 0) {
+      // oxlint-disable-next-line no-await-in-loop
+      await Promise.all(pending);
+    }
+  }
+  return { runInBackground, settle };
+}
+
+/**
+ * Better Auth on `orm` with a memory mailer and memory storage, a fixed base URL and secret,
+ * `x-forwarded-for` as the trusted IP header, and a tracking background runner (`settle`). Build
+ * one per test.
  */
 export function createTestAuth({ orm, ...overrides }: { orm: Database } & Partial<AuthDeps>) {
   const mailer = createMemoryMailer();
   const storage = createMemoryStorage();
+  const runner = createTrackingRunner();
+  const settle = runner.settle;
   const auth = createAuth({
     db: orm,
     mailer,
@@ -64,6 +90,7 @@ export function createTestAuth({ orm, ...overrides }: { orm: Database } & Partia
     baseURL: TEST_BASE_URL,
     secret: TEST_SECRET,
     trustedIpHeader: TEST_IP_HEADER,
+    runInBackground: runner.runInBackground,
     ...overrides,
   });
   const handler = createAuthRouteHandler(auth);
@@ -103,8 +130,10 @@ export function createTestAuth({ orm, ...overrides }: { orm: Database } & Partia
     return req.method === "GET" ? handler.GET(req) : handler.POST(req);
   }
 
-  /** Waits for the next email to `to` after the first `after` messages (sends are async). */
+  /** The next email to `to` after the first `after` messages, once background sends finish. */
   async function waitForEmail(to: string, after = 0, timeoutMs = 5000): Promise<EmailMessage> {
+    await settle();
+    // Still polls, for a test that passes a runner of its own.
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const message = mailer.messages.slice(after).find((m) => m.to === to);
