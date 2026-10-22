@@ -15,7 +15,24 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["DATABASE_URL", "DATABASE_PASSWORD_FILE", "PORTLESS*"]
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "DATABASE_PASSWORD_FILE",
+        "PORTLESS*",
+        "BETTER_AUTH_URL",
+        "BETTER_AUTH_SECRET",
+        "BETTER_AUTH_SECRET_FILE",
+        "AUTH_TRUSTED_IP_HEADER",
+        "REDIS_URL",
+        "REDIS_PASSWORD_FILE",
+        "REDIS_KEY_PREFIX",
+        "EMAIL_TRANSPORT",
+        "EMAIL_FROM",
+        "SMTP_URL",
+        "RESEND_API_KEY",
+        "RESEND_API_KEY_FILE",
+        "MAILPIT_URL"
+      ]
     },
     "transit": {
       "dependsOn": ["^transit"]
