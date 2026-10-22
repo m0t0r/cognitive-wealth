@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-pnpm + Turborepo monorepo, scaffolded from `create-turbo` (no product code yet). Toolchain is pinned to recent majors: Node >=24, pnpm 12, TypeScript 7, Next.js 16, React 19, Oxlint + Oxfmt (no ESLint/Prettier). Don't assume older-version APIs or config formats.
+pnpm + Turborepo monorepo, scaffolded from `create-turbo`. Toolchain is pinned to recent majors: Node >=24, pnpm 12, TypeScript 7, Next.js 16, React 19, Oxlint + Oxfmt (no ESLint/Prettier). Don't assume older-version APIs or config formats.
 
 ## Commands
 
@@ -17,9 +17,13 @@ Run from the repo root (tasks fan out via Turborepo):
 - `pnpm lint` / `pnpm lint:fix`: Oxlint over the whole repo, run once from the root (not a Turborepo task)
 - `pnpm format` / `pnpm format:check`: Oxfmt over the whole repo (defaults, incl. 100-col print width and `package.json` key sorting)
 - `pnpm test` (unit + UI), `pnpm test:integration`, `pnpm test:coverage` (all three, per-package reports in `coverage/`), `pnpm test:watch`
-- `pnpm e2e`: builds `web`, then runs Playwright with a Postgres container and one standalone server per worker; needs Docker (`--filter=web-e2e --only` skips the build)
-- `docker compose up --build`: Postgres 18 + migrations + `web` (create `.secrets/` first, see `compose.yaml`). Add `-f compose.yaml -f compose.dev.yaml up -d db migrate` to expose Postgres on `127.0.0.1:5432` for `pnpm dev`
+- `pnpm e2e`: builds `web`, then runs Playwright with Postgres, Redis and Mailpit containers and one standalone server per worker; needs Docker (`--filter=web-e2e --only` skips the build)
+- `docker compose up --build`: Postgres 18 + migrations + Redis + Mailpit (UI on `http://127.0.0.1:8025`) + `web`. Create `.secrets/` first with the loop in `compose.yaml`'s header (`postgres_password`, `db_migrator_password`, `db_app_password`, `redis_password`, `better_auth_secret`). For `pnpm dev`, run `docker compose -f compose.yaml -f compose.dev.yaml up -d db migrate redis mailpit` (Postgres on `127.0.0.1:5432`, Redis on `:6379`, SMTP on `:1025`) and `cp apps/web/.env.example apps/web/.env.local`
 - `pnpm --filter @repo/db db:generate`: drizzle-kit migration from `src/schema/`; `db:migrate` applies them (`DATABASE_URL`, optional `DATABASE_PASSWORD_FILE`)
+- `pnpm db:seed`: idempotent dev users and orgs (`owner@`, `admin@`, `member@cognitive-wealth.test`; Acme, Globex); refuses `NODE_ENV=production` and non-local hosts
+- `pnpm org:create --name <name> [--slug <slug>] --owner <email>`: the invite-only way to create an org, in any environment (production via `DATABASE_URL` + `DATABASE_PASSWORD_FILE`). Without `DATABASE_URL`, both CLIs read it from `apps/web/.env.local`
+- `pnpm dev:sign-in <email> [--link]`: signs a seeded or invited user in to `pnpm dev` through the real flow; saves `.dev/auth/<email>.json` for `agent-browser --state`
+- `pnpm --filter @repo/email dev`: email template previews at `https://emails.cognitive-wealth.localhost`
 - Single workspace: `pnpm exec turbo <task> --filter=<name>` (e.g. `--filter=web`); single file: `pnpm --filter <name> exec vitest run <path>`
 
 Lint config lives in the root `.oxlintrc.json`: `denyWarnings` makes warnings fail, `typeAware` runs type-aware rules through `oxlint-tsgolint` (version-locked to TypeScript 7), and the `nextjs` plugin is enabled only for `apps/web/**`. `eslint-plugin-turbo` is loaded as an Oxlint JS plugin, so env vars not declared in `turbo.json` are lint errors. `check-types` in the Next apps runs `next typegen` before `tsc --noEmit`.
@@ -28,13 +32,24 @@ Lint config lives in the root `.oxlintrc.json`: `denyWarnings` makes warnings fa
 
 - `apps/web`: Next.js App Router app (`app/` directory, CSS modules).
 - `packages/design-system` (`@repo/design-system`): shadcn/ui (preset `bjbigatl2`: `base-luma` on Base UI, Hugeicons, Inter + Noto Sans headings) incl. the AI chat primitives (MessageScroller, Message, Bubble, Trace, Attachment, Marker, CodeBlock, Questionnaire). **Not built**: consumers import source (`@repo/design-system/components/button`, `/globals.css`, `/lib/utils`, `/hooks/*`) and Next transpiles it via `transpilePackages`. Run shadcn commands from `apps/web` (e.g. `pnpm dlx shadcn@latest add <name>`); its `components.json` routes components, hooks and lib into the package. Generated `components/` and `hooks/` are excluded from Oxlint; don't hand-edit them unless intended.
-- `packages/db` (`@repo/db`): Drizzle ORM over `postgres` (postgres.js), imported as source. `.` exports the `Database` type and `ping()`, `/client` `getDb()` (lazy, `server-only`), `/connect` `connect()`, `/migrator` `runMigrations()`, `/schema/*` the tables, and `/testing` a PGlite-backed `test`. Files Node runs directly (`migrate.ts` and what it imports) keep `.ts` import extensions; files the app bundles don't. Follow the `drizzle` skill: tables in `src/schema/` (one file per family, `_helpers.ts` timestamps), no serial/composite PKs, `db.select()` builders only (no `db.query`). Migrations live in `migrations/` and run as the `migrator` role; the app connects as `app` (DML only), both created by `docker/initdb/01-roles.sh`.
+- `packages/db` (`@repo/db`): Drizzle ORM over `postgres` (postgres.js), imported as source. `.` exports the `Database` type and `ping()`, `/client` `getDb()` (lazy, `server-only`), `/connect` `connect()`, `/migrator` `runMigrations()`, `/schema/*` the tables, and `/testing` a PGlite-backed `test`. Files Node runs directly (`migrate.ts`, `seed.ts`, `cli/*` and what they import) keep `.ts` import extensions; files the app bundles don't. `src/schema/` is bundler-style, so a Node entry that needs it calls `registerTsResolution()` (`src/cli/ts-resolution.ts`) and then `await import()`s it. Follow the `drizzle` skill: tables in `src/schema/` (one file per family, `_helpers.ts` timestamps), no serial/composite PKs, `db.select()` builders only (no `db.query`). Migrations live in `migrations/` and run as the `migrator` role; the app connects as `app` (DML only), both created by `docker/initdb/01-roles.sh`.
+- `packages/auth` (`@repo/auth`): Better Auth server, imported as source and framework-agnostic (takes `Headers`, returns DTOs or typed `Result`s). `.` exports `createAuth()`, the allowlisted route handler, `getViewer`/`requireTenant` and the org operations; `/client` the browser client, `/access` roles and permissions, `/env` `authOptionsFromEnv()`, `/redis` the secondary storage, `/next` `nextCookies`, `/testing` PGlite + memory fixtures. Node can't load it directly (it imports `.tsx` templates).
+- `packages/email` (`@repo/email`): React Email templates (`src/templates/`), `render*Email()` returning `{ subject, html, text }` (the plain text is a contract the sign-in harness parses), and `Mailer`s: SMTP (Mailpit in dev/e2e) or Resend, picked by `mailerFromEnv()`. `/testing` exports a memory mailer.
 - `apps/web/Dockerfile`: `turbo prune` → pnpm install (store cache mount) → Next standalone build, with `web` and `migrate` targets on distroless non-root. All images are pinned `tag@digest`; Dependabot (`.github/dependabot.yml`) bumps them.
-- `packages/testing` (`@repo/testing`): shared test tooling, imported as source. `/vitest` exports `defineVitestConfig()`, which every package's `vitest.config.ts` calls. `/react` re-exports React Testing Library plus `userEvent` and `setup()`, and registers jest-dom matchers and cleanup. `/pglite` provides `createDatabaseTest(migrate)`.
+- `packages/testing` (`@repo/testing`): shared test tooling, imported as source. `/vitest` exports `defineVitestConfig()`, which every package's `vitest.config.ts` calls. `/react` re-exports React Testing Library plus `userEvent` and `setup()`, and registers jest-dom matchers and cleanup. `/pglite` provides `createDatabaseTest(migrate)`. `/mailpit` and `/sign-in` are the sign-in harness behind `pnpm dev:sign-in` and the e2e `signIn` fixture.
 - `apps/web-e2e`: Playwright suite for `web` (it depends on `web` so `^build` builds it first).
 - `packages/typescript-config` (`@repo/typescript-config`): shared `base.json`, `nextjs.json`, `react-library.json`. TypeScript 7 requires an explicit `rootDir` whenever `outDir` is set.
 
 Internal packages are linked with `workspace:*`. In `turbo.json`, `build` and `check-types` depend on the same task in dependencies (`^task`). The cached build outputs are `.next/**` (minus cache and dev), and `.env*` files are build inputs.
+
+## Auth
+
+[ADR 0001](docs/adr/0001-auth-and-tenancy.md) is the spec: code that disagrees with it is a bug in one or the other, so change both in the same commit.
+
+- Internal IDs never reach the browser. Server Components and Server Actions take `publicId`s and return DTOs (`PublicUser`, `PublicOrganization`, …); `viewer.internal` stays on the server.
+- The browser talks to Better Auth only through the ADR's allowlist (`createAuthRouteHandler`); everything else 404s. A new browser-facing endpoint is an ADR change.
+- On the server, authorize with `getViewer`/`requireTenant` from `@repo/auth` (adapted in `apps/web/lib/auth/`) and scope every query to the tenant they return. `proxy.ts` only does an optimistic cookie check.
+- Dev and test sign-in run the real email flow through the harness ([docs/dev-sign-in.md](docs/dev-sign-in.md)); the app has no backdoor, test-only route or bypass flag.
 
 ## Testing
 
