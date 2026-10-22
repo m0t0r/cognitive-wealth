@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type ViteUserConfig } from "vitest/config";
 
@@ -17,6 +18,10 @@ export function defineVitestConfig(overrides: ViteUserConfig = {}): ViteUserConf
     resolve: { tsconfigPaths: true },
     ...overrides,
     test: {
+      // One module cache per package (Vitest's default is a single one at the workspace root).
+      // Turbo runs packages in parallel, and a process clearing the shared cache after an install
+      // fails the others with ENOTEMPTY. It stays under node_modules, so reinstalls still clear it.
+      fsModuleCachePath: join(process.cwd(), "node_modules", ".vitest-cache"),
       passWithNoTests: true,
       clearMocks: true,
       restoreMocks: true,
