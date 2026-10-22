@@ -16,9 +16,9 @@ Run from the repo root (tasks fan out via Turborepo):
 - `pnpm build`, `pnpm check-types` (via Turborepo)
 - `pnpm lint` / `pnpm lint:fix`: Oxlint over the whole repo, run once from the root (not a Turborepo task)
 - `pnpm format` / `pnpm format:check`: Oxfmt over the whole repo (defaults, incl. 100-col print width and `package.json` key sorting)
-- Single workspace: `pnpm exec turbo <task> --filter=<name>` (e.g. `--filter=web`)
-
-There is no test runner configured yet.
+- `pnpm test` (unit + UI), `pnpm test:integration`, `pnpm test:coverage` (all three, per-package reports in `coverage/`), `pnpm test:watch`
+- `pnpm e2e`: builds `web`, then runs Playwright against `next start` on :3100 (`--filter=web-e2e --only` skips the build)
+- Single workspace: `pnpm exec turbo <task> --filter=<name>` (e.g. `--filter=web`); single file: `pnpm --filter <name> exec vitest run <path>`
 
 Lint config lives in the root `.oxlintrc.json`: `denyWarnings` makes warnings fail, `typeAware` runs type-aware rules through `oxlint-tsgolint` (version-locked to TypeScript 7), and the `nextjs` plugin is enabled only for `apps/web/**`. `eslint-plugin-turbo` is loaded as an Oxlint JS plugin, so env vars not declared in `turbo.json` are lint errors. `check-types` in the Next apps runs `next typegen` before `tsc --noEmit`.
 
@@ -26,6 +26,33 @@ Lint config lives in the root `.oxlintrc.json`: `denyWarnings` makes warnings fa
 
 - `apps/web`: Next.js App Router app (`app/` directory, CSS modules).
 - `packages/design-system` (`@repo/design-system`): shadcn/ui (preset `bjbigatl2`: `base-luma` on Base UI, Hugeicons, Inter + Noto Sans headings) incl. the AI chat primitives (MessageScroller, Message, Bubble, Trace, Attachment, Marker, CodeBlock, Questionnaire). **Not built**: consumers import source (`@repo/design-system/components/button`, `/globals.css`, `/lib/utils`, `/hooks/*`) and Next transpiles it via `transpilePackages`. Run shadcn commands from `apps/web` (e.g. `pnpm dlx shadcn@latest add <name>`); its `components.json` routes components, hooks and lib into the package. Generated `components/` and `hooks/` are excluded from Oxlint; don't hand-edit them unless intended.
+- `packages/testing` (`@repo/testing`): shared test tooling, imported as source. `/vitest` exports `defineVitestConfig()`, which every package's `vitest.config.ts` calls. `/react` re-exports React Testing Library plus `userEvent` and `setup()`, and registers jest-dom matchers and cleanup. `/pglite` provides `createDatabaseTest(migrate)`.
+- `apps/web-e2e`: Playwright suite for `web` (it depends on `web` so `^build` builds it first).
 - `packages/typescript-config` (`@repo/typescript-config`): shared `base.json`, `nextjs.json`, `react-library.json`. TypeScript 7 requires an explicit `rootDir` whenever `outDir` is set.
 
 Internal packages are linked with `workspace:*`. In `turbo.json`, `build` and `check-types` depend on the same task in dependencies (`^task`). The cached build outputs are `.next/**` (minus cache and dev), and `.env*` files are build inputs.
+
+## Testing
+
+Vitest 5 with three projects per package, picked by filename:
+
+- `*.test.ts`: unit tests in Node
+- `*.test.tsx`: UI tests in jsdom. Import from `@repo/testing/react`, query by role or label, and drive interactions with `user-event` (`const { user } = setup(<X />)`), not `fireEvent`.
+- `*.integration.test.{ts,tsx}`: integration tests against real Postgres via PGlite. Use `const test = createDatabaseTest(migrate)` and take `db` from the test context. Add `// @vitest-environment jsdom` to a file that also renders.
+- E2E: `apps/web-e2e/tests/*.spec.ts`
+
+Vitest globals are off, so import `describe`/`it`/`expect`/`vi` from `vitest`.
+
+**Test isolation is a hard requirement at every level.** No test may depend on another test's state or on execution order.
+
+- Unit/UI: mocks, env and globals are restored after each test in the shared config, and RTL cleans up the DOM.
+- Integration: `createDatabaseTest` migrates a template DB once per worker and gives each test its own `clone()`. Never share a `db` across tests or write to module-level state.
+- E2E: not yet in place, because there is no database. When the app gets one, each Playwright worker needs its own database (for example a Postgres `CREATE DATABASE … TEMPLATE` per worker, or a per-worker server instance), selected through a worker-scoped fixture. Seed test data per test through fixtures, and use a unique user and `storageState` per worker. Never rely on shared seed rows being mutated by other tests.
+
+## Accessibility
+
+The bar is WCAG 2.2 AA, enforced at three levels:
+
+- **Lint:** all Oxlint `jsx-a11y` rules are errors, except `control-has-associated-label`, which can't see labels passed through Base UI's `render` prop (axe covers it at runtime). `settings.jsx-a11y.components` maps `Button`/`Input`/`Label`/`Textarea` to native elements; extend that map when adding thin wrappers.
+- **Component tests:** every design-system component test includes `await expect(container).toHaveNoA11yViolations()` (axe-core via `@repo/testing/react`). Colour contrast and landmarks are skipped in jsdom.
+- **E2E:** `tests/a11y.spec.ts` runs an axe scan of every route in `ROUTES` in light and dark themes, and fails on any violation. Add new routes there. Use `makeAxeBuilder` from `fixtures.ts` to scan interactive states (open dialogs, menus), cover keyboard journeys (focus moves in, Escape closes, focus returns) in `keyboard.spec.ts`, and keep `aria-snapshot.spec.ts` in sync (`--update-snapshots`, then review the YAML diff).

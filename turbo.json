@@ -4,7 +4,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*", "!**/*.test.{ts,tsx}", "!vitest.config.ts"],
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"]
     },
     "check-types": {
@@ -13,6 +13,30 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
+    "test": {
+      "dependsOn": ["transit"],
+      "outputs": []
+    },
+    "test:integration": {
+      "dependsOn": ["transit"],
+      "outputs": []
+    },
+    "test:coverage": {
+      "dependsOn": ["transit"],
+      "outputs": ["coverage/**"]
+    },
+    "test:watch": {
+      "cache": false,
+      "persistent": true
+    },
+    "e2e": {
+      "dependsOn": ["^build"],
+      "passThroughEnv": ["CI", "PLAYWRIGHT_*"],
+      "outputs": ["playwright-report/**", "test-results/**"]
     }
   }
 }

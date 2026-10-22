@@ -36,3 +36,5 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+# Playwright CLI output (may contain credentials)
+.playwright-cli/

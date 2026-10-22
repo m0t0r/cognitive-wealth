@@ -1,0 +1,93 @@
+- main:
+    - heading "Design system" [level=1]
+    - paragraph:
+        - text: Preview of
+        - code: "@repo/design-system"
+        - text: . Press d to toggle dark mode.
+    - heading "Foundations" [level=2]
+    - paragraph: Base components themed by preset bjbigatl2.
+    - text: Button
+    - button "Primary"
+    - button "Secondary"
+    - button "Outline"
+    - button "Ghost"
+    - button "Destructive"
+    - button "Add":
+        - img
+    - button "Loading Loading" [disabled]:
+        - status "Loading"
+        - text: ""
+    - text: Badge · Avatar · Kbd New Beta Draft Error CW ⌘K Field · Input · Textarea
+    - group:
+        - text: Email
+        - textbox "Email":
+            - /placeholder: you@example.com
+        - paragraph: We never share your email.
+    - textbox "Write a note…"
+    - text: Switch · Checkbox · Skeleton
+    - switch "Stream responses" [checked]
+    - text: Stream responses
+    - checkbox "Remember context"
+    - text: Remember context Tabs
+    - tablist:
+        - tab "Overview" [selected]
+        - tab "Activity"
+    - tabpanel "Overview": A summary of your workspace.
+    - text: Dialog · Tooltip · Toast
+    - button "Open dialog"
+    - button "Hover me"
+    - button "Show toast"
+    - text: Card Group related content and actions. Cards hold a title, content, and a footer.
+    - button "Action"
+    - alert:
+        - img
+        - text: Heads up Alerts call out important information.
+    - img
+    - text: No conversations Start a chat to see it here.
+    - separator
+    - heading "AI" [level=2]
+    - paragraph: "Chat primitives: MessageScroller, Message, Bubble, Trace, Attachment, Marker, CodeBlock, Questionnaire, and a prompt input."
+    - region "Messages":
+        - log:
+            - text: Today
+            - img
+            - text: /portfolio\.pdf PDF · 1\.2 MB Should I rebalance my portfolio this quarter\? 9:\d+/
+            - button /Thought \d+[hmsp]+/
+            - button "Ran get_allocation"
+            - button "Used 2 sources"
+            - text: Running tax_lot_lookup
+            - paragraph: /Your allocation has drifted to \d+% stocks against a \d+% target\. That is past a 5% band, so a rebalance is reasonable\. A simple drift check looks like this:/
+            - text: rebalance.ts
+            - button "Copy":
+                - img
+            - code: "/const target = \\{ stocks: 0\\.6, bonds: 0\\.4 \\}; const drift = current\\.stocks - target\\.stocks; if \\(Math\\.abs\\(drift\\) > \\d+\\.\\d+\\) rebalance\\(portfolio, target\\);/"
+    - button "Scroll to end":
+        - img
+        - text: ""
+    - group:
+        - textbox "Message":
+            - /placeholder: Ask about your finances…
+        - group:
+            - button "Attach file":
+                - img
+            - button "Claude Opus 5.5":
+                - text: ""
+                - img
+            - button "Send" [disabled]:
+                - img
+    - progressbar "Questionnaire progress": Question 1 of 2
+    - group "What is your investment horizon?":
+        - text: ""
+        - paragraph: Helps the assistant tailor advice.
+        - radio "Under 3 years Saving for something soon"
+        - text: Under 3 years Saving for something soon
+        - radio /3 to \d+ years/
+        - text: /3 to \d+ years/
+        - radio /Over \d+ years/
+        - text: /Over \d+ years/
+    - button "Next"
+    - text: Attachment states
+    - img
+    - text: statement-q3.pdf Uploading…
+    - img
+    - text: holdings.csv Upload failed
