@@ -9,6 +9,10 @@ import {
   staticSecurityHeaders,
 } from "./security-headers";
 
+function styleHash(css: string): string {
+  return `'sha256-${createHash("sha256").update(css).digest("base64")}'`;
+}
+
 function directives(policy: string): Map<string, string[]> {
   return new Map(
     policy.split(";").map((directive) => {
@@ -55,13 +59,11 @@ describe("contentSecurityPolicy", () => {
     expect(literal, "sonner no longer injects its CSS this way").toBeDefined();
     const css: unknown = JSON.parse(literal ?? '""');
     expect(typeof css).toBe("string");
-    const hash = `'sha256-${createHash("sha256").update(String(css)).digest("base64")}'`;
-    expect(SONNER_STYLE_HASH).toBe(hash);
+    expect(SONNER_STYLE_HASH).toBe(styleHash(String(css)));
   });
 
   it("allows the empty stylesheet sonner appends before filling it", () => {
-    const hash = `'sha256-${createHash("sha256").update("").digest("base64")}'`;
-    expect(EMPTY_STYLE_HASH).toBe(hash);
+    expect(EMPTY_STYLE_HASH).toBe(styleHash(""));
   });
 });
 
