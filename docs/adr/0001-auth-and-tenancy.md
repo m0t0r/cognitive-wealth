@@ -66,7 +66,7 @@ Framework-agnostic: it takes `Headers` and returns data or throws typed errors. 
 Configuration (`createAuth(deps)`, a factory so tests inject PGlite, a memory mailer and memory storage):
 
 - `baseURL`: `BETTER_AUTH_URL`, else `PORTLESS_URL` outside production. `secret`: `BETTER_AUTH_SECRET` or `BETTER_AUTH_SECRET_FILE`.
-- `advanced`: `database.generateId: "serial"`, `cookiePrefix: "cw"`, default cookie attributes (HttpOnly, SameSite=Lax, Secure on https/production). `ipAddress.ipAddressHeaders` only from `AUTH_TRUSTED_IP_HEADER` (unset means the socket address; never trust `x-forwarded-for` by default). **No `backgroundTasks` handler**: the combined email depends on awaited callbacks.
+- `advanced`: `database.generateId: "serial"`, `cookiePrefix: "cw"`, default cookie attributes (HttpOnly, SameSite=Lax, Secure on https/production). Client IP (for rate limits and audit): `ipAddress.ipAddressHeaders = [AUTH_TRUSTED_IP_HEADER]` and `ipAddress.trustedProxies = AUTH_TRUSTED_PROXIES` (comma-separated IPs or CIDRs). Better Auth 1.7 accepts a header only when it holds a single IP, or, with `trustedProxies`, walks the chain right to left past the trusted hops. Its default reads `x-forwarded-for`, which a directly exposed server would let clients forge. So when `AUTH_TRUSTED_IP_HEADER` is unset, point `ipAddressHeaders` at a header nothing sends (`x-cw-client-ip-unset`). Production requires `AUTH_TRUSTED_IP_HEADER` and refuses to start without it, because an unresolved IP puts everyone in one shared rate-limit bucket. Use a header your edge proxy overwrites (e.g. `cf-connecting-ip`, `x-real-ip`), or `x-forwarded-for` with `AUTH_TRUSTED_PROXIES`. Everything else that needs the client IP (the Server Action limiter, audit events) calls Better Auth's own `getIP(headers, auth.options)` from `better-auth/api`, so there's one set of trust rules. Never use "first header that holds an IP" helpers (e.g. remix-utils `getClientIPAddress`): clients can set any of those headers. **No `backgroundTasks` handler**: the combined email depends on awaited callbacks.
 - `session`: `expiresIn` 7d, `updateAge` 1d, `freshAge` 1h, cookie cache disabled, `storeSessionInDatabase: true`.
 - `secondaryStorage`: our Redis adapter over `redis@6` (`get`, `set` with TTL, `delete`, `increment` = atomic INCR plus EXPIRE on first hit, `getAndDelete` = GETDEL), keys prefixed with `REDIS_KEY_PREFIX` (default `cw:`).
 - `verification.storeInDatabase: true`.
@@ -85,7 +85,7 @@ Configuration (`createAuth(deps)`, a factory so tests inject PGlite, a memory ma
 2. A per-email limit (Redis counter, 3 per 10 minutes). Over the limit: no email, same response.
 3. Issue the code: call `auth.api.sendVerificationOTP({ body: { email, type: "sign-in" } })` inside an `AsyncLocalStorage` slot. The emailOTP callback writes the code into the slot and **throws if no slot exists**, so codes are only ever issued alongside a link.
 4. Build the confirm URL: `${baseURL}/sign-in/confirm#token=<token>&next=<callbackPath>`. The token is in the **fragment**, so it never reaches a server, log or Referer. `callbackPath` comes from the `callbackURL` query of Better Auth's `url`. Accept it only if it starts with a single `/` (not `//` or `/\`), otherwise use `/`.
-5. Render the sign-in email and send it **without awaiting delivery** (`void mailer.send(...).catch(log)`), so response timing doesn't reveal eligibility. Sending is not retried.
+5. Render the sign-in email and send it **without awaiting delivery** (`void mailer.send(...).catch(log)`), so response timing doesn't reveal eligibility. Pass `idempotencyKey: "sign-in/<random uuid>"` (never derived from the token) and `tags: { category: "sign_in" }`.
 
 Defense in depth: `databaseHooks.user.create.before` returns `false` unless the email has a pending invitation or the creation is flagged as trusted (seed/CLI context).
 
@@ -126,10 +126,12 @@ Audit events: `auth.sign_in` (method), `auth.sign_out`, `org.invitation.created|
   - sign-in: a line `Sign-in link: <url>` and a line `Sign-in code: <6 digits>`
   - invitation: a line `Invitation link: <url>`
 - `Mailer { send(message: { to, subject, html, text, tags?, idempotencyKey? }): Promise<void> }`
-  - `createSmtpMailer({ url, from })` (nodemailer), `createResendMailer({ apiKey, from })` (Resend API)
+  - `createSmtpMailer({ url, from })` (nodemailer), `createResendMailer({ apiKey, from })` (Resend API; retries network errors, 429 and 5xx up to 3 attempts with backoff and jitter, reusing one idempotency key, so a retry never sends twice). Invitations use `idempotencyKey: "invitation/<invitation publicId>"`
   - `mailerFromEnv()`: `EMAIL_TRANSPORT` = `smtp` | `resend`; production requires it and `EMAIL_FROM` to be set explicitly. Dev default is smtp to `smtp://localhost:1025`, from `Cognitive Wealth <no-reply@cognitive-wealth.localhost>`.
   - `@repo/email/testing`: `createMemoryMailer()` that records messages.
+- Templates import components from `react-email` (v6); `@react-email/components` is deprecated.
 - Preview: the package's `dev` script runs `email dev` through portless at `https://emails.cognitive-wealth.localhost`.
+- Before production sending (follow-ups, need the verified domain): SPF, DKIM and DMARC records for the `EMAIL_FROM` domain, and a signed Resend webhook endpoint that records bounces and complaints so we stop emailing suppressed addresses.
 
 ## Infrastructure
 
@@ -142,7 +144,7 @@ Audit events: `auth.sign_in` (method), `auth.sign_out`, `org.invitation.created|
 - E2E global setup also starts Redis and Mailpit containers (images read from `compose.yaml`, like Postgres). Each worker's server gets a unique `REDIS_KEY_PREFIX`, `AUTH_TRUSTED_IP_HEADER=x-forwarded-for` and `SMTP_URL`. Each test sends a unique `x-forwarded-for` and uses unique email addresses, so rate limits and mailboxes never collide.
 
 Environment variables (server, read at request time; declared in `turbo.json` `dev.passThroughEnv`):
-`BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_SECRET_FILE`, `AUTH_TRUSTED_IP_HEADER`, `REDIS_URL`, `REDIS_PASSWORD_FILE`, `REDIS_KEY_PREFIX`, `EMAIL_TRANSPORT`, `EMAIL_FROM`, `SMTP_URL`, `RESEND_API_KEY`, `RESEND_API_KEY_FILE`, `MAILPIT_URL` (harness only).
+`BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_SECRET_FILE`, `AUTH_TRUSTED_IP_HEADER`, `AUTH_TRUSTED_PROXIES`, `REDIS_URL`, `REDIS_PASSWORD_FILE`, `REDIS_KEY_PREFIX`, `EMAIL_TRANSPORT`, `EMAIL_FROM`, `SMTP_URL`, `RESEND_API_KEY`, `RESEND_API_KEY_FILE`, `MAILPIT_URL` (harness only).
 
 ## Dev and test sign-in harness (`@repo/testing`)
 

@@ -3,8 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": {},
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts",
+    "./templates/*": "./src/templates/*.tsx"
+  },
   "scripts": {
+    "dev": "portless",
+    "dev:app": "email dev --dir src/templates --port ${PORT:-3001}",
     "check-types": "tsc --noEmit",
     "test": "vitest run --project unit --project ui",
     "test:integration": "vitest run --project integration",
@@ -12,13 +18,13 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@react-email/components": "1.0.12",
     "@react-email/render": "2.1.1",
     "nodemailer": "10.2.0",
-    "resend": "6.34.1",
-    "server-only": "^0.0.1"
+    "react-email": "6.11.3",
+    "resend": "6.34.1"
   },
   "devDependencies": {
+    "@react-email/ui": "6.11.3",
     "@repo/testing": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "26.6.5",
@@ -28,12 +34,15 @@
     "portless": "0.15.8",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "react-email": "6.11.3",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "react": "^19",
     "react-dom": "^19"
+  },
+  "portless": {
+    "name": "emails.cognitive-wealth",
+    "script": "dev:app"
   }
 }
