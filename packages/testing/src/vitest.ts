@@ -7,9 +7,9 @@ const EXCLUDE = ["**/node_modules/**", "**/.next/**", "**/dist/**"];
 /**
  * Shared Vitest config. Each package gets three projects:
  * - `unit`: `*.test.ts` in Node
- * - `ui`: `*.test.tsx` in jsdom, for React Testing Library + user-event
+ * - `ui`: `*.test.tsx` in happy-dom, for React Testing Library + user-event
  * - `integration`: `*.integration.test.{ts,tsx}` in Node (PGlite). Opt a file into the DOM
- *   with a `// @vitest-environment jsdom` docblock.
+ *   with a `// @vitest-environment happy-dom` docblock.
  */
 export function defineVitestConfig(overrides: ViteUserConfig = {}): ViteUserConfig {
   return defineConfig({
@@ -43,7 +43,7 @@ export function defineVitestConfig(overrides: ViteUserConfig = {}): ViteUserConf
           extends: true,
           test: {
             name: "ui",
-            environment: "jsdom",
+            environment: "happy-dom",
             include: ["**/*.test.tsx"],
             exclude: [...EXCLUDE, INTEGRATION],
           },

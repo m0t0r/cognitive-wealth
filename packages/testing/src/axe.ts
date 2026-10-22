@@ -1,9 +1,9 @@
 import axe, { type Result, type RunOptions } from "axe-core";
 import { expect } from "vitest";
 
-// jsdom has no layout or computed colours, and a component rendered alone has no landmarks.
+// happy-dom has no layout or computed colours, and a component rendered alone has no landmarks.
 // Contrast is covered by the Playwright axe scans instead.
-const JSDOM_RULES: RunOptions["rules"] = {
+const DOM_RULES: RunOptions["rules"] = {
   "color-contrast": { enabled: false },
   region: { enabled: false },
 };
@@ -21,7 +21,7 @@ expect.extend({
   async toHaveNoA11yViolations(received: Element, options: RunOptions = {}) {
     const { violations } = await axe.run(received, {
       ...options,
-      rules: { ...JSDOM_RULES, ...options.rules },
+      rules: { ...DOM_RULES, ...options.rules },
     });
     return {
       pass: violations.length === 0,

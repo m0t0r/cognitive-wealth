@@ -41,8 +41,8 @@ Internal packages are linked with `workspace:*`. In `turbo.json`, `build` and `c
 Vitest 5 with three projects per package, picked by filename:
 
 - `*.test.ts`: unit tests in Node
-- `*.test.tsx`: UI tests in jsdom. Import from `@repo/testing/react`, query by role or label, and drive interactions with `user-event` (`const { user } = setup(<X />)`), not `fireEvent`.
-- `*.integration.test.{ts,tsx}`: integration tests against real Postgres via PGlite. Use `const test = createDatabaseTest(migrate)` and take `db` from the test context; for Drizzle code, import `test` from `@repo/db/testing` and take `orm` (the real migrations, applied per worker, cloned per test). Add `// @vitest-environment jsdom` to a file that also renders.
+- `*.test.tsx`: UI tests in happy-dom. Import from `@repo/testing/react`, query by role or label, and drive interactions with `user-event` (`const { user } = setup(<X />)`), not `fireEvent`.
+- `*.integration.test.{ts,tsx}`: integration tests against real Postgres via PGlite. Use `const test = createDatabaseTest(migrate)` and take `db` from the test context; for Drizzle code, import `test` from `@repo/db/testing` and take `orm` (the real migrations, applied per worker, cloned per test). Add `// @vitest-environment happy-dom` to a file that also renders.
 - E2E: `apps/web-e2e/tests/*.spec.ts`
 
 Vitest globals are off, so import `describe`/`it`/`expect`/`vi` from `vitest`.
@@ -58,5 +58,5 @@ Vitest globals are off, so import `describe`/`it`/`expect`/`vi` from `vitest`.
 The bar is WCAG 2.2 AA, enforced at three levels:
 
 - **Lint:** all Oxlint `jsx-a11y` rules are errors, except `control-has-associated-label`, which can't see labels passed through Base UI's `render` prop (axe covers it at runtime). `settings.jsx-a11y.components` maps `Button`/`Input`/`Label`/`Textarea` to native elements; extend that map when adding thin wrappers.
-- **Component tests:** every design-system component test includes `await expect(container).toHaveNoA11yViolations()` (axe-core via `@repo/testing/react`). Colour contrast and landmarks are skipped in jsdom.
+- **Component tests:** every design-system component test includes `await expect(container).toHaveNoA11yViolations()` (axe-core via `@repo/testing/react`). Colour contrast and landmarks are skipped (happy-dom has no layout). With a popup open (menu, select, popover), scan the popup element, not `document.body`: without layout axe can't tell the popup is modal and flags Base UI's `aria-hidden` focus guards (`aria-hidden-focus`), which a real browser doesn't.
 - **E2E:** `tests/a11y.spec.ts` runs an axe scan of every route in `ROUTES` in light and dark themes, and fails on any violation. Add new routes there. Use `makeAxeBuilder` from `fixtures.ts` to scan interactive states (open dialogs, menus), cover keyboard journeys (focus moves in, Escape closes, focus returns) in `keyboard.spec.ts`, and keep `aria-snapshot.spec.ts` in sync (`--update-snapshots`, then review the YAML diff).
