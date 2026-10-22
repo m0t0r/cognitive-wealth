@@ -87,6 +87,23 @@
     {
       "files": ["apps/web/**"],
       "plugins": ["nextjs"]
+    },
+    {
+      "files": ["apps/web-e2e/tests/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@playwright/test",
+                "message": "Import test and expect from ../fixtures, so the test runs against its worker's isolated server and database.",
+                "allowTypeImports": true
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "ignorePatterns": [
