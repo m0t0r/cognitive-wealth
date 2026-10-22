@@ -1,0 +1,55 @@
+# Version updates. Security updates are separate: GitHub opens those PRs as soon as an advisory
+# lands, ignoring the schedule, cooldown and ignore rules below.
+version: 2
+
+updates:
+  # Every workspace package (apps/*, packages/*) shares the root pnpm lockfile.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Supply-chain buffer: skip releases younger than this, giving the registry time to pull bad ones.
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      # Majors stay one PR per package so breaking changes get their own review.
+      production:
+        dependency-type: production
+        update-types: [minor, patch]
+      development:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  # Base images are pinned as tag@digest; Dependabot moves both, including digest-only rebuilds
+  # (e.g. distroless `nonroot` or a Debian security patch under the same Node tag).
+  - package-ecosystem: docker
+    directory: /apps/web
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "build(docker)"
+    groups:
+      base-images:
+        patterns: ["*"]
+    ignore:
+      # Node majors move with the LTS line on purpose, not automatically.
+      - dependency-name: node
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "build(docker)"
+    ignore:
+      # A Postgres major needs pg_upgrade or a dump/restore of the data volume.
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]
