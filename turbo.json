@@ -14,7 +14,7 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "passThroughEnv": ["DATABASE_URL", "DATABASE_PASSWORD_FILE"]
+      "passThroughEnv": ["DATABASE_URL", "DATABASE_PASSWORD_FILE", "PORTLESS*"]
     },
     "transit": {
       "dependsOn": ["^transit"]
