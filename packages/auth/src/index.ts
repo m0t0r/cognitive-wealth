@@ -36,7 +36,7 @@ export {
   type AuthErrorCode,
   type AuthRoute,
 } from "./route-handler";
-export { SIGN_IN_EMAIL_LIMIT, SIGN_IN_EXPIRES_IN } from "./sign-in";
+export { SIGN_IN_EMAIL_LIMITS, SIGN_IN_EXPIRES_IN, type BackgroundRunner } from "./sign-in";
 export type { SecondaryStorage } from "./storage/types";
 export {
   INVITE_LIMIT,

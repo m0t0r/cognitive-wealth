@@ -160,7 +160,9 @@ export function createAuthRouteHandler(auth: Auth | (() => Auth)) {
 
     const mapped = mapAuthResponse(route, upstream.status, await errorCode(upstream));
     const response = json(mapped.status, mapped.body);
-    // Keep the session cookies (set on sign-in, cleared on sign-out) and nothing else.
+    // Keep Better Auth's cookies: the session (set on sign-in, cleared on sign-out) and the device
+    // cookie (set on sign-in; `sign-out` leaves it). The incoming `Cookie` header is forwarded
+    // as is, so `sendMagicLink` sees the device cookie.
     for (const cookie of upstream.headers.getSetCookie())
       response.headers.append("set-cookie", cookie);
     const retryAfter = upstream.headers.get("x-retry-after");
