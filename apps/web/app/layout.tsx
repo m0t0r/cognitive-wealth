@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist_Mono, Inter, Noto_Sans } from "next/font/google";
 import "@repo/design-system/globals.css";
 import { Toaster } from "@repo/design-system/components/sonner";
@@ -15,11 +16,14 @@ export const metadata: Metadata = {
   description: "Design system preview",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Set by proxy.ts; next-themes needs it for its inline no-flash script.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="en"
@@ -32,7 +36,7 @@ export default function RootLayout({
       )}
     >
       <body>
-        <ThemeProvider>
+        <ThemeProvider nonce={nonce}>
           <TooltipProvider>{children}</TooltipProvider>
           <Toaster />
         </ThemeProvider>
