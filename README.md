@@ -16,8 +16,8 @@ This Turborepo includes the following packages/apps:
 
 ### Apps and Packages
 
-- `web`: a [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library used by `web`
+- `web`: a [Next.js](https://nextjs.org/) app (home page previews the design system)
+- `@repo/design-system`: shadcn/ui components and theme, including AI chat components
 - `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
 
 Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).

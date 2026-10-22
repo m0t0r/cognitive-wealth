@@ -16,7 +16,7 @@ Run from the repo root (tasks fan out via Turborepo):
 - `pnpm build`, `pnpm check-types` (via Turborepo)
 - `pnpm lint` / `pnpm lint:fix`: Oxlint over the whole repo, run once from the root (not a Turborepo task)
 - `pnpm format` / `pnpm format:check`: Oxfmt over the whole repo (defaults, incl. 100-col print width and `package.json` key sorting)
-- Single workspace: `pnpm exec turbo <task> --filter=<name>` (e.g. `--filter=web`, `--filter=@repo/ui`)
+- Single workspace: `pnpm exec turbo <task> --filter=<name>` (e.g. `--filter=web`)
 
 There is no test runner configured yet.
 
@@ -25,7 +25,7 @@ Lint config lives in the root `.oxlintrc.json`: `denyWarnings` makes warnings fa
 ## Architecture
 
 - `apps/web`: Next.js App Router app (`app/` directory, CSS modules).
-- `packages/ui` (`@repo/ui`): shared React components. **Not built.** `exports: { "./*": "./src/*.tsx" }` means consumers import raw source (`import { Button } from "@repo/ui/button"`), and Next compiles it. A new file in `src/` becomes importable by name automatically.
+- `packages/design-system` (`@repo/design-system`): shadcn/ui (preset `bjbigatl2`: `base-luma` on Base UI, Hugeicons, Inter + Noto Sans headings) incl. the AI chat primitives (MessageScroller, Message, Bubble, Trace, Attachment, Marker, CodeBlock, Questionnaire). **Not built**: consumers import source (`@repo/design-system/components/button`, `/globals.css`, `/lib/utils`, `/hooks/*`) and Next transpiles it via `transpilePackages`. Run shadcn commands from `apps/web` (e.g. `pnpm dlx shadcn@latest add <name>`); its `components.json` routes components, hooks and lib into the package. Generated `components/` and `hooks/` are excluded from Oxlint; don't hand-edit them unless intended.
 - `packages/typescript-config` (`@repo/typescript-config`): shared `base.json`, `nextjs.json`, `react-library.json`. TypeScript 7 requires an explicit `rootDir` whenever `outDir` is set.
 
 Internal packages are linked with `workspace:*`. In `turbo.json`, `build` and `check-types` depend on the same task in dependencies (`^task`). The cached build outputs are `.next/**` (minus cache and dev), and `.env*` files are build inputs.
