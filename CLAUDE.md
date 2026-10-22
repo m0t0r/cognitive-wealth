@@ -12,7 +12,7 @@ pnpm + Turborepo monorepo, scaffolded from `create-turbo` (no product code yet).
 
 Run from the repo root (tasks fan out via Turborepo):
 
-- `pnpm dev`: all apps (`web` on :3000)
+- `pnpm dev`: all apps through [portless](https://portless.sh) (`web` at `https://cognitive-wealth.localhost`; a linked git worktree gets `https://<branch>.cognitive-wealth.localhost`), so no app binds a fixed port. Each app's `dev` script is `portless` and the real command is `dev:app`, named in the package's `"portless"` key; add new apps the same way. `PORTLESS=0 pnpm dev` bypasses the proxy (Next's default :3000). The first run starts the proxy on 443 (sudo prompt, local CA); in a non-interactive shell run `portless proxy start` (or `portless service install`) once first. E2E doesn't use portless: it gives each worker its own free port
 - `pnpm build`, `pnpm check-types` (via Turborepo)
 - `pnpm lint` / `pnpm lint:fix`: Oxlint over the whole repo, run once from the root (not a Turborepo task)
 - `pnpm format` / `pnpm format:check`: Oxfmt over the whole repo (defaults, incl. 100-col print width and `package.json` key sorting)
