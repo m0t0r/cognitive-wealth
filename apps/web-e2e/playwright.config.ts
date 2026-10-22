@@ -1,6 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 3100;
 const isCI = Boolean(process.env.CI);
 
 export default defineConfig({
@@ -12,15 +11,11 @@ export default defineConfig({
   reporter: isCI
     ? [["github"], ["html", { open: "never" }]]
     : [["list"], ["html", { open: "on-failure" }]],
+  // Starts Postgres and migrates the template; each worker then gets its own database and
+  // standalone server (see fixtures.ts), which also provides `baseURL`.
+  globalSetup: "./global-setup.ts",
   use: {
-    baseURL: `http://localhost:${PORT}`,
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  // Runs the production build that `turbo run e2e` produces via `^build`.
-  webServer: {
-    command: `pnpm --filter web exec next start --port ${PORT}`,
-    url: `http://localhost:${PORT}`,
-    reuseExistingServer: !isCI,
-  },
 });

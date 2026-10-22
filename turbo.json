@@ -37,8 +37,9 @@
     },
     "e2e": {
       "dependsOn": ["^build"],
-      "passThroughEnv": ["CI", "PLAYWRIGHT_*"],
-      "outputs": ["playwright-report/**", "test-results/**"]
+      "passThroughEnv": ["CI", "PLAYWRIGHT_*", "DOCKER_*", "TESTCONTAINERS_*", "RYUK_*"],
+      "outputs": ["playwright-report/**", "test-results/**"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/compose.yaml"]
     }
   }
 }
