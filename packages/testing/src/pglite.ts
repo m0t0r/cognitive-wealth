@@ -1,10 +1,10 @@
-import { PGlite, type PGliteInterface } from "@electric-sql/pglite";
+import { PGlite } from "@electric-sql/pglite";
 import { test } from "vitest";
 
-export type Migrate = (db: PGliteInterface) => Promise<void>;
+export type Migrate = (db: PGlite) => Promise<void>;
 
 /** Fresh in-memory Postgres. Close it when done. */
-export async function createTestDatabase(migrate?: Migrate): Promise<PGliteInterface> {
+export async function createTestDatabase(migrate?: Migrate): Promise<PGlite> {
   const db = await PGlite.create();
   await migrate?.(db);
   return db;
@@ -21,14 +21,17 @@ export function createDatabaseTest(migrate?: Migrate) {
       { scope: "worker" },
       // Vitest requires a destructuring pattern as the fixture's first argument.
       // oxlint-disable-next-line no-empty-pattern
-      async ({}, { onCleanup }): Promise<PGliteInterface> => {
+      async ({}, { onCleanup }): Promise<PGlite> => {
         const db = await createTestDatabase(migrate);
         onCleanup(() => db.close());
         return db;
       },
     )
-    .extend("db", async ({ templateDb }, { onCleanup }): Promise<PGliteInterface> => {
+    .extend("db", async ({ templateDb }, { onCleanup }): Promise<PGlite> => {
       const db = await templateDb.clone();
+      // `clone()` is typed as `PGliteInterface` but builds a full `PGlite`, which Drizzle requires.
+      if (!(db instanceof PGlite))
+        throw new TypeError("Expected PGlite.clone() to return a PGlite");
       onCleanup(() => db.close());
       return db;
     });
