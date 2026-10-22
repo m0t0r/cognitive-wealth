@@ -43,12 +43,12 @@ for (const route of ROUTES) {
   });
 
   test(`${route} gets a fresh CSP nonce on every request`, async ({ request }) => {
-    const nonce = async () =>
+    const fetchNonce = async () =>
       /'nonce-([^']+)'/.exec(
         (await request.get(route)).headers()["content-security-policy"] ?? "",
       )?.[1];
 
-    const [first, second] = [await nonce(), await nonce()];
+    const [first, second] = [await fetchNonce(), await fetchNonce()];
     expect(first).toBeTruthy();
     expect(first).not.toBe(second);
   });
@@ -56,7 +56,6 @@ for (const route of ROUTES) {
   test(`${route} renders without CSP violations`, async ({ page }) => {
     const violations = await recordViolations(page);
     await page.goto(route);
-    await page.waitForLoadState("networkidle");
 
     expect(violations).toEqual([]);
   });

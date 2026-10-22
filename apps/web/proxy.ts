@@ -19,14 +19,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    {
-      // API routes get a static CSP from next.config.ts; static assets need none.
-      source: "/((?!api|_next/static|_next/image|favicon.ico).*)",
-      missing: [
-        { type: "header", key: "next-router-prefetch" },
-        { type: "header", key: "purpose", value: "prefetch" },
-      ],
-    },
-  ],
+  // API routes get a static CSP from next.config.ts; static assets need none. Segment-anchored so
+  // a page like `/api-docs` still gets a CSP. Prefetches run it too, so `x-nonce` is always ours.
+  matcher: ["/((?!api(?:/|$)|_next/static/|_next/image(?:/|$)|favicon\\.ico$).*)"],
 };

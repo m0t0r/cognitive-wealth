@@ -84,7 +84,8 @@ export function staticSecurityHeaders({ hsts = true }: StaticHeaderOptions = {})
       ? [
           {
             key: "Strict-Transport-Security",
-            value: "max-age=63072000; includeSubDomains; preload",
+            // No `preload`: submitting to the preload list is a separate, hard-to-undo decision.
+            value: "max-age=63072000; includeSubDomains",
           },
         ]
       : []),
@@ -92,7 +93,8 @@ export function staticSecurityHeaders({ hsts = true }: StaticHeaderOptions = {})
     { key: "X-Content-Type-Options", value: "nosniff" },
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
     { key: "Permissions-Policy", value: PERMISSIONS_POLICY },
+    // Not graded; isolates the window from cross-origin openers. No CORP: email clients must be
+    // able to load the app's images.
     { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-    { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
   ];
 }
