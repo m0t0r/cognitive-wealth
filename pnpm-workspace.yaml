@@ -1,3 +1,13 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+allowBuilds:
+  # Its postinstall only re-checks the platform binary that the optional dependency already provides.
+  esbuild: false
+  # Optional native speed-up for ssh2 (via Testcontainers); ssh2 falls back to pure JS.
+  cpu-features: false
+  # Its postinstall only prints a version-compatibility notice.
+  protobufjs: false
+  # Compiles an optional native crypto binding; falls back to Node's crypto without it.
+  ssh2: false

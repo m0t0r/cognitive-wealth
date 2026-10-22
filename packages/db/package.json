@@ -1,0 +1,38 @@
+{
+  "name": "@repo/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./connect": "./src/connect.ts",
+    "./migrator": "./src/migrator.ts",
+    "./schema/*": "./src/schema/*.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node src/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run --project unit --project ui",
+    "test:integration": "vitest run --project integration",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.4",
+    "postgres": "3.4.9",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
+    "@repo/testing": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "26.6.5",
+    "drizzle-kit": "0.31.11",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
