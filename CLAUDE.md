@@ -54,6 +54,8 @@ Internal packages are linked with `workspace:*`. In `turbo.json`, `build` and `c
 
 ## Testing
 
+Each behaviour has one owning layer (unit, integration, UI or E2E; the table is in ADR 0001, Testing): test it there, and give other layers at most one representative case.
+
 Vitest 5 with three projects per package, picked by filename:
 
 - `*.test.ts`: unit tests in Node
