@@ -21,22 +21,13 @@ describe("renderSignInEmail", () => {
     expect(textLines(text).filter((line) => line.startsWith("Sign-in code: "))).toHaveLength(1);
   });
 
+  // The HTML (button, code, expiry, notice, lang) is owned by templates/templates.test.tsx.
   it("states the expiry, single use and what to do if it wasn't requested", async () => {
-    const { subject, text, html } = await renderSignInEmail(props);
+    const { subject, text } = await renderSignInEmail(props);
 
     expect(subject).toBe("Your Cognitive Wealth sign-in link");
-    for (const body of [text, html]) {
-      expect(body).toContain("This link and code expire in 5 minutes and can be used once.");
-      expect(body).toContain("you can safely ignore it");
-    }
-  });
-
-  it("links the button to the URL and shows the code in the HTML", async () => {
-    const { html } = await renderSignInEmail(props);
-
-    expect(html).toContain('<html dir="ltr" lang="en">');
-    expect(html).toContain(`href="${signInUrl.replace("&", "&amp;")}"`);
-    expect(html).toContain(">012345</p>");
+    expect(text).toContain("This link and code expire in 5 minutes and can be used once.");
+    expect(text).toContain("you can safely ignore it");
   });
 
   it("uses the singular for one minute", async () => {
@@ -79,14 +70,13 @@ describe("renderInvitationEmail", () => {
     expect(textLines(text).filter((line) => line.startsWith("Invitation link: "))).toHaveLength(1);
   });
 
+  // The HTML (summary, accept button, expiry) is owned by templates/templates.test.tsx.
   it("names the organization, inviter, role and expiry", async () => {
-    const { subject, text, html } = await renderInvitationEmail(props);
+    const { subject, text } = await renderInvitationEmail(props);
 
     expect(subject).toBe("You're invited to join Acme on Cognitive Wealth");
     expect(text).toContain("Olivia Owner has invited you to join Acme as an admin.");
     expect(text).toContain("This invitation expires on October 29, 2026 at 3:00 PM UTC.");
-    expect(html).toContain("Olivia Owner has invited you to join Acme as an admin.");
-    expect(html).toContain(`href="${invitationUrl}"`);
   });
 
   it("works without an inviter name", async () => {

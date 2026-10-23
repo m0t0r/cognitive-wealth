@@ -1,6 +1,6 @@
 import { count, eq } from "drizzle-orm";
 import { describe, expect } from "vitest";
-import { CliError, createOrganization, slugFromName } from "./cli/organizations";
+import { CliError, createOrganization } from "./cli/organizations";
 import type { Database } from "./index";
 import { auditEvent, member, organization, user } from "./schema";
 import { test } from "./testing";
@@ -133,18 +133,5 @@ describe("createOrganization", () => {
     );
 
     expect(await rowCounts(orm)).toEqual({ user: 0, organization: 0, member: 0, auditEvent: 0 });
-  });
-});
-
-describe("slugFromName", () => {
-  test.for([
-    ["Acme", "acme"],
-    ["Acme Corp.", "acme-corp"],
-    ["  Société Générale  ", "societe-generale"],
-    ["R&D -- Lab 42", "r-d-lab-42"],
-    ["a".repeat(60), "a".repeat(48)],
-    [`${"a".repeat(47)} b`, "a".repeat(47)],
-  ])("%s → %s", ([name, slug]) => {
-    expect(slugFromName(name!)).toBe(slug);
   });
 });

@@ -1,3 +1,4 @@
+// Next internal, on purpose: a Next upgrade that moves or changes it should break this test.
 import { getPathMatch } from "next/dist/shared/lib/router/utils/path-match";
 import { describe, expect, it } from "vitest";
 import nextConfig from "./next.config";

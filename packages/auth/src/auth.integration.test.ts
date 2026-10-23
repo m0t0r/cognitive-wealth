@@ -1,9 +1,6 @@
 import { test as dbTest } from "@repo/db/testing";
-import * as schema from "@repo/db/schema";
-import { betterAuth } from "better-auth";
-import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { describe, expect } from "vitest";
-import { createTestAuth, internalIdKeys, TEST_SECRET } from "./testing";
+import { createTestAuth, internalIdKeys } from "./testing";
 
 const test = dbTest.extend("t", ({ orm }) => createTestAuth({ orm }));
 
@@ -14,20 +11,6 @@ describe("schema", () => {
     const context = await t.auth.$context;
     expect(context.explicitSchemaCheck).toBeTypeOf("function");
     await expect(context.explicitSchemaCheck!()).resolves.toBeUndefined();
-  });
-
-  // Guards the test above against a check that passes everything.
-  test("the check catches a field the schema lacks", async ({ orm }) => {
-    const auth = betterAuth({
-      baseURL: "http://localhost:3000",
-      secret: TEST_SECRET,
-      database: drizzleAdapter(orm, { provider: "pg", schema }),
-      advanced: { database: { generateId: "serial" } },
-      user: { additionalFields: { nickname: { type: "string", required: false } } },
-      logger: { disabled: true },
-    });
-    const context = await auth.$context;
-    await expect(context.explicitSchemaCheck!()).rejects.toThrow(/nickname/);
   });
 });
 

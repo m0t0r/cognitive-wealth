@@ -2,7 +2,8 @@
 // (ADR 0001, "Sign-in request"): timing would reveal which addresses can sign in.
 import { test as dbTest } from "@repo/db/testing";
 import { auditEvent, verification } from "@repo/db/schema";
-import { sql } from "drizzle-orm";
+import type { EmailMessage } from "@repo/email";
+import { parseSignInEmail } from "@repo/testing/mailpit";
 import { describe, expect, vi } from "vitest";
 import { createTestAuth, type TestAuth } from "./testing";
 
@@ -32,24 +33,20 @@ async function requestSignIn(t: TestAuth, email: string, ip?: string) {
   expect(await response.json()).toEqual({ status: true });
 }
 
-/** Everything the background work could touch: mail, verification rows, audit rows, limits. */
+/**
+ * Everything the background work could touch: mail, credentials (verification rows), audit rows
+ * and our own rate-limit counters (`consumeRateLimit` keeps them under `rl:`).
+ */
 async function snapshot(t: TestAuth) {
-  const rows = await t.auth.$deps.db
-    .select({ identifier: verification.identifier })
-    .from(verification)
-    .orderBy(verification.identifier);
   return {
     mail: t.mailer.messages.length,
-    verification: rows.map(({ identifier }) =>
-      identifier.startsWith("magic-link:") ? "magic-link" : identifier,
-    ),
+    credentials: await t.auth.$deps.db.$count(verification),
     audit: await t.auth.$deps.db.$count(auditEvent),
-    limits: t.storage.keys().filter((key) => key.startsWith("rl:sign-in-email:")),
+    limits: t.storage.keys().filter((key) => key.startsWith("rl:")).length,
   };
 }
 
-const magicLinks = (t: TestAuth) =>
-  t.auth.$deps.db.$count(verification, sql`starts_with(${verification.identifier}, 'magic-link:')`);
+const credentials = (t: TestAuth) => t.auth.$deps.db.$count(verification);
 
 describe("sign-in request timing", () => {
   test.for([
@@ -74,19 +71,18 @@ describe("sign-in request timing", () => {
       await requestSignIn(t, email, ATTACKER);
       // Only the plugin's own link insert, the same for every address, happened in-request.
       expect(tasks).toHaveLength(1);
-      expect(await snapshot(t)).toEqual({
-        ...before,
-        verification: [...before.verification, "magic-link"],
-      });
+      expect(await snapshot(t)).toEqual({ ...before, credentials: before.credentials + 1 });
 
       await runTasks();
       const after = await snapshot(t);
       if (kind === "an eligible address") {
+        // The link and the code.
         expect(after.mail).toBe(before.mail + 1);
-        expect(after.verification).toEqual(["magic-link", `sign-in-otp-${ADA}`]);
+        expect(after.credentials).toBe(before.credentials + 2);
       } else {
+        // No usable credential left behind.
         expect(after.mail).toBe(before.mail);
-        expect(after.verification).toEqual(before.verification);
+        expect(after.credentials).toBe(before.credentials);
         expect(after.audit).toBe(before.audit + (kind === "a throttled address" ? 1 : 0));
       }
     },
@@ -104,7 +100,7 @@ describe("sign-in request timing", () => {
     expect(t.mailer.messages).toHaveLength(0);
     await runTasks();
     expect(t.mailer.messages).toHaveLength(3);
-    expect(await magicLinks(t)).toBe(3);
+    // That the refused fourth leaves no link is owned by the limits suite.
   });
 });
 
@@ -112,13 +108,20 @@ describe("background failures", () => {
   test("are logged, discard the link and leave the response alone", async ({ orm }) => {
     const t = createTestAuth({ orm });
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.spyOn(t.mailer, "send").mockRejectedValueOnce(new Error("mail provider down"));
+    // The provider fails, but the message it was handed shows which link would have gone out.
+    const handed: EmailMessage[] = [];
+    vi.spyOn(t.mailer, "send").mockImplementationOnce(async (message) => {
+      handed.push(message);
+      throw new Error("mail provider down");
+    });
     await t.seedUser({ email: ADA });
 
     await requestSignIn(t, ADA);
     await t.settle();
     expect(error).toHaveBeenCalledWith("Sign-in request failed", expect.any(Error));
-    expect(await magicLinks(t)).toBe(0);
+    const { token } = parseSignInEmail(handed[0]!.text);
+    const verify = await t.fetchAuth(`/magic-link/verify?token=${encodeURIComponent(token)}`);
+    expect(await verify.json()).toEqual({ ok: false, error: "invalid_or_expired" });
   });
 
   test("a runner that throws doesn't reach the response, and the link is discarded", async ({
@@ -135,7 +138,7 @@ describe("background failures", () => {
 
     await requestSignIn(t, ADA);
     expect(error).toHaveBeenCalledWith("Sign-in request failed", expect.any(Error));
-    expect(await magicLinks(t)).toBe(0);
+    expect(await credentials(t)).toBe(0);
     expect(t.mailer.messages).toEqual([]);
   });
 });

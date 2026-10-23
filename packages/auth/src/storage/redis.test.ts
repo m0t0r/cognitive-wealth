@@ -99,7 +99,8 @@ describe("createRedisStorage", () => {
     const storage = createRedisStorage(fake.redis);
     await storage.set("a", "1", 60);
     await storage.set("b", "2");
-    expect(fake.log).toEqual(["SET cw:a 1 EX 60", "SET cw:b 2"]);
+    expect(await storage.get("a")).toBe("1");
+    expect(await storage.get("b")).toBe("2");
     expect(fake.ttl("cw:a")).toBe(60);
     expect(fake.ttl("cw:b")).toBe(-1);
   });
@@ -110,7 +111,7 @@ describe("createRedisStorage", () => {
     await storage.set("a", "1");
     await storage.set("a", "2", 0);
     expect(await storage.get("a")).toBeNull();
-    expect(fake.log).toContain("DEL cw:a");
+    expect(fake.ttl("cw:a")).toBe(-2);
   });
 
   it("reads and deletes atomically with GETDEL", async () => {
@@ -119,6 +120,7 @@ describe("createRedisStorage", () => {
     await storage.set("a", "1", 60);
     expect(await storage.getAndDelete("a")).toBe("1");
     expect(await storage.get("a")).toBeNull();
+    // One command, not GET then DEL: the fake can't race two clients, so the command is the proof.
     expect(fake.log).toContain("GETDEL cw:a");
   });
 
@@ -131,7 +133,7 @@ describe("createRedisStorage", () => {
     expect(fake.ttl("cw:n")).toBe(30);
     fake.advance(30_000);
     expect(await storage.increment("n", 60)).toBe(1);
-    expect(fake.log.slice(0, 3)).toEqual(["SET cw:n 0 EX 60 NX", "INCR cw:n", "EXPIRE cw:n 60 NX"]);
+    expect(fake.ttl("cw:n")).toBe(60);
   });
 
   it("never leaves a counter without a TTL, even if it expires between SET and INCR", async () => {

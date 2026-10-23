@@ -7,6 +7,7 @@
     "./vitest": "./src/vitest.ts",
     "./react": "./src/react.tsx",
     "./pglite": "./src/pglite.ts",
+    "./internal-ids": "./src/internal-ids.ts",
     "./mailpit": "./src/mailpit.ts",
     "./sign-in": "./src/sign-in.ts"
   },
