@@ -29,10 +29,6 @@ Claude Code's own worktree isolation (separate from that hook) refuses commands 
 Run from the repo root (tasks fan out via Turborepo):
 
 - `pnpm dev`: all apps through [portless](https://portless.sh) (`web` at `https://cognitive-wealth.localhost`; a linked git worktree gets `https://<branch>.cognitive-wealth.localhost`), so no app binds a fixed port. Each app's `dev` script is `portless` and the real command is `dev:app`, named in the package's `"portless"` key; add new apps the same way. `PORTLESS=0 pnpm dev` bypasses the proxy (Next's default :3000). The first run starts the proxy on 443 (sudo prompt, local CA); in a non-interactive shell run `portless proxy start` (or `portless service install`) once first. E2E doesn't use portless: it gives each worker its own free port
-- `pnpm build`, `pnpm check-types` (via Turborepo)
-- `pnpm lint` / `pnpm lint:fix`: Oxlint over the whole repo, run once from the root (not a Turborepo task)
-- `pnpm format` / `pnpm format:check`: Oxfmt over the whole repo (defaults, incl. 100-col print width and `package.json` key sorting)
-- `pnpm test` (unit + UI), `pnpm test:integration`, `pnpm test:coverage` (all three, per-package reports in `coverage/`), `pnpm test:watch`
 - `pnpm e2e`: builds `web`, then runs Playwright with Postgres, Redis and Mailpit containers and one standalone server per worker; needs Docker (`--filter=web-e2e --only` skips the build)
 - `docker compose up --build`: Postgres 18 + migrations + Redis + Mailpit (UI on `http://127.0.0.1:8025`) + `web`. Create `.secrets/` first with the loop in `compose.yaml`'s header (`postgres_password`, `db_migrator_password`, `db_app_password`, `redis_password`, `better_auth_secret`). For `pnpm dev`, run `docker compose -f compose.yaml -f compose.dev.yaml up -d db migrate redis mailpit` (Postgres on `127.0.0.1:5432`, Redis on `:6379`, SMTP on `:1025`) and `cp apps/web/.env.example apps/web/.env.local`
 - `pnpm --filter @repo/db db:generate`: drizzle-kit migration from `src/schema/`; `db:migrate` applies them (`DATABASE_URL`, optional `DATABASE_PASSWORD_FILE`)
@@ -41,25 +37,18 @@ Run from the repo root (tasks fan out via Turborepo):
 - `pnpm dev:sign-in <email> [--link] [--ip <addr>]`: signs a seeded or invited user in to `pnpm dev` through the real flow; saves `.dev/auth/<email>.json` for `agent-browser --state`. `--ip` sends that client IP as `x-forwarded-for`, so each session gets its own rate-limit bucket on a stack that trusts it (Compose)
 - `pnpm --filter @repo/email dev`: email template previews at `https://emails.cognitive-wealth.localhost`
 - `pnpm docs:diagrams`: renders `docs/diagrams/*.mmd` with Pele into `<name>.light.svg` and `<name>.dark.svg` (deterministic, so an unchanged source gives no diff)
-- Single workspace: `pnpm exec turbo <task> --filter=<name>` (e.g. `--filter=web`); single file: `pnpm --filter <name> exec vitest run <path>`
-
-Lint config lives in the root `.oxlintrc.json`: `denyWarnings` makes warnings fail, `typeAware` runs type-aware rules through `oxlint-tsgolint` (version-locked to TypeScript 7), and the `nextjs` plugin is enabled only for `apps/web/**`. `eslint-plugin-turbo` is loaded as an Oxlint JS plugin, so env vars not declared in `turbo.json` are lint errors. `check-types` in the Next apps runs `next typegen` before `tsc --noEmit`.
 
 ## Architecture
 
 The platform overview, with diagrams of the system, packages, request flow, data model and decisions, is [docs/architecture.md](docs/architecture.md). A change that alters something a diagram shows updates its `.mmd` and re-renders it in the same commit.
 
-- `apps/web`: Next.js App Router app (`app/` directory, CSS modules).
 - `packages/design-system` (`@repo/design-system`): shadcn/ui (preset `bjbigatl2`: `base-luma` on Base UI, Hugeicons, Inter + Noto Sans headings) incl. the AI chat primitives (MessageScroller, Message, Bubble, Trace, Attachment, Marker, CodeBlock, Questionnaire). **Not built**: consumers import source (`@repo/design-system/components/button`, `/globals.css`, `/lib/utils`, `/hooks/*`) and Next transpiles it via `transpilePackages`. Run shadcn commands from `apps/web` (e.g. `pnpm dlx shadcn@latest add <name>`); its `components.json` routes components, hooks and lib into the package. Generated `components/` and `hooks/` are excluded from Oxlint; don't hand-edit them unless intended. An intended edit carries a comment saying what changed and why (e.g. `button.tsx`'s `aria-disabled:` styles), and updating a component goes through `add <name> --dry-run` / `--diff` and a merge, never `--overwrite`, which drops local edits.
-- `packages/db` (`@repo/db`): Drizzle ORM over `postgres` (postgres.js), imported as source. `.` exports the `Database` type and `ping()`, `/client` `getDb()` (lazy, `server-only`), `/connect` `connect()`, `/migrator` `runMigrations()`, `/schema/*` the tables, and `/testing` a PGlite-backed `test`. Files Node runs directly (`migrate.ts`, `seed.ts`, `cli/*` and what they import) keep `.ts` import extensions; files the app bundles don't. `src/schema/` is bundler-style, so a Node entry that needs it calls `registerTsResolution()` (`src/cli/ts-resolution.ts`) and then `await import()`s it. Follow the `drizzle` skill: tables in `src/schema/` (one file per family, `_helpers.ts` timestamps), no serial/composite PKs, `db.select()` builders only (no `db.query`). Migrations live in `migrations/` and run as the `migrator` role; the app connects as `app` (DML only), both created by `docker/initdb/01-roles.sh`.
-- `packages/auth` (`@repo/auth`): Better Auth server, imported as source and framework-agnostic (takes `Headers`, returns DTOs or typed `Result`s). `.` exports `createAuth()`, the allowlisted route handler, `getViewer`/`requireTenant` and the org operations; `/client` the browser client, `/access` roles and permissions, `/env` `authOptionsFromEnv()`, `/redis` the secondary storage, `/next` `nextCookies`, `/testing` PGlite + memory fixtures. Node can't load it directly (it imports `.tsx` templates).
+- `packages/db` (`@repo/db`): Drizzle ORM over `postgres` (postgres.js), imported as source. Its conventions (import extensions, schema rules, database roles) are in `packages/db/CLAUDE.md`.
+- `packages/auth` (`@repo/auth`): Better Auth server, imported as source and framework-agnostic (takes `Headers`, returns DTOs or typed `Result`s). Node can't load it directly (it imports `.tsx` templates).
 - `packages/email` (`@repo/email`): React Email templates (`src/templates/`), `render*Email()` returning `{ subject, html, text }` (the plain text is a contract the sign-in harness parses), and `Mailer`s: SMTP (Mailpit in dev/e2e) or Resend, picked by `mailerFromEnv()`. `/testing` exports a memory mailer.
-- `apps/web/Dockerfile`: `turbo prune` → pnpm install (store cache mount) → Next standalone build, with `web` and `migrate` targets on distroless non-root. All images are pinned `tag@digest`; Dependabot (`.github/dependabot.yml`) bumps them.
+- `apps/web/Dockerfile`: all images are pinned `tag@digest`; Dependabot (`.github/dependabot.yml`) bumps them.
 - `packages/testing` (`@repo/testing`): shared test tooling, imported as source. `/vitest` exports `defineVitestConfig()`, which every package's `vitest.config.ts` calls. `/react` re-exports React Testing Library plus `userEvent` and `setup()`, and registers jest-dom matchers and cleanup. `/pglite` provides `createDatabaseTest(migrate)`. `/mailpit` and `/sign-in` are the sign-in harness behind `pnpm dev:sign-in` and the e2e `signIn` fixture.
-- `apps/web-e2e`: Playwright suite for `web` (it depends on `web` so `^build` builds it first).
-- `packages/typescript-config` (`@repo/typescript-config`): shared `base.json`, `nextjs.json`, `react-library.json`. TypeScript 7 requires an explicit `rootDir` whenever `outDir` is set.
-
-Internal packages are linked with `workspace:*`. In `turbo.json`, `build` and `check-types` depend on the same task in dependencies (`^task`). The cached build outputs are `.next/**` (minus cache and dev), and `.env*` files are build inputs.
+- `packages/typescript-config` (`@repo/typescript-config`): TypeScript 7 requires an explicit `rootDir` whenever `outDir` is set.
 
 ## Auth
 
@@ -96,7 +85,7 @@ Vitest globals are on (`globals: true` in `defineVitestConfig()`, `vitest/global
 
 - Unit/UI: mocks, env and globals are restored after each test in the shared config, and RTL cleans up the DOM.
 - Integration: `createDatabaseTest` migrates a template DB once per worker and gives each test its own `clone()`. Never share a `db` across tests or write to module-level state.
-- E2E: each run starts a throwaway Postgres (Testcontainers, the image pinned in `compose.yaml`; needs Docker) and migrates a template DB. Each Playwright worker gets its own `CREATE DATABASE … TEMPLATE` copy and its own standalone server, which `baseURL` points at. The auto `db` fixture (Drizzle) truncates every table before each test: seed per test through it, never in shared setup. Specs must import `test`/`expect` from `fixtures.ts` (lint-enforced). Seed with `support/seed.ts` (`uniqueEmail(testInfo, …)` for every address, since workers share Mailpit), sign in with `signIn(email)` (HTTP harness, from the test's unique `clientIp`) or through the UI with `support/sign-in.ts` and `mailbox`, and give a second user `openBrowser()` (its own context and `clientIp`). Routes live in `support/routes.ts` as `PUBLIC_ROUTES` and `SIGNED_IN_ROUTES` (each with a `setUp` seed that the a11y and security-header specs sign in for).
+- E2E: each worker gets its own database copy and server, and each test seeds its own data, never shared setup. The fixtures and seeding rules are in `apps/web-e2e/CLAUDE.md`.
 
 ## Accessibility
 
