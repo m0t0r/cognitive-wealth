@@ -98,6 +98,39 @@ This isn't only good practice; it is the law. The SEC's custody rule says that a
 
 There is also a practical reason. Buying a share means reaching a market and paying the seller, through systems that only regulated firms can use. A Custodian is plugged into those systems. A small advisory Firm isn't.
 
+### Isn't a bank enough?
+
+**Short answer:** no. Money you put in a bank becomes the bank's, and the bank owes it back to you. Shares you leave with a Custodian stay yours, and the Custodian only looks after them.
+
+You already know banks, so start there. When you deposit $1,000 into your bank account, two things happen that you never see:
+
+1. **The $1,000 becomes the bank's money.** What you own now is a promise: the bank owes you $1,000, and your balance is the size of that promise.
+2. **The bank uses it.** It lends most of it out, for example as other people's mortgages and car loans. That's how a bank makes money, and part of why it can pay you interest.
+
+That's fine for dollars, because one dollar is as good as another. When you withdraw, the bank pays you any $1,000, not the same banknotes.
+
+Shares are different. They're not interchangeable with anything else, and their value moves every day. Dana wants to own 300 shares of the Bond Fund, not a promise that someone will pay back roughly what they were worth. So Dana needs somewhere that holds the shares themselves, in Dana's name, and doesn't use them for its own business. That's a Custodian.
+
+Compare it with the coat check again. A bank is like lending your coat to a friend who promises to give you back "a coat like it" later, and may wear it in the meantime. A Custodian is the coat check: your own coat, on a hanger with your ticket number, never worn by anyone else.
+
+Here are the differences side by side:
+
+| Question                      | A bank account                                                          | An Account at a Custodian                                                                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| What can it hold?             | Dollars only                                                            | Cash and Securities: shares, funds, bonds                                                                                                       |
+| Whose is it?                  | The bank's. The bank owes you the balance                               | Yours. The Custodian must keep it apart from its own property                                                                                   |
+| What does the holder do?      | Lends it out                                                            | Keeps it safe, and buys, sells and collects dividends when asked                                                                                |
+| What if the holder goes bust? | Government insurance (the FDIC) repays deposits up to $250,000 per bank | Your shares are yours, so they're returned to you. If some are missing, insurance (SIPC) covers up to $500,000, of which up to $250,000 is cash |
+| What if prices fall?          | Doesn't apply: $1,000 stays $1,000                                      | Nobody covers that. Owning shares means owning their ups and downs                                                                              |
+| What else does it do?         | Payments, cards, loans                                                  | Trades and settlement, dividends, statements, tax forms                                                                                         |
+
+Sources: the FDIC says it insures deposits up to $250,000 at each insured bank, and doesn't insure stocks, bonds or mutual funds ([FDIC](https://www.fdic.gov/resources/deposit-insurance)). SIPC protects cash and securities at a failed brokerage up to $500,000, including $250,000 for cash, and doesn't protect against falling prices ([SIPC](https://www.sipc.org/for-investors/what-sipc-protects)). A brokerage must keep customers' securities separate from its own under SEC Rule 15c3-3 ([17 CFR 240.15c3-3](https://www.ecfr.gov/current/title-17/chapter-II/part-240/section-240.15c3-3)).
+
+Two things that can make this confusing:
+
+- **The same company can be both.** "Custodian" is a job, not a kind of company. A bank can also offer custody, and a brokerage can own a bank. When a company acts as a Custodian, it holds your shares under the custody rules, even if the same company also takes deposits.
+- **Custodians and banks work together.** Dana's spare cash at the Custodian usually ends up in a bank deposit, through the cash sweep (Part 5 explains it). The Custodian looks after the shares; a bank looks after the spare dollars.
+
 ### Who does what?
 
 Here is everyone in one picture:
@@ -634,14 +667,21 @@ So the people who advise on the money never hold it. The Custodian holds the cas
 </details>
 
 <details>
-<summary>7. (Level 3) Dana holds 30 shares at $153.40, and the fund splits 2-for-1. What are the Position and the Market value afterwards?</summary>
+<summary>7. Why can't Dana just keep the Bond Fund shares in a bank account?</summary>
+
+A bank account holds only dollars, and money deposited in a bank becomes the bank's, which it lends out. Dana wants the shares themselves, kept in Dana's name and never used by anyone else, plus someone to trade them and collect their dividends. That's a Custodian's job.
+
+</details>
+
+<details>
+<summary>8. (Level 3) Dana holds 30 shares at $153.40, and the fund splits 2-for-1. What are the Position and the Market value afterwards?</summary>
 
 60 shares at $76.70. The Market value stays 60 × $76.70 = $4,602.00, the same as 30 × $153.40. The share count changed without a trade, so the split needs its own row in the Ledger.
 
 </details>
 
 <details>
-<summary>8. (Level 3) On 9 March, the Advisor asks "what did we tell Dana on 4 March that cash was on 3 March?" Which rows answer it?</summary>
+<summary>9. (Level 3) On 9 March, the Advisor asks "what did we tell Dana on 4 March that cash was on 3 March?" Which rows answer it?</summary>
 
 Rows with a Trade date by 3 March and a Posting date by 4 March: rows 1 to 5, giving $5,999.00. The Correction (rows 9 and 10) was posted on 6 March, so it's left out. That's the bitemporal question: what was known then, not what is known now.
 
