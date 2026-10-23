@@ -1,4 +1,4 @@
-"""The custodian's FastAPI app. `fastapi dev` and `TestClient` both load `app` from here."""
+"""The custodian's FastAPI app. Uvicorn (`pnpm dev`) and `TestClient` both load `app` from here."""
 
 from typing import Literal
 
@@ -8,10 +8,10 @@ from pydantic import BaseModel
 app = FastAPI(title="Custodian")
 
 
-class Health(BaseModel):
+class HealthResponse(BaseModel):
     status: Literal["ok"]
 
 
 @app.get("/health")
-def health() -> Health:
-    return Health(status="ok")
+def health() -> HealthResponse:
+    return HealthResponse(status="ok")
