@@ -115,6 +115,10 @@ _Avoid_: Instrument, asset, holding
 A dated movement the Custodian records in an Account: a buy, sell, dividend, interest payment, contribution, withdrawal, fee or transfer, or the Reversal of one.
 _Avoid_: Activity, trade (a trade is only a buy or a sell)
 
+**Corporate action**:
+An event decided by the company or fund behind a Security that changes what its holders own without them trading, such as a stock split or a merger.
+_Avoid_: Corp action, event
+
 **Ledger**:
 The Custodian's append-only list of an Account's Transactions. Rows are added, never changed or deleted.
 _Avoid_: Journal, history
