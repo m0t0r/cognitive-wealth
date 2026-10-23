@@ -2,13 +2,15 @@ import { test as dbTest } from "@repo/db/testing";
 import {
   auditEvent,
   invitation,
+  member,
   organization,
   session as sessionTable,
   user,
   verification,
 } from "@repo/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { describe, expect } from "vitest";
+import { switchOrganization } from "./tenant";
 import { createTestAuth, type TestAuth } from "./testing";
 
 const test = dbTest.extend("t", ({ orm }) => createTestAuth({ orm }));
@@ -54,6 +56,15 @@ const activeOrganizationIds = async (t: TestAuth) =>
   (await t.auth.$deps.db.select({ id: sessionTable.activeOrganizationId }).from(sessionTable)).map(
     (row) => row.id,
   );
+
+const newestActiveOrganizationId = async (t: TestAuth) => {
+  const [newest] = await t.auth.$deps.db
+    .select({ id: sessionTable.activeOrganizationId })
+    .from(sessionTable)
+    .orderBy(desc(sessionTable.createdAt), desc(sessionTable.id))
+    .limit(1);
+  return newest?.id;
+};
 
 const expireAllVerifications = (t: TestAuth) =>
   t.auth.$deps.db.update(verification).set({ expiresAt: sql`now() - interval '1 second'` });
@@ -621,6 +632,49 @@ describe("audit and sessions", () => {
 
     await t.signInAs("ada@example.com");
     expect(await activeOrganizationIds(t)).toEqual([String(globex.id)]);
+  });
+
+  test("continues in the organization the user last worked in", async ({ t }) => {
+    // Re-authenticating (fresh-session prompts) must not drop someone into another workspace.
+    const ada = await t.seedUser({ email: "ada@example.com" });
+    const acme = await t.seedOrganization({
+      name: "Acme",
+      slug: "acme",
+      members: [{ userId: ada.id, role: "owner", createdAt: new Date("2026-01-01") }],
+    });
+    const globex = await t.seedOrganization({
+      name: "Globex",
+      slug: "globex",
+      members: [{ userId: ada.id, role: "member", createdAt: new Date("2026-06-01") }],
+    });
+    const first = await t.signInAs("ada@example.com");
+    expect(
+      await switchOrganization(t.auth, first, { organizationPublicId: acme.publicId }),
+    ).toEqual(expect.objectContaining({ ok: true }));
+
+    await t.signInAs("ada@example.com");
+    expect(await newestActiveOrganizationId(t)).toBe(String(acme.id));
+    expect(globex.id).not.toBe(acme.id);
+  });
+
+  test("falls back to the newest membership once the last organization is gone", async ({ t }) => {
+    const ada = await t.seedUser({ email: "ada@example.com" });
+    const acme = await t.seedOrganization({
+      name: "Acme",
+      slug: "acme",
+      members: [{ userId: ada.id, role: "owner", createdAt: new Date("2026-01-01") }],
+    });
+    const globex = await t.seedOrganization({
+      name: "Globex",
+      slug: "globex",
+      members: [{ userId: ada.id, role: "member", createdAt: new Date("2026-06-01") }],
+    });
+    const first = await t.signInAs("ada@example.com");
+    await switchOrganization(t.auth, first, { organizationPublicId: acme.publicId });
+    await t.auth.$deps.db.delete(member).where(eq(member.organizationId, acme.id));
+
+    await t.signInAs("ada@example.com");
+    expect(await newestActiveOrganizationId(t)).toBe(String(globex.id));
   });
 
   test("starts a session without an organization for a user with none", async ({ t }) => {
