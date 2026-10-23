@@ -9,6 +9,12 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs" || process.env.NEXT_PHASE === "phase-production-build")
     return;
   const { authOptionsFromEnv, mailerFromEnv } = await import("@repo/auth/env");
-  authOptionsFromEnv(process.env);
-  mailerFromEnv(process.env);
+  try {
+    authOptionsFromEnv(process.env);
+    mailerFromEnv(process.env);
+  } catch (error) {
+    // Next logs an error thrown here and serves anyway; exit so the deploy fails instead.
+    console.error("Refusing to start:", error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
 }
