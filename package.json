@@ -4,10 +4,10 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "lint": "oxlint",
+    "lint": "oxlint && turbo run lint",
     "lint:fix": "oxlint --fix",
-    "format": "oxfmt",
-    "format:check": "oxfmt --check",
+    "format": "oxfmt && turbo run format",
+    "format:check": "oxfmt --check && turbo run format:check",
     "check-types": "turbo run check-types",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",

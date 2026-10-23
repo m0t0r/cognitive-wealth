@@ -21,10 +21,12 @@ Today the platform is the foundation for the product, with no domain features ye
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/packages.dark.svg">
-  <img alt="Runtime dependencies: web depends on @repo/auth, @repo/design-system and @repo/db; @repo/auth depends on @repo/db and @repo/email. Dev-only, dashed: web-e2e uses @repo/auth, @repo/db, @repo/email and @repo/testing." src="diagrams/packages.light.svg">
+  <img alt="Runtime dependencies: web depends on @repo/auth, @repo/design-system and @repo/db; @repo/auth depends on @repo/db and @repo/email. Dev-only, dashed: web-e2e uses @repo/auth, @repo/db, @repo/email and @repo/testing. custodian, a Python FastAPI app, stands alone with no workspace dependencies." src="diagrams/packages.light.svg">
 </picture>
 
 Solid arrows are runtime dependencies and dashed ones are dev-only. Every workspace also has `@repo/testing` and `@repo/typescript-config` as dev dependencies, left out of the diagram. So is `@repo/agent-hooks` (`.claude/hooks`), a workspace only so that `pnpm test` runs the agent hooks' tests. Packages aren't built: consumers import their TypeScript source, and Next transpiles it. What each package exports is in [CLAUDE.md](../CLAUDE.md#architecture).
+
+`custodian` (`apps/custodian`) is the simulated custodian, in Python on FastAPI ([ADR 0011](adr/0011-custodian-simulator-in-python.md)). It shares no code with the TypeScript packages: Turborepo reaches it through a `package.json` whose scripts call `uv run`, so the root `lint`, `format`, `check-types`, `test` and `dev` include it. For now it serves only `GET /health`; its conventions and a Python-for-TypeScript cheat sheet are in [apps/custodian/CLAUDE.md](../apps/custodian/CLAUDE.md).
 
 ## A signed-in request
 
