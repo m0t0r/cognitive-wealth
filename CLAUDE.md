@@ -73,7 +73,7 @@ Vitest 5 with three projects per package, picked by filename:
 
 Vitest globals are on (`globals: true` in `defineVitestConfig()`, `vitest/globals` in each package's tsconfig `types`): use `describe`/`it`/`expect`/`vi` without importing them. Library code in `@repo/testing` still imports from `vitest`.
 
-**Test isolation is a hard requirement at every level.** No test may depend on another test's state or on execution order.
+**Test isolation is a hard requirement at every level.** No test may depend on another test's state or on execution order. No test or verification run touches the dev or production database, Redis or Mailpit: integration tests use PGlite, e2e uses Testcontainers, and runtime verification uses the in-memory `compose.verify.yaml` project with a fresh database per server (`verifier-web` skill).
 
 - Unit/UI: mocks, env and globals are restored after each test in the shared config, and RTL cleans up the DOM.
 - Integration: `createDatabaseTest` migrates a template DB once per worker and gives each test its own `clone()`. Never share a `db` across tests or write to module-level state.
@@ -100,6 +100,10 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.
+
+### Verification
+
+Verify every change that reaches `apps/web` in the running app before reporting it done: invoke the `verifier-web` skill (host production build, agent-browser, chrome-devtools perf trace) and give its verdict and evidence in your summary. Passing tests aren't that evidence.
 
 ### Friction reports
 

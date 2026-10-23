@@ -1,0 +1,36 @@
+# Throwaway backing services for runtime verification (`.claude/skills/verifier-web`): their own
+# Compose project, ports and in-memory storage, so verification never touches the dev stack's data.
+#   docker compose -f compose.yaml -f compose.verify.yaml up -d --wait db redis mailpit
+# Postgres on 127.0.0.1:5433, Redis on :6380, Mailpit SMTP on :1026 and UI/API on :8026. Each
+# verification server gets a fresh database cloned from the empty `cognitive_wealth` (which carries
+# the roles' default privileges) and its own Redis key prefix, so runs never see each other's data.
+# Stop with `docker compose -f compose.yaml -f compose.verify.yaml down`; nothing persists.
+
+name: cognitive-wealth-verify
+
+services:
+  db:
+    # Disposable data: in memory, without durability work.
+    command: [postgres, -c, fsync=off, -c, synchronous_commit=off, -c, full_page_writes=off]
+    volumes: !override
+      - ./packages/db/docker/initdb:/docker-entrypoint-initdb.d:ro
+    tmpfs: !override
+      - /var/lib/postgresql:uid=70,gid=70,mode=0700
+      - /var/run/postgresql:uid=70,gid=70,mode=0775
+      - /tmp:uid=70,gid=70,mode=1777
+    ports: !override
+      - "127.0.0.1:5433:5432"
+    networks: [data, host-access]
+
+  redis:
+    ports: !override
+      - "127.0.0.1:6380:6379"
+    networks: [data, host-access]
+
+  mailpit:
+    ports: !override
+      - "127.0.0.1:8026:8025"
+      - "127.0.0.1:1026:1025"
+
+networks:
+  host-access: {}
