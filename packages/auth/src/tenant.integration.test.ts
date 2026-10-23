@@ -15,6 +15,8 @@ import {
   listMembers,
   listMemberships,
   removeMember,
+  requireTenant,
+  revokeUserSessions,
   switchOrganization,
   updateProfileName,
 } from "./tenant";
@@ -59,6 +61,13 @@ async function seedWorld(t: TestAuth) {
 const test = dbTest
   .extend("t", ({ orm }) => createTestAuth({ orm }))
   .extend("world", ({ t }) => seedWorld(t));
+
+/** The verified tenant viewer the reads take; fails the test without one. */
+async function tenantViewer(t: TestAuth, headers: Headers) {
+  const result = await requireTenant(t.auth, headers);
+  if (!result.ok) throw new Error(`No tenant: ${result.error}`);
+  return result.data;
+}
 
 /** Moves the clock past the fresh-session window (Date only; Postgres keeps real time). */
 function makeSessionsStale() {
@@ -121,7 +130,7 @@ describe("getViewer", () => {
     const viewer = await getViewer(t.auth, world.as.cy);
     expect(viewer?.tenant).toBeNull();
     expect(viewer?.memberships).toEqual([]);
-    expect(await listMembers(t.auth, world.as.cy)).toEqual({ ok: false, error: "no_tenant" });
+    expect(await requireTenant(t.auth, world.as.cy)).toEqual({ ok: false, error: "no_tenant" });
   });
 
   test("falls back to another membership and updates the session", async ({ t, world }) => {
@@ -175,22 +184,45 @@ describe("switchOrganization", () => {
   });
 
   test("lists memberships", async ({ t, world }) => {
-    const result = await listMemberships(t.auth, world.as.ada);
-    expect(result.ok && result.data.map((m) => m.organization.slug)).toEqual(["acme", "globex"]);
+    const viewer = await getViewer(t.auth, world.as.ada);
+    expect(listMemberships(viewer!).map((m) => m.organization.slug)).toEqual(["acme", "globex"]);
+  });
+});
+
+describe("revokeUserSessions", () => {
+  test("signs the user out at once, though their session is cached in storage", async ({
+    t,
+    world,
+  }) => {
+    expect(await getViewer(t.auth, world.as.cy)).not.toBeNull();
+    const cacheKey = `active-sessions-${world.users.cy.id}`;
+    expect(t.storage.keys()).toContain(cacheKey);
+
+    expect(await revokeUserSessions(t.auth, world.users.cy.publicId)).toEqual({
+      ok: true,
+      data: null,
+    });
+
+    expect(await getViewer(t.auth, world.as.cy)).toBeNull();
+    expect(t.storage.keys()).not.toContain(cacheKey);
+    expect(await getViewer(t.auth, world.as.bob)).not.toBeNull();
+    const [event] = await t.auth.$deps.db
+      .select({ action: auditEvent.action, targetId: auditEvent.targetId })
+      .from(auditEvent)
+      .where(eq(auditEvent.action, "auth.sessions_revoked"));
+    expect(event).toEqual({ action: "auth.sessions_revoked", targetId: world.users.cy.publicId });
   });
 });
 
 describe("members", () => {
   test("lists the tenant's members only", async ({ t, world }) => {
-    const result = await listMembers(t.auth, world.as.cy);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.data.map((m) => [m.user.email, m.role])).toEqual([
+    const members = await listMembers(t.auth, await tenantViewer(t, world.as.cy));
+    expect(members.map((m) => [m.user.email, m.role])).toEqual([
       ["ada@example.com", "owner"],
       ["bob@example.com", "admin"],
       ["cy@example.com", "member"],
     ]);
-    expect(internalKeys(result.data)).toEqual([]);
+    expect(internalKeys(members)).toEqual([]);
   });
 
   test("an admin changes a member's role", async ({ t, world }) => {
@@ -473,8 +505,8 @@ describe("invitations", () => {
       role: "member",
     });
     if (!invited.ok) throw new Error("invite failed");
-    const listed = await listInvitations(t.auth, world.as.cy);
-    expect(listed.ok && listed.data.map((i) => i.email)).toEqual(["dee@example.com"]);
+    const listed = await listInvitations(t.auth, await tenantViewer(t, world.as.cy));
+    expect(listed.map((i) => i.email)).toEqual(["dee@example.com"]);
     expect(internalKeys(listed)).toEqual([]);
 
     expect(
@@ -489,7 +521,7 @@ describe("invitations", () => {
       ok: true,
       data: null,
     });
-    expect(await listInvitations(t.auth, world.as.ada)).toEqual({ ok: true, data: [] });
+    expect(await listInvitations(t.auth, await tenantViewer(t, world.as.ada))).toEqual([]);
   });
 
   test("can't cancel another organization's invitation", async ({ t, world }) => {

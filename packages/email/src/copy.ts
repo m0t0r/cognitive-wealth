@@ -1,5 +1,6 @@
 // Copy and formatting shared by the HTML templates and the plain-text renderers, so both
-// versions of an email always say the same thing.
+// versions of an email always say the same thing. Plain TS with no imports, so the e2e suite can
+// import it (`@repo/email/copy`) to match subjects.
 
 export const BRAND = "Cognitive Wealth";
 
@@ -14,6 +15,12 @@ export function minutes(count: number): string {
 
 export function signInExpiryNotice(expiresInMinutes: number): string {
   return `This link and code expire in ${minutes(expiresInMinutes)} and can be used once.`;
+}
+
+export const SIGN_IN_SUBJECT = `Your ${BRAND} sign-in link`;
+
+export function invitationSubject(organizationName: string): string {
+  return `You're invited to join ${singleLine(organizationName)} on ${BRAND}`;
 }
 
 export const SIGN_IN_IGNORE_NOTICE = "If you didn't request this email, you can safely ignore it.";

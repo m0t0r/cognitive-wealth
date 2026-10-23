@@ -94,13 +94,8 @@ export function SignInFlow({ next, arrivalError }: SignInFlowProps) {
         return { error: "Enter the 6-digit code from the email.", done: false, attempt };
       }
       const result = await verifyCode(sentTo, input.code);
-      if (!result.ok) {
-        const error =
-          result.error === "invalid_or_expired"
-            ? "That code didn't work. Check it and try again, or send a new email."
-            : signInErrorMessage(result.error);
-        return { error, done: false, attempt };
-      }
+      if (!result.ok)
+        return { error: signInErrorMessage(result.error, "code"), done: false, attempt };
       // A full navigation, so Server Components see the new session cookie.
       window.location.assign(next ?? "/");
       return { error: null, done: true, attempt };

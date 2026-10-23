@@ -6,8 +6,6 @@ import type { Auth } from "./auth";
 import { sanitizeCallbackPath } from "./callback-path";
 import { AUTH_BASE_PATH } from "./constants";
 
-export type AuthRoute = "sign-in" | "verify" | "otp" | "sign-out";
-
 /** The only error codes the browser ever sees. */
 export type AuthErrorCode =
   | "invalid_or_expired"
@@ -26,14 +24,18 @@ const ERROR_STATUS: Record<AuthErrorCode, number> = {
   unknown: 500,
 };
 
-const AUTH_ROUTES: readonly AuthRoute[] = ["sign-in", "verify", "otp", "sign-out"];
-
-const ROUTES: Record<AuthRoute, { method: "GET" | "POST"; path: string }> = {
+const ROUTES = {
   "sign-in": { method: "POST", path: "/sign-in/magic-link" },
   verify: { method: "GET", path: "/magic-link/verify" },
   otp: { method: "POST", path: "/sign-in/email-otp" },
   "sign-out": { method: "POST", path: "/sign-out" },
-};
+} as const satisfies Record<string, { method: "GET" | "POST"; path: string }>;
+
+export type AuthRoute = keyof typeof ROUTES;
+
+const AUTH_ROUTES = Object.keys(ROUTES).filter((key): key is AuthRoute =>
+  Object.hasOwn(ROUTES, key),
+);
 
 /**
  * The allowlisted route for a request, or `null`. Matching is exact and case-sensitive on the

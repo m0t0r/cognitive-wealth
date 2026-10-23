@@ -1,11 +1,10 @@
 import type { TestInfo } from "@playwright/test";
+import type { Role } from "@repo/auth/access";
 import type { Database } from "@repo/db";
 import { invitation, member, organization, session, user } from "@repo/db/schema";
 
 // Seeds go straight through Drizzle (as the dev seed and `org:create` do), so no rate limit,
 // email or Better Auth hook is involved. `publicId`s come from the database defaults.
-
-export type Role = "owner" | "admin" | "member";
 
 export interface SeededUser {
   id: number;

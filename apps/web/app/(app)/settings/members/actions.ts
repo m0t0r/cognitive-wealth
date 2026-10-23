@@ -4,6 +4,7 @@ import {
   cancelInvitation,
   changeMemberRole,
   inviteMember,
+  normalizeEmail,
   removeMember,
   type Result,
 } from "@repo/auth";
@@ -25,7 +26,7 @@ const invitationSchema = z.object({ invitationPublicId: z.uuid() });
 
 export async function inviteMemberAction(formData: FormData): Promise<ActionResult> {
   const input = inviteSchema.safeParse({
-    email: formString(formData, "email").trim().toLowerCase(),
+    email: normalizeEmail(formString(formData, "email")),
     role: formData.get("role"),
   });
   if (!input.success) return { ok: false, error: "invalid_input" };

@@ -1,7 +1,9 @@
 import { inArray } from "drizzle-orm";
-import type { Database } from "../index";
+import type { Database } from "../index.ts";
 import { member, organization, user } from "../schema/index.ts";
 
+// `Role` from `@repo/auth/access`, copied: `@repo/auth` depends on `@repo/db`, so this package
+// can't import it.
 type Role = "owner" | "admin" | "member";
 
 /** The dev organizations (ADR 0001, "Dev and test sign-in harness"). */

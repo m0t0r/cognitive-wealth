@@ -3,7 +3,7 @@
 // authenticates anything, so it outlives sign-out.
 import { randomBytes } from "node:crypto";
 import type { GenericEndpointContext } from "better-auth";
-import { AUTH_BASE_PATH } from "./constants";
+import { AUTH_BASE_PATH, DEVICE_COOKIE } from "./constants";
 
 /** Seconds a device cookie stays valid (and its `Max-Age`). */
 export const DEVICE_COOKIE_MAX_AGE = 180 * 24 * 60 * 60;
@@ -31,7 +31,7 @@ export type DeviceCookieContext = Pick<
 // `createAuthCookie` applies our `cw` prefix, `__Secure-` and `Secure` when session cookies are
 // secure. The path keeps it off every request except the auth endpoints.
 function deviceCookie(ctx: DeviceCookieContext) {
-  return ctx.context.createAuthCookie("device", {
+  return ctx.context.createAuthCookie(DEVICE_COOKIE, {
     path: AUTH_BASE_PATH,
     maxAge: DEVICE_COOKIE_MAX_AGE,
     httpOnly: true,

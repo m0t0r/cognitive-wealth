@@ -14,7 +14,9 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.64.1",
+    "@repo/auth": "workspace:*",
     "@repo/db": "workspace:*",
+    "@repo/email": "workspace:*",
     "@repo/testing": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@testcontainers/postgresql": "12.2.1",

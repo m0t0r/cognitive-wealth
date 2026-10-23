@@ -1,8 +1,6 @@
 // Browser side of the allowlisted endpoints. Verify, code and sign-out responses are replaced by
-// `{ ok }` on the server, which Better Auth's client doesn't expect, so the helpers below call
-// them with `fetch` and return a typed result instead.
-import { createAuthClient } from "better-auth/react";
-import { emailOTPClient, magicLinkClient } from "better-auth/client/plugins";
+// `{ ok }` on the server, which Better Auth's client doesn't expect, so these helpers call them
+// with `fetch` and return a typed result instead of using Better Auth's client.
 import { AUTH_BASE_PATH } from "./constants";
 import type { AuthErrorCode } from "./route-handler";
 
@@ -14,18 +12,6 @@ export {
 export type { AuthErrorCode } from "./route-handler";
 
 export type AuthResult = { ok: true } | { ok: false; error: AuthErrorCode };
-
-/**
- * Better Auth's React client with the magicLink and emailOTP plugins. Only the allowlisted calls
- * work (everything else 404s, including `useSession`): prefer the helpers below.
- */
-export function createAppAuthClient(baseURL?: string) {
-  return createAuthClient({
-    baseURL,
-    basePath: AUTH_BASE_PATH,
-    plugins: [magicLinkClient(), emailOTPClient()],
-  });
-}
 
 /** Asks for the sign-in email. Resolves `ok` whether or not the address may sign in. */
 export function requestSignIn(email: string, callbackPath?: string): Promise<AuthResult> {

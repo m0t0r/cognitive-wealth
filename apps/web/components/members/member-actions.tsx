@@ -3,16 +3,6 @@
 import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { can, isRole, type Role } from "@repo/auth/access";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@repo/design-system/components/alert-dialog";
 import { Button } from "@repo/design-system/components/button";
 import {
   DropdownMenu,
@@ -25,11 +15,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@repo/design-system/components/dropdown-menu";
-import { Spinner } from "@repo/design-system/components/spinner";
-import { startTransition, useActionState, useOptimistic, useRef, useState } from "react";
+import { startTransition, useOptimistic, useRef, useState } from "react";
 import { changeRoleAction, removeMemberAction } from "@/app/(app)/settings/members/actions";
-import type { FormState } from "@/lib/action-result";
 import { assignableRoles, ROLE_CHANGED, ROLE_LABELS } from "@/lib/roles";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { useMembersFeedback } from "./members-feedback";
 
 /** The members table's heading; focus lands there once a removed member's row is gone. */
@@ -58,15 +47,14 @@ export function MemberActions({ member, viewerRole }: { member: MemberRowData; v
   const canChangeRole = can(viewerRole, "member:update") && !protectedOwner;
   const canRemove = can(viewerRole, "member:delete") && !protectedOwner;
 
-  const [, remove, removing] = useActionState(async (_previous: FormState): Promise<FormState> => {
+  if (!canChangeRole && !canRemove) return null;
+
+  async function remove() {
     const result = await removeMemberAction({ memberPublicId: member.publicId });
     removedRef.current = report(result, `${displayName} was removed from ${organizationName}.`);
     // Close either way: a failure shows as a toast, or as the "sign in again" dialog.
     setConfirming(false);
-    return result;
-  }, null);
-
-  if (!canChangeRole && !canRemove) return null;
+  }
 
   function changeRole(value: unknown) {
     if (!isRole(value) || value === member.role) return;
@@ -110,32 +98,18 @@ export function MemberActions({ member, viewerRole }: { member: MemberRowData; v
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-      <AlertDialog open={confirming} onOpenChange={setConfirming}>
-        <AlertDialogContent
-          finalFocus={() =>
-            removedRef.current ? document.getElementById(MEMBERS_HEADING_ID) : triggerRef.current
-          }
-        >
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove {displayName}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {displayName} will lose access to {organizationName} right away. You can invite{" "}
-              {member.email} again later.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={removing}
-              onClick={() => startTransition(() => remove())}
-            >
-              {removing ? <Spinner data-icon="inline-start" /> : null}
-              Remove member
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmActionDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        finalFocus={() =>
+          removedRef.current ? document.getElementById(MEMBERS_HEADING_ID) : triggerRef.current
+        }
+        title={`Remove ${displayName}?`}
+        description={`${displayName} will lose access to ${organizationName} right away. You can invite ${member.email} again later.`}
+        cancelLabel="Cancel"
+        confirmLabel="Remove member"
+        onConfirm={remove}
+      />
     </>
   );
 }

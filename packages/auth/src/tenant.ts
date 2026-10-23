@@ -1,8 +1,10 @@
 // The server-side tenant and session API (ADR 0001, "Tenant and session API"). Framework-agnostic:
-// every function takes the request `Headers`; `apps/web` adapts it to `next/headers`.
+// `getViewer`/`requireTenant` and every mutation take the request `Headers`; `apps/web` adapts it
+// to `next/headers`.
 //
 // Rules:
-// - Reads use Drizzle builders scoped to the organization the viewer is verified to belong to.
+// - Reads take a viewer from `getViewer`/`requireTenant` (one session lookup per request) and use
+//   Drizzle builders scoped to the organization that viewer is verified to belong to.
 // - Mutations go through `auth.api.*`, so Better Auth's permission checks apply; input publicIds
 //   are resolved to internal IDs only within the viewer's tenant (or, for invitations addressed
 //   to the viewer, after Better Auth's recipient check).
@@ -23,6 +25,7 @@ import {
   toPublicOrganization,
   toPublicUser,
   toRole,
+  type InvitationStatus,
   type PublicInvitation,
   type PublicMember,
   type PublicMembership,
@@ -31,6 +34,7 @@ import {
   type Tenant,
 } from "./dto";
 import { consumeRateLimit, type RateLimitRule } from "./rate-limit";
+import { normalizeEmail } from "./sign-in";
 
 export type TenantErrorCode =
   | "unauthenticated"
@@ -47,7 +51,12 @@ export type TenantErrorCode =
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: TenantErrorCode };
 
+// Set only by `getViewer`, so a `Viewer` (and a `TenantViewer`) can't be built by hand: a read
+// that takes one can trust its session and tenant were verified.
+const VERIFIED: unique symbol = Symbol("verified viewer");
+
 export interface Viewer {
+  readonly [VERIFIED]: true;
   user: PublicUser;
   session: { createdAt: Date; expiresAt: Date; isFresh: boolean };
   tenant: Tenant | null;
@@ -131,6 +140,7 @@ export async function getViewer(auth: Auth, headers: Headers): Promise<Viewer | 
 
   const createdAt = new Date(result.session.createdAt);
   return {
+    [VERIFIED]: true,
     user: toPublicUser(await publicUserRow(db, userId)),
     session: {
       createdAt,
@@ -156,14 +166,19 @@ export async function getViewer(auth: Auth, headers: Headers): Promise<Viewer | 
   };
 }
 
-type TenantViewer = Viewer & {
+/** A viewer with a verified tenant, from `requireTenant` or `tenantOf`. */
+export type TenantViewer = Viewer & {
   tenant: Tenant;
   internal: Viewer["internal"] & { organizationId: number; memberId: number };
 };
 
 /** The viewer and their verified tenant, or why there isn't one. */
 export async function requireTenant(auth: Auth, headers: Headers): Promise<Result<TenantViewer>> {
-  const viewer = await getViewer(auth, headers);
+  return tenantOf(await getViewer(auth, headers));
+}
+
+/** `requireTenant` for a viewer already looked up, so a request needs only one lookup. */
+export function tenantOf(viewer: Viewer | null): Result<TenantViewer> {
   if (viewer === null) return fail("unauthenticated");
   const { tenant, internal } = viewer;
   if (tenant === null || internal.organizationId === null || internal.memberId === null) {
@@ -177,12 +192,8 @@ export async function requireTenant(auth: Auth, headers: Headers): Promise<Resul
 }
 
 /** The viewer's organizations, most recently joined first. */
-export async function listMemberships(
-  auth: Auth,
-  headers: Headers,
-): Promise<Result<PublicMembership[]>> {
-  const viewer = await getViewer(auth, headers);
-  return viewer === null ? fail("unauthenticated") : ok(viewer.memberships);
+export function listMemberships(viewer: Viewer): PublicMembership[] {
+  return viewer.memberships;
 }
 
 export async function switchOrganization(
@@ -222,177 +233,170 @@ export async function switchOrganization(
   return ok(toPublicOrganization(target));
 }
 
-export async function listMembers(auth: Auth, headers: Headers): Promise<Result<PublicMember[]>> {
-  const viewer = await requireTenant(auth, headers);
-  if (!viewer.ok) return viewer;
-  const rows = await selectMembers(auth.$deps.db, viewer.data.internal.organizationId);
-  return ok(rows.map(toPublicMember));
+/** Members of the viewer's tenant, longest-standing first. */
+export async function listMembers(auth: Auth, viewer: TenantViewer): Promise<PublicMember[]> {
+  const rows = await selectMembers(auth.$deps.db, viewer.internal.organizationId);
+  return rows.map(toPublicMember);
 }
 
 /** Pending invitations of the viewer's tenant, newest first. */
 export async function listInvitations(
   auth: Auth,
-  headers: Headers,
-): Promise<Result<PublicInvitation[]>> {
-  const viewer = await requireTenant(auth, headers);
-  if (!viewer.ok) return viewer;
+  viewer: TenantViewer,
+): Promise<PublicInvitation[]> {
   const rows = await selectInvitations(auth.$deps.db, {
-    organizationId: viewer.data.internal.organizationId,
+    organizationId: viewer.internal.organizationId,
     status: "pending",
   });
-  return ok(rows.map(toPublicInvitation));
+  return rows.map(toPublicInvitation);
 }
 
-export async function inviteMember(
+export function inviteMember(
   auth: Auth,
   headers: Headers,
   input: { email: string; role: Role },
 ): Promise<Result<PublicInvitation>> {
-  const viewer = await requireTenant(auth, headers);
-  if (!viewer.ok) return viewer;
-  const email = emailSchema.safeParse(input.email.trim().toLowerCase());
-  const role = roleSchema.safeParse(input.role);
-  if (!email.success || !role.success) return fail("invalid_input");
-  const { userId, organizationId } = viewer.data.internal;
+  return mutateTenant(
+    auth,
+    headers,
+    { fresh: false },
+    async ({ db, viewer, callApi, recordAudit }) => {
+      const email = emailSchema.safeParse(normalizeEmail(input.email));
+      const role = roleSchema.safeParse(input.role);
+      if (!email.success || !role.success) return fail("invalid_input");
+      const { userId, organizationId } = viewer.internal;
 
-  const limit = await consumeRateLimit(auth.$deps.storage, `invite:${userId}`, INVITE_LIMIT);
-  if (!limit.ok) return fail("rate_limited");
+      const limit = await consumeRateLimit(auth.$deps.storage, `invite:${userId}`, INVITE_LIMIT);
+      if (!limit.ok) return fail("rate_limited");
 
-  const created = await call(
-    () =>
-      auth.api.createInvitation({
-        headers,
-        body: { email: email.data, role: role.data, organizationId: String(organizationId) },
-      }),
-    viewer.data.tenant.role,
+      const created = await callApi(() =>
+        auth.api.createInvitation({
+          headers,
+          body: { email: email.data, role: role.data, organizationId: String(organizationId) },
+        }),
+      );
+      if (!created.ok) return created;
+
+      const [row] = await selectInvitations(db, { organizationId, id: Number(created.data.id) });
+      if (row === undefined) return fail("unknown");
+      await recordAudit({
+        action: "org.invitation.created",
+        target: { type: "invitation", publicId: row.publicId },
+        metadata: { role: role.data },
+      });
+      return ok(toPublicInvitation(row));
+    },
   );
-  if (!created.ok) return created;
-
-  const [row] = await selectInvitations(auth.$deps.db, {
-    organizationId,
-    id: Number(created.data.id),
-  });
-  if (row === undefined) return fail("unknown");
-  await audit(auth, headers, {
-    action: "org.invitation.created",
-    actorUserId: userId,
-    organizationId,
-    target: { type: "invitation", publicId: row.publicId },
-    metadata: { role: role.data },
-  });
-  return ok(toPublicInvitation(row));
 }
 
-export async function changeMemberRole(
+export function changeMemberRole(
   auth: Auth,
   headers: Headers,
   input: { memberPublicId: string; role: Role },
 ): Promise<Result<PublicMember>> {
-  const viewer = await requireTenant(auth, headers);
-  if (!viewer.ok) return viewer;
-  if (!viewer.data.session.isFresh) return fail("reauth_required");
-  const role = roleSchema.safeParse(input.role);
-  if (!role.success) return fail("invalid_input");
-  const { userId, organizationId } = viewer.data.internal;
+  return mutateTenant(
+    auth,
+    headers,
+    { fresh: true },
+    async ({ db, viewer, callApi, recordAudit }) => {
+      const role = roleSchema.safeParse(input.role);
+      if (!role.success) return fail("invalid_input");
+      const { organizationId } = viewer.internal;
 
-  const target = await findMember(auth.$deps.db, organizationId, input.memberPublicId);
-  if (target === undefined) return fail("not_found");
+      const target = await findMember(db, organizationId, input.memberPublicId);
+      if (target === undefined) return fail("not_found");
 
-  const updated = await call(
-    () =>
-      auth.api.updateMemberRole({
-        headers,
-        body: {
-          memberId: String(target.id),
-          role: role.data,
-          organizationId: String(organizationId),
-        },
-      }),
-    viewer.data.tenant.role,
+      const updated = await callApi(() =>
+        auth.api.updateMemberRole({
+          headers,
+          body: {
+            memberId: String(target.id),
+            role: role.data,
+            organizationId: String(organizationId),
+          },
+        }),
+      );
+      if (!updated.ok) return updated;
+
+      await recordAudit({
+        action: "org.member.role_changed",
+        target: { type: "member", publicId: target.publicId },
+        metadata: { from: target.role, to: role.data },
+      });
+      const [row] = await selectMembers(db, organizationId, target.id);
+      return row === undefined ? fail("not_found") : ok(toPublicMember(row));
+    },
   );
-  if (!updated.ok) return updated;
-
-  await audit(auth, headers, {
-    action: "org.member.role_changed",
-    actorUserId: userId,
-    organizationId,
-    target: { type: "member", publicId: target.publicId },
-    metadata: { from: target.role, to: role.data },
-  });
-  const [row] = await selectMembers(auth.$deps.db, organizationId, target.id);
-  return row === undefined ? fail("not_found") : ok(toPublicMember(row));
 }
 
-export async function removeMember(
+export function removeMember(
   auth: Auth,
   headers: Headers,
   input: { memberPublicId: string },
 ): Promise<Result<null>> {
-  const viewer = await requireTenant(auth, headers);
-  if (!viewer.ok) return viewer;
-  if (!viewer.data.session.isFresh) return fail("reauth_required");
-  const { userId, organizationId } = viewer.data.internal;
+  return mutateTenant(
+    auth,
+    headers,
+    { fresh: true },
+    async ({ db, viewer, callApi, recordAudit }) => {
+      const { organizationId } = viewer.internal;
+      const target = await findMember(db, organizationId, input.memberPublicId);
+      if (target === undefined) return fail("not_found");
 
-  const target = await findMember(auth.$deps.db, organizationId, input.memberPublicId);
-  if (target === undefined) return fail("not_found");
+      const removed = await callApi(() =>
+        auth.api.removeMember({
+          headers,
+          body: { memberIdOrEmail: String(target.id), organizationId: String(organizationId) },
+        }),
+      );
+      if (!removed.ok) return removed;
 
-  const removed = await call(
-    () =>
-      auth.api.removeMember({
-        headers,
-        body: { memberIdOrEmail: String(target.id), organizationId: String(organizationId) },
-      }),
-    viewer.data.tenant.role,
+      await recordAudit({
+        action: "org.member.removed",
+        target: { type: "member", publicId: target.publicId },
+        metadata: { role: target.role },
+      });
+      return ok(null);
+    },
   );
-  if (!removed.ok) return removed;
-
-  await audit(auth, headers, {
-    action: "org.member.removed",
-    actorUserId: userId,
-    organizationId,
-    target: { type: "member", publicId: target.publicId },
-    metadata: { role: target.role },
-  });
-  return ok(null);
 }
 
-export async function cancelInvitation(
+export function cancelInvitation(
   auth: Auth,
   headers: Headers,
   input: { invitationPublicId: string },
 ): Promise<Result<null>> {
-  const viewer = await requireTenant(auth, headers);
-  if (!viewer.ok) return viewer;
-  if (!viewer.data.session.isFresh) return fail("reauth_required");
-  const { userId, organizationId } = viewer.data.internal;
-  if (!publicIdSchema.safeParse(input.invitationPublicId).success) return fail("not_found");
+  return mutateTenant(
+    auth,
+    headers,
+    { fresh: true },
+    async ({ db, viewer, callApi, recordAudit }) => {
+      if (!publicIdSchema.safeParse(input.invitationPublicId).success) return fail("not_found");
+      const [target] = await db
+        .select({ id: invitation.id, publicId: invitation.publicId })
+        .from(invitation)
+        .where(
+          and(
+            eq(invitation.organizationId, viewer.internal.organizationId),
+            eq(invitation.publicId, input.invitationPublicId),
+            eq(invitation.status, "pending"),
+          ),
+        )
+        .limit(1);
+      if (target === undefined) return fail("not_found");
 
-  const [target] = await auth.$deps.db
-    .select({ id: invitation.id, publicId: invitation.publicId })
-    .from(invitation)
-    .where(
-      and(
-        eq(invitation.organizationId, organizationId),
-        eq(invitation.publicId, input.invitationPublicId),
-        eq(invitation.status, "pending"),
-      ),
-    )
-    .limit(1);
-  if (target === undefined) return fail("not_found");
+      const cancelled = await callApi(() =>
+        auth.api.cancelInvitation({ headers, body: { invitationId: String(target.id) } }),
+      );
+      if (!cancelled.ok) return cancelled;
 
-  const cancelled = await call(
-    () => auth.api.cancelInvitation({ headers, body: { invitationId: String(target.id) } }),
-    viewer.data.tenant.role,
+      await recordAudit({
+        action: "org.invitation.cancelled",
+        target: { type: "invitation", publicId: target.publicId },
+      });
+      return ok(null);
+    },
   );
-  if (!cancelled.ok) return cancelled;
-
-  await audit(auth, headers, {
-    action: "org.invitation.cancelled",
-    actorUserId: userId,
-    organizationId,
-    target: { type: "invitation", publicId: target.publicId },
-  });
-  return ok(null);
 }
 
 /**
@@ -491,12 +495,73 @@ export async function updateProfileName(
   return ok(toPublicUser(await publicUserRow(auth.$deps.db, viewer.internal.userId)));
 }
 
+/**
+ * Signs a user out everywhere, immediately: deletes their sessions in Postgres and in the Redis
+ * session cache (Better Auth's `deleteUserSessions`), and audits `auth.sessions_revoked`. Use it
+ * (or Better Auth's own revoke calls) instead of deleting session rows with SQL, which leaves the
+ * cached sessions valid until they expire (ADR 0001, "Session cache trade-off").
+ *
+ * It checks no permissions: call it only from trusted server code (incident tooling, an account
+ * deactivation the caller has already authorized), never straight from a Server Action's input.
+ */
+export async function revokeUserSessions(auth: Auth, userPublicId: string): Promise<Result<null>> {
+  if (!publicIdSchema.safeParse(userPublicId).success) return fail("not_found");
+  const { db } = auth.$deps;
+  const [row] = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(eq(user.publicId, userPublicId))
+    .limit(1);
+  if (row === undefined) return fail("not_found");
+
+  const context = await auth.$context;
+  await context.internalAdapter.deleteUserSessions(String(row.id));
+  await writeAuditEvent(db, {
+    action: "auth.sessions_revoked",
+    actorUserId: null,
+    target: { type: "user", publicId: userPublicId },
+  });
+  return ok(null);
+}
+
 /** The client IP by Better Auth's trust rules (`AUTH_TRUSTED_IP_HEADER`), for limiters and logs. */
 export function clientIp(auth: Auth, headers: Headers): string | null {
   return getIP(headers, auth.options);
 }
 
 // --- helpers ---
+
+interface TenantMutation {
+  viewer: TenantViewer;
+  db: Database;
+  /** `call` with the viewer's role, so Better Auth's owner errors map correctly. */
+  callApi: <T>(fn: () => Promise<T>) => Promise<Result<T>>;
+  /** Writes an audit event by the viewer, in their tenant. */
+  recordAudit: (event: Omit<AuditEventInput, "actorUserId" | "organizationId">) => Promise<void>;
+}
+
+/**
+ * The shape every tenant mutation shares: resolve the viewer's tenant, require a fresh session
+ * when `fresh`, then run `fn`, which resolves its target within the tenant, calls Better Auth and
+ * audits.
+ */
+async function mutateTenant<T>(
+  auth: Auth,
+  headers: Headers,
+  options: { fresh: boolean },
+  fn: (mutation: TenantMutation) => Promise<Result<T>>,
+): Promise<Result<T>> {
+  const viewer = await requireTenant(auth, headers);
+  if (!viewer.ok) return viewer;
+  if (options.fresh && !viewer.data.session.isFresh) return fail("reauth_required");
+  const { userId, organizationId } = viewer.data.internal;
+  return fn({
+    viewer: viewer.data,
+    db: auth.$deps.db,
+    callApi: (apiCall) => call(apiCall, viewer.data.tenant.role),
+    recordAudit: (event) => audit(auth, headers, { ...event, actorUserId: userId, organizationId }),
+  });
+}
 
 async function publicUserRow(db: Database, userId: number) {
   const [row] = await db
@@ -541,7 +606,7 @@ const inviter = alias(user, "inviter");
 
 function selectInvitations(
   db: Database,
-  where: { organizationId?: number; id?: number; status?: string },
+  where: { organizationId?: number; id?: number; status?: InvitationStatus },
 ) {
   return db
     .select({

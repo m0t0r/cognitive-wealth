@@ -56,10 +56,7 @@ export function ConfirmSignIn() {
       const result = await verifyMagicLink(link.token);
       if (!result.ok) {
         return {
-          error:
-            result.error === "invalid_or_expired"
-              ? "This sign-in link has expired or was already used."
-              : signInErrorMessage(result.error),
+          error: signInErrorMessage(result.error, "link"),
           expired: result.error === "invalid_or_expired",
           done: false,
         };

@@ -1,4 +1,4 @@
-import { listInvitations, listMembers } from "@repo/auth";
+import { INVITATION_EXPIRES_IN, listInvitations, listMembers } from "@repo/auth";
 import { can } from "@repo/auth/access";
 import { Badge } from "@repo/design-system/components/badge";
 import {
@@ -17,7 +17,6 @@ import {
   TableRow,
 } from "@repo/design-system/components/table";
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { InvitationActions } from "@/components/members/invitation-actions";
 import { InviteForm } from "@/components/members/invite-form";
 import { MEMBERS_HEADING_ID, MemberActions } from "@/components/members/member-actions";
@@ -29,15 +28,15 @@ import { ROLE_LABELS } from "@/lib/roles";
 
 export const metadata: Metadata = { title: "Members" };
 
+const expiryDays = Math.round(INVITATION_EXPIRES_IN / (24 * 60 * 60));
+const INVITATION_EXPIRY = expiryDays === 1 ? "1 day" : `${expiryDays} days`;
+
 export default async function MembersPage() {
   const viewer = await requireAppViewer();
-  const requestHeaders = await headers();
   const [members, invitations] = await Promise.all([
-    listMembers(getAuth(), requestHeaders),
-    listInvitations(getAuth(), requestHeaders),
+    listMembers(getAuth(), viewer),
+    listInvitations(getAuth(), viewer),
   ]);
-  if (!members.ok) throw new Error(`Unable to list members: ${members.error}`);
-  if (!invitations.ok) throw new Error(`Unable to list invitations: ${invitations.error}`);
 
   const { tenant } = viewer;
   const organizationName = tenant.organization.name;
@@ -57,7 +56,8 @@ export default async function MembersPage() {
                 <h2>Invite someone</h2>
               </CardTitle>
               <CardDescription>
-                They&apos;ll get an email with a link to join. Invitations expire after 7 days.
+                They&apos;ll get an email with a link to join. Invitations expire after{" "}
+                {INVITATION_EXPIRY}.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -72,7 +72,7 @@ export default async function MembersPage() {
             tabIndex={-1}
             className="font-heading text-lg font-medium outline-none"
           >
-            Members <span className="text-muted-foreground">{members.data.length}</span>
+            Members <span className="text-muted-foreground">{members.length}</span>
           </h2>
           <Card className="py-2">
             <Table aria-labelledby={MEMBERS_HEADING_ID}>
@@ -87,7 +87,7 @@ export default async function MembersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {members.data.map((member) => {
+                {members.map((member) => {
                   const isViewer = member.publicId === tenant.memberPublicId;
                   return (
                     <TableRow key={member.publicId}>
@@ -133,10 +133,9 @@ export default async function MembersPage() {
 
         <section aria-labelledby="invitations-heading" className="flex flex-col gap-4">
           <h2 id="invitations-heading" className="font-heading text-lg font-medium">
-            Pending invitations{" "}
-            <span className="text-muted-foreground">{invitations.data.length}</span>
+            Pending invitations <span className="text-muted-foreground">{invitations.length}</span>
           </h2>
-          {invitations.data.length === 0 ? (
+          {invitations.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No pending invitations. New invitations show up here until they&apos;re accepted.
             </p>
@@ -154,7 +153,7 @@ export default async function MembersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {invitations.data.map((invitation) => (
+                  {invitations.map((invitation) => (
                     <TableRow key={invitation.publicId}>
                       <TableCell className="ps-4 sm:ps-6 whitespace-normal wrap-anywhere">
                         {invitation.email}
