@@ -1,0 +1,3 @@
+# Gitignored files Claude Code copies into every worktree it creates (.gitignore syntax).
+# .secrets/ stays in the main checkout, which runs Compose for every worktree.
+apps/web/.env.local
