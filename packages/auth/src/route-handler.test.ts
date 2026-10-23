@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Auth } from "./auth";
+import { createMemoryStorage } from "./storage/memory";
 import {
   createAuthRouteHandler,
   isSameOriginFetch,
@@ -156,7 +157,7 @@ describe("mapAuthResponse", () => {
 function fakeAuth(response: () => Response) {
   const requests: Request[] = [];
   const stub = {
-    $deps: { baseURL: ORIGIN },
+    $deps: { baseURL: ORIGIN, storage: createMemoryStorage() },
     handler: async (request: Request) => {
       requests.push(request);
       return response();
@@ -387,6 +388,45 @@ describe("createAuthRouteHandler", () => {
     expect(await response.text()).toBe("Not Found");
     expect(new Set(response.headers.keys())).toEqual(new Set(["cache-control", "content-type"]));
     expect(built).toBe(false);
+  });
+
+  it("logs the route, status and code when it falls back to `unknown`, and nothing else", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { GET } = fakeAuth(() =>
+      leakyResponse(500, { code: "FAILED_TO_CREATE_SESSION", message: "db detail", token: "t" }),
+    );
+    const response = await GET(
+      new Request(`${ORIGIN}/api/auth/magic-link/verify?token=s3cr3t`, { headers: browser }),
+    );
+
+    expect(await response.json()).toEqual({ ok: false, error: "unknown" });
+    expect(log).toHaveBeenCalledExactlyOnceWith("Auth route got an unexpected answer", {
+      route: "verify",
+      status: 500,
+      code: "FAILED_TO_CREATE_SESSION",
+    });
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/s3cr3t|db detail/);
+  });
+
+  it("doesn't log answers it maps on purpose", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const [status, code] of [
+      [400, "INVALID_OTP"],
+      [429, undefined],
+      [403, "INVALID_ORIGIN"],
+    ] as const) {
+      const { POST } = fakeAuth(() => leakyResponse(status, { code }));
+      // Sequential on purpose: each case checks the log afterwards.
+      // oxlint-disable-next-line no-await-in-loop
+      await POST(
+        new Request(`${ORIGIN}/api/auth/sign-in/email-otp`, {
+          method: "POST",
+          headers: { ...browser, "content-type": "application/json" },
+          body: JSON.stringify({ email: "ada@example.com", otp: "123456" }),
+        }),
+      );
+    }
+    expect(log).not.toHaveBeenCalled();
   });
 
   it("answers 500 `unknown` if Better Auth throws", async () => {

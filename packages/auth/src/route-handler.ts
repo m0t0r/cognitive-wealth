@@ -166,7 +166,17 @@ export function createAuthRouteHandler(auth: Auth | (() => Auth)) {
       return json(ERROR_STATUS.unknown, { ok: false, error: "unknown" });
     }
 
-    const mapped = mapAuthResponse(route, upstream.status, await errorCode(upstream));
+    const code = await errorCode(upstream);
+    const mapped = mapAuthResponse(route, upstream.status, code);
+    if (mapped.body.error === "unknown") {
+      // The browser only sees `unknown`; keep what Better Auth actually answered. Its error codes
+      // are fixed identifiers; bodies, tokens and addresses stay out of the log.
+      console.error("Auth route got an unexpected answer", {
+        route,
+        status: upstream.status,
+        code: code ?? null,
+      });
+    }
     const response = json(mapped.status, mapped.body);
     // Keep Better Auth's cookies: the session (set on sign-in, cleared on sign-out) and the device
     // cookie (set on sign-in; `sign-out` leaves it). The incoming `Cookie` header is forwarded
