@@ -61,8 +61,7 @@ Do this for every change that renders. Run it on each route the change touches, 
 ## 5. Clean up
 
 ```sh
-agent-browser --session verify close
-pkill -f 'remote-debugging-port=9222'
+.claude/skills/verifier-web/stop-browser.sh   # closes the session and stops only the Chrome start-browser.sh started
 for p in .dev/verify/server-*.pid; do kill "$(cat "$p")"; rm "$p"; done
 git worktree remove --force .dev/worktrees/<sha>   # for each --ref you served
 ```

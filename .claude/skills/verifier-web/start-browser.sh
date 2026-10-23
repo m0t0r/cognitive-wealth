@@ -5,32 +5,38 @@
 #   start-browser.sh <email> <app-url> <client-ip> [session]
 #
 # Launching agent-browser with --args "--remote-debugging-port=9222" hangs its daemon, so Chrome
-# starts first and agent-browser connects to it.
+# starts first and agent-browser connects to it. The Chrome's pid and profile go to
+# .dev/verify/chrome.{pid,profile}, so stop-browser.sh stops that one process and nothing else.
 set -euo pipefail
 
 email=${1:?usage: start-browser.sh <email> <app-url> <client-ip> [session]}
 app=${2:?app url, e.g. http://localhost:3000}
 ip=${3:?client ip, e.g. 10.77.0.1}
 session=${4:-verify}
-root=$(git rev-parse --show-toplevel)
-state="$root/.dev/auth/$email.json"
+main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+state="$main/.dev/auth/$email.json"
+pidfile="$main/.dev/verify/chrome.pid"
+mkdir -p "$main/.dev/verify"
 
 [ -f "$state" ] || { echo "No session file $state; run: pnpm dev:sign-in $email --app $app --ip $ip" >&2; exit 1; }
 
-# Reuse only a headless Chrome for Testing this script started; anything else on 9222 (often an
-# everyday Chrome with remote debugging on) would put the trace in a personal browser.
+# Reuse only the Chrome this script started, identified by its recorded pid. Anything else on 9222
+# (often an everyday Chrome with remote debugging on) would put the trace in a personal browser.
 listener=$(lsof -t -iTCP:9222 -sTCP:LISTEN 2>/dev/null | head -1 || true)
 if [ -n "$listener" ]; then
-  cmd=$(ps -o command= -p "$listener")
-  case "$cmd" in
-    *"/.agent-browser/browsers/"*"--headless=new"*) ;;
-    *) echo "Port 9222 is held by another process (pid $listener: ${cmd:0:120}). Quit it and rerun." >&2; exit 1 ;;
-  esac
+  if [ "$listener" != "$(cat "$pidfile" 2>/dev/null)" ]; then
+    cmd=$(ps -o command= -p "$listener")
+    echo "Port 9222 is held by another process (pid $listener: ${cmd:0:120}). Ask the user to quit it, then rerun." >&2
+    exit 1
+  fi
 else
   chrome=$(ls -d "$HOME"/.agent-browser/browsers/chrome-*/"Google Chrome for Testing.app"/Contents/MacOS/"Google Chrome for Testing" | sort -V | tail -1)
   profile=$(mktemp -d)
+  # nohup execs Chrome, so $! is Chrome's own pid: the process that listens on 9222.
   nohup "$chrome" --headless=new --remote-debugging-port=9222 --user-data-dir="$profile" \
     --no-first-run about:blank >/dev/null 2>&1 &
+  echo $! >"$pidfile"
+  echo "$profile" >"$main/.dev/verify/chrome.profile"
   for _ in $(seq 20); do curl -sf http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.5; done
   curl -sf http://127.0.0.1:9222/json/version >/dev/null || { echo "Chrome didn't come up on 9222" >&2; exit 1; }
 fi
