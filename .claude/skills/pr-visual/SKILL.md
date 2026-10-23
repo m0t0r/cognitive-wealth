@@ -146,13 +146,13 @@ Creating or editing a PR publishes to GitHub, so confirm with the user first unl
 Everything goes through `gh`; there's no asset branch.
 
 1. `gh pr create --draft` (or `gh pr view <n>`) to get the number.
-2. Fill the Evidence block with the `before-and-after` skill's formatter, then publish the body, charts and screenshots in one call from `.dev/pr-visual/<branch>/`, where the body's `./<name>.png` paths resolve:
+2. Put the screenshots in the body by local path too, both themes like the charts (the `before-and-after` skill's formatter lays out pairs). Then publish from `.dev/pr-visual/<branch>/`, where the body's `./<file>` paths resolve:
 
    ```sh
-   gh pr edit <n> --body-file body.md $(for f in *.light.png *.dark.png <screenshots>; do printf -- '--attach %s ' "$f"; done)
+   node ../../../.claude/skills/pr-visual/scripts/attach.mjs <n> body.md
    ```
 
-   `gh` uploads each file to GitHub's attachment storage and rewrites the matching `./<file>` references to the uploaded URLs. Up to 50 files per call; split a larger set over several `gh pr edit --attach` calls without `--body-file`.
+   It uploads every `./<file>` the body names with `gh pr edit --attach`, and publishes the body with each path replaced by its `github.com/user-attachments` URL, theme fragments kept. Plain `gh --attach` alone rewrites only a bare `![alt](./file.png)`: with a `#gh-dark-mode-only` fragment or in an HTML `src`, it leaves the broken local path and appends the image at the end.
 
 Never transcribe secrets into excerpts, captions or screenshots. Don't capture `.dev/auth/*` or other state files, Mailpit links or codes, or anything in `.secrets/`.
 
