@@ -2,7 +2,7 @@
 
 The one-page view of the platform: what runs, how the code is split, how a request flows, and which decisions shape it. Each section is a diagram with a short caption and a link to the document that owns the detail. When this page and the linked document disagree, the linked document wins; fix this page.
 
-Today the platform is the foundation for the product, with no domain features yet: passwordless, invite-only sign-in, multi-tenant organizations with roles, an audit log, and the tooling to build on them safely.
+Today the platform is the foundation for the product, with no domain features yet: passwordless, invite-only sign-in, multi-tenant organizations with roles, an audit log, and the tooling to build on them safely. What the product will be, the synthetic world it runs on and the phases it is built in are in [product.md](product.md); its vocabulary is in [GLOSSARY.md](../GLOSSARY.md). A Firm is an `organization`.
 
 ## System context
 
@@ -84,6 +84,12 @@ One Dockerfile (`apps/web/Dockerfile`) builds both images, pinned by `tag@digest
 | [0006](adr/0006-sign-in-email-sent-after-the-response.md)            | Sign-in email work runs after the response, so timing reveals nothing                                    |
 | [0007](adr/0007-no-auth-backdoor.md)                                 | No test-only sign-in; dev and tests use the real email flow                                              |
 | [0008](adr/0008-production-mode-everywhere.md)                       | Production mode everywhere; environments differ by explicit settings                                     |
+| [0009](adr/0009-custodian-is-the-book-of-record.md)                  | The Custodian is the book of record for holdings, simulated as a separate service                        |
+| [0010](adr/0010-cognitive-ai-states-only-computed-facts.md)          | Cognitive AI states only Computed facts, cited to the calculation that produced them                     |
+| [0011](adr/0011-custodian-simulator-in-python.md)                    | The custodian simulator is Python and FastAPI; Cognitive Wealth uses its OpenAPI through Orval           |
+| [0012](adr/0012-domain-code-in-one-package-per-area.md)              | Domain code lives in one framework-agnostic package per area                                             |
+| [0013](adr/0013-money-shares-prices-and-rates-are-separate-types.md) | Money is whole cents; shares, prices and rates are separate types; no floats; round once                 |
+| [0014](adr/0014-cognitive-ai-on-the-ai-sdk-starting-small.md)        | Cognitive AI runs on the AI SDK and starts on the smallest model                                         |
 
 How sign-in, sessions and tenancy work today, with their own diagrams, is in [docs/auth.md](auth.md).
 
@@ -100,9 +106,9 @@ Coding agents follow this loop, defined in [CLAUDE.md](../CLAUDE.md#worktrees). 
 
 What the decisions so far leave open, each with where it was deferred:
 
-- **Tenant isolation in the database.** Every query is scoped in application code, so a missed filter leaks across tenants. Revisit row-level security when domain tables arrive ([ADR 0002](adr/0002-tenant-is-the-sessions-active-organization.md)).
-- **Where domain code lives.** `@repo/auth` holds identity and tenancy, and `@repo/db` holds every table. Domain modules have no home or dependency rules yet.
-- **Ubiquitous language.** There's no `GLOSSARY.md` yet. The `domain-modeling` skill creates it as terms get settled ([docs/agents/domain.md](agents/domain.md)).
+- **Tenant isolation in the database.** Every query is scoped in application code, so a missed filter leaks across tenants. Decided: every Firm-scoped domain table gets row-level security in phase 1, recorded then as an ADR that supersedes that part of [ADR 0002](adr/0002-tenant-is-the-sessions-active-organization.md).
+- **"Workspace" in the UI.** Screens call an organization a workspace; the glossary calls it a Firm. Phase 1 renames the copy.
+- **The second service.** The custodian simulator ([ADR 0011](adr/0011-custodian-simulator-in-python.md)) brings Python tooling, a second image and a second database into Compose, the worktree hook and Turborepo.
 - **CI.** Lint, types, tests and e2e run only locally. Only Dependabot runs on GitHub.
 - **Hosting.** The host must keep `after()` work alive and give a 10 to 30 second stop grace period ([ADR 0006](adr/0006-sign-in-email-sent-after-the-response.md)).
 - **Environment label.** The first multi-environment deployment adds `APP_ENV` as a label only ([ADR 0008](adr/0008-production-mode-everywhere.md)).

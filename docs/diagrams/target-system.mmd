@@ -1,0 +1,27 @@
+flowchart LR
+  advisor([Advisor in a browser])
+
+  subgraph cw["Cognitive Wealth · TypeScript"]
+    web["web · Next.js<br/>pages, actions, Cognitive AI"]
+    jobs["pg-boss jobs<br/>ingest, reconcile, bill"]
+    pg[("Postgres<br/>RLS per Firm")]
+  end
+
+  model["Claude through the AI SDK<br/>Haiku 5.5 first"]
+  files[("SeaweedFS<br/>Custodian feed files")]
+
+  subgraph cust["Custodian simulator · Python, FastAPI"]
+    closer["Close<br/>catch-up on start, evening run"]
+    api["API<br/>published OpenAPI contract"]
+    cpg[("Postgres<br/>custodian ledger")]
+  end
+
+  advisor -->|HTTPS| web
+  web -->|"tools return Computed facts"| model
+  web --> pg
+  jobs --> pg
+  closer --> cpg
+  closer -->|"each Close"| files
+  files -->|"ingest"| jobs
+  jobs -->|"Orval client, fee files"| api
+  api --> cpg

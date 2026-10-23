@@ -1,6 +1,6 @@
 # Cognitive Wealth
 
-A multi-tenant web platform: a Next.js app over Postgres and Redis, with passwordless, invite-only sign-in and organizations with roles. It's a pnpm and Turborepo monorepo on Node 24, TypeScript 7, Next.js 16 and React 19.
+Software for an independent financial advisor and their client households, with an AI layer that only states numbers it can trace to a calculation. It's a learning project that runs on realistic synthetic data. Today it is the foundation: a Next.js app over Postgres and Redis, with passwordless, invite-only sign-in and multi-tenant firms with roles. It's a pnpm and Turborepo monorepo on Node 24, TypeScript 7, Next.js 16 and React 19.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/system-context.dark.svg">
@@ -11,6 +11,8 @@ A multi-tenant web platform: a Next.js app over Postgres and Redis, with passwor
 
 | To understand                                                                                               | Read                                                   |
 | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| What the product is, its principles, the synthetic world and the phases                                     | [docs/product.md](docs/product.md)                     |
+| The domain's vocabulary                                                                                     | [GLOSSARY.md](GLOSSARY.md)                             |
 | The whole platform on one page: packages, request flow, data model, environments, decisions, open questions | [docs/architecture.md](docs/architecture.md)           |
 | Why it's built this way                                                                                     | [docs/adr/](docs/adr/)                                 |
 | How sign-in, sessions and tenancy work today                                                                | [docs/auth.md](docs/auth.md)                           |

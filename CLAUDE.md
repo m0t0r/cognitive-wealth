@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 pnpm + Turborepo monorepo, scaffolded from `create-turbo`. Toolchain is pinned to recent majors: Node >=24, pnpm 12, TypeScript 7, Next.js 16, React 19, Oxlint + Oxfmt (no ESLint/Prettier). Don't assume older-version APIs or config formats.
 
+What the product is, its principles, the synthetic world it runs on and the phase plan: [docs/product.md](docs/product.md). Read it before planning a feature; each phase has a GitHub issue.
+
 ## Worktrees
 
 Every task that changes the repo runs in its own git worktree, whether or not the user mentions one. The main checkout is the user's.
@@ -28,7 +30,7 @@ Run from the repo root (tasks fan out via Turborepo):
 
 - `pnpm dev`: all apps through [portless](https://portless.sh) (`web` at `https://cognitive-wealth.localhost`; a linked git worktree gets `https://<branch>.cognitive-wealth.localhost`), so no app binds a fixed port. Each app's `dev` script is `portless` and the real command is `dev:app`, named in the package's `"portless"` key; add new apps the same way. `PORTLESS=0 pnpm dev` bypasses the proxy (Next's default :3000). The first run starts the proxy on 443 (sudo prompt, local CA); in a non-interactive shell run `portless proxy start` (or `portless service install`) once first. E2E doesn't use portless: it gives each worker its own free port
 - `pnpm build`, `pnpm check-types` (via Turborepo)
-- `pnpm lint` / `pnpm lint:fix`: Oxlint over the whole repo, run once from the root (not a Turborepo task)
+- `pnpm lint` / `pnpm lint:fix`: Oxlint over the whole repo, run once from the root (not a Turborepo task). `pnpm lint` then runs `scripts/check-forbidden-terms.mjs`, which fails on any term in the untracked `info/forbidden-terms` of the git common dir: the repo is public and names no company that inspired the product, so research and docs describe the domain generically
 - `pnpm format` / `pnpm format:check`: Oxfmt over the whole repo (defaults, incl. 100-col print width and `package.json` key sorting)
 - `pnpm test` (unit + UI), `pnpm test:integration`, `pnpm test:coverage` (all three, per-package reports in `coverage/`), `pnpm test:watch`
 - `pnpm e2e`: builds `web`, then runs Playwright with Postgres, Redis and Mailpit containers and one standalone server per worker; needs Docker (`--filter=web-e2e --only` skips the build)
