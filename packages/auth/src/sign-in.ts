@@ -12,6 +12,7 @@ import { and, eq, gt, or, sql } from "drizzle-orm";
 import { writeAuditEvent } from "./audit";
 import { callbackPathOrDefault } from "./callback-path";
 import { readDeviceCookie, type DeviceCookie } from "./device";
+import { SIGN_IN_REQUESTER_LIMITS } from "./constants";
 import { consumeRateLimit, type RateLimitRule } from "./rate-limit";
 
 /** Seconds a link or code stays valid. */
@@ -24,18 +25,17 @@ export const SIGN_IN_EXPIRES_IN = 300;
  * inbox bombing, and a browser the user signed in from before has its own budget outside both.
  */
 export const SIGN_IN_EMAIL_LIMITS = {
-  /**
-   * Per address and client IP. Its hourly total stays below the address backstop, so one
-   * requester can't use up the backstop alone: it takes 4 of them.
-   */
-  requester: { window: 3600, max: 3 },
-  /** Per address, across all requesters. */
+  /** Per address and client IP: 3 per 10 minutes and 6 per hour (`SIGN_IN_REQUESTER_LIMITS`). */
+  requester: SIGN_IN_REQUESTER_LIMITS.burst,
+  requesterHour: SIGN_IN_REQUESTER_LIMITS.hour,
+  /** Per address, across all requesters. Above one requester's 6 an hour: it takes 2 to use up. */
   address: { window: 3600, max: 10 },
   /** Per address and known device (a valid device cookie for that user), instead of the other two. */
   device: { window: 600, max: 3 },
 } as const satisfies Record<string, RateLimitRule>;
 
-type ThrottleRule = keyof typeof SIGN_IN_EMAIL_LIMITS;
+/** The rule an audit event names: both requester windows read as `requester`. */
+type ThrottleRule = "requester" | "address" | "device";
 
 /**
  * Tries at a sign-in code per address and day, across all of its codes (each code allows 3).
@@ -169,6 +169,16 @@ export function createSignInFlow(deps: SignInFlowDeps) {
     slot.code = otp;
   }
 
+  /** Counts a request against one sign-in email limit; whether it's still within it. */
+  async function consume(key: string, rule: keyof typeof SIGN_IN_EMAIL_LIMITS): Promise<boolean> {
+    const result = await consumeRateLimit(
+      deps.storage,
+      `sign-in-email:${key}`,
+      SIGN_IN_EMAIL_LIMITS[rule],
+    );
+    return result.ok;
+  }
+
   /**
    * The rule that refuses this request, or `null`. Counts the request against every rule it
    * reaches, so it must run before a code is issued.
@@ -177,18 +187,17 @@ export function createSignInFlow(deps: SignInFlowDeps) {
     { email, ip, device }: SignInRequest,
     owner: { publicId: string } | undefined,
   ): Promise<ThrottleRule | null> {
-    const consume = async (key: string, rule: ThrottleRule) =>
-      (await consumeRateLimit(deps.storage, `sign-in-email:${key}`, SIGN_IN_EMAIL_LIMITS[rule])).ok;
-
     // A browser this user signed in from before skips the shared rules, so neither a flood of
     // requests for the address nor an attacker behind the same NAT can lock them out. The cookie
     // must name the user who owns the address: invitees have no user, so they never match.
     if (device !== null && owner !== undefined && device.publicId === owner.publicId) {
       return (await consume(`dev:${email}:${device.deviceId}`, "device")) ? null : "device";
     }
-    // The address is only charged once the requester is within their own limit, so one client
-    // past its limit can't keep spending the backstop that every other requester shares.
+    // Each rule is only charged once the ones before it allow the request: the hour once the 10
+    // minutes do, and the address once the requester is within both, so one client past its
+    // limit can't keep spending the backstop that every other requester shares.
     if (!(await consume(`req:${email}:${ip}`, "requester"))) return "requester";
+    if (!(await consume(`req-hour:${email}:${ip}`, "requesterHour"))) return "requester";
     if (!(await consume(`addr:${email}`, "address"))) return "address";
     return null;
   }

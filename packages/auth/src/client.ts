@@ -10,6 +10,7 @@ export {
   sanitizeCallbackPath,
 } from "./callback-path";
 export type { AuthErrorCode } from "./route-handler";
+export { SIGN_IN_REQUESTER_LIMITS } from "./constants";
 
 export type AuthResult = { ok: true } | { ok: false; error: AuthErrorCode };
 
