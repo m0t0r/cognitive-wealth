@@ -1,0 +1,21 @@
+{
+  "name": "custodian",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "portless",
+    "dev:app": "uv run uvicorn custodian.main:app --reload --host ${HOST:-127.0.0.1} --port ${PORT:-8000}",
+    "lint": "uv run ruff check",
+    "format": "uv run ruff format",
+    "format:check": "uv run ruff format --check",
+    "check-types": "uv run pyright",
+    "test": "uv run pytest"
+  },
+  "devDependencies": {
+    "portless": "0.15.8"
+  },
+  "portless": {
+    "name": "custodian.cognitive-wealth",
+    "script": "dev:app"
+  }
+}
