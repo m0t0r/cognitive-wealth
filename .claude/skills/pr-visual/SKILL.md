@@ -32,7 +32,7 @@ This writes `facts.json` (totals, per-file change and lines, test cases added an
 | `mix` (sankey)       | lines by area → source code, test code, docs, config, migrations                                            | more than one area changed                                              |
 | `churn` (treemap)    | lines by area and file, largest first; vendored `.agents/skills` left out, its line count in the root label | always, unless only vendored files changed; it's the change's footprint |
 | `files` (treeView)   | every changed file with change kind and `+/−`                                                               | up to 60 files                                                          |
-| `tests` (xychart)    | test cases added and removed per layer                                                                      | tests changed                                                           |
+| `tests` (xychart)    | test cases added and removed per layer (unit, ui, integration, e2e, pytest)                                 | tests changed                                                           |
 | `commits` (gitGraph) | the branch's commits                                                                                        | 3–25 commits, when their order tells a story                            |
 
 ## 3. Runtime evidence, before and after
@@ -159,7 +159,11 @@ Never transcribe secrets into excerpts, captions or screenshots. Don't capture `
 
 ## 8. Inspect the published PR
 
-Open the PR with agent-browser in light mode and in dark mode (`set media dark`). Check that every image loaded (`eval "[...document.images].filter(i => !i.naturalWidth).map(i => i.src)"` returns `[]`). Check that the visuals come before the implementation detail, and that each chart's numbers match `facts.json`. Allow one fix-and-republish pass.
+```sh
+node .claude/skills/pr-visual/scripts/inspect.mjs <n> --out .dev/pr-visual/<branch>
+```
+
+It opens the PR with agent-browser in light and dark mode, prints the images in the body that didn't load (`broken`, which must be `[]` in both themes; it exits 1 otherwise), and saves `pr-<n>.light.png` and `pr-<n>.dark.png`. Use it rather than an inline `agent-browser eval`, which a worktree session refuses. Read both screenshots: check that the visuals come before the implementation detail, and that each chart's numbers match `facts.json`. Allow one fix-and-republish pass.
 
 Then mark it ready: `gh pr ready <n>`. A PR is never left as a draft once its body is published.
 
