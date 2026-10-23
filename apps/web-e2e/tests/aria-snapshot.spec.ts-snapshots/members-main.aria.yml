@@ -1,0 +1,58 @@
+- main:
+    - button "Toggle Sidebar":
+        - img
+        - text: ""
+    - separator
+    - paragraph: Acme
+    - heading "Members" [level=1]
+    - paragraph: People who can use Acme.
+    - heading "Invite someone" [level=2]
+    - text: They'll get an email with a link to join. Invitations expire after 7 days.
+    - group:
+        - text: Email
+        - textbox "Email":
+            - /placeholder: name@example.com
+    - group:
+        - text: Role
+        - combobox "Role": Member
+    - button "Send invitation"
+    - region "Members 2":
+        - heading "Members 2" [level=2]
+        - table "Members 2":
+            - rowgroup:
+                - row "Name Role Joined Actions":
+                    - columnheader "Name"
+                    - columnheader "Role"
+                    - columnheader "Joined"
+                    - columnheader "Actions"
+            - rowgroup:
+                - row /Olivia Owner You owner-[\w-]+@e2e\.test Owner Jan 5, \d+/:
+                    - cell /Olivia Owner You owner-[\w-]+@e2e\.test/
+                    - cell "Owner"
+                    - cell /Jan 5, \d+/:
+                        - time: /Jan 5, \d+/
+                    - cell
+                - row /Cy Member member-[\w-]+@e2e\.test Member Feb \d+, \d+ Actions for Cy Member/:
+                    - cell /Cy Member member-[\w-]+@e2e\.test/
+                    - cell "Member"
+                    - cell /Feb \d+, \d+/:
+                        - time: /Feb \d+, \d+/
+                    - cell "Actions for Cy Member":
+                        - button "Actions for Cy Member"
+    - region "Pending invitations 1":
+        - heading "Pending invitations 1" [level=2]
+        - table "Pending invitations 1":
+            - rowgroup:
+                - row "Email Role Expires Actions":
+                    - columnheader "Email"
+                    - columnheader "Role"
+                    - columnheader "Expires"
+                    - columnheader "Actions"
+            - rowgroup:
+                - row /invitee-[\w-]+@e2e\.test Admin Mar \d+, \d+ Cancel invitation to invitee-[\w-]+@e2e\.test/:
+                    - cell /invitee-[\w-]+@e2e\.test/
+                    - cell "Admin"
+                    - cell /Mar \d+, \d+/:
+                        - time: /Mar \d+, \d+/
+                    - cell /Cancel invitation to invitee-[\w-]+@e2e\.test/:
+                        - button /Cancel invitation to invitee-[\w-]+@e2e\.test/

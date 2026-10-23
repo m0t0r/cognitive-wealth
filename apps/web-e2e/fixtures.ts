@@ -3,7 +3,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import type { Database } from "@repo/db";
 import { type Mailpit, createMailpit } from "@repo/testing/mailpit";
 import { type Cookie, signIn } from "@repo/testing/sign-in";
-import { test as base, expect } from "@playwright/test";
+import { type BrowserContext, type Page, test as base, expect } from "@playwright/test";
 import { requiredEnv } from "./support/compose";
 import { createWorkerDatabase } from "./support/database";
 import { connectJanitor } from "./support/redis";
@@ -24,6 +24,27 @@ export function summarize(violations: Violation[]): string[] {
   );
 }
 
+/** A browser of its own: a fresh context with its own `clientIp`, so its rate limits are its own. */
+export interface OtherBrowser {
+  context: BrowserContext;
+  page: Page;
+  clientIp: string;
+  /** Like the `signIn` fixture, from this browser's `clientIp` into its `context`. */
+  signIn: (email: string) => Promise<Cookie[]>;
+}
+
+/** The HTTP harness's sign-in, from `ip`, with the session cookies added to `context`. */
+async function signInto(context: BrowserContext, appUrl: string, ip: string, email: string) {
+  const { cookies } = await signIn({
+    appUrl,
+    email,
+    mailpitUrl: requiredEnv("PLAYWRIGHT_MAILPIT_URL"),
+    ip,
+  });
+  await context.addCookies(cookies);
+  return cookies;
+}
+
 type TestFixtures = {
   makeAxeBuilder: () => AxeBuilder;
   /** Drizzle on this worker's database, emptied before every test. Seed and assert through it. */
@@ -41,6 +62,11 @@ type TestFixtures = {
    * (or an invitation) through `db` first.
    */
   signIn: (email: string) => Promise<Cookie[]>;
+  /**
+   * Opens another browser (a second user, say) with its own context and `clientIp`, on this
+   * worker's server. Closed after the test.
+   */
+  openBrowser: () => Promise<OtherBrowser>;
 };
 
 type WorkerFixtures = {
@@ -157,18 +183,28 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await provide({ ...extraHTTPHeaders, "x-forwarded-for": clientIp });
   },
 
-  signIn: async ({ baseURL, context, clientIp }, provide) => {
-    await provide(async (email) => {
-      if (!baseURL) throw new Error("baseURL is not set");
-      const { cookies } = await signIn({
-        appUrl: baseURL,
-        email,
-        mailpitUrl: requiredEnv("PLAYWRIGHT_MAILPIT_URL"),
-        ip: clientIp,
+  signIn: async ({ app, context, clientIp }, provide) => {
+    await provide((email) => signInto(context, app.url, clientIp, email));
+  },
+
+  openBrowser: async ({ app, browser, clientIps, colorScheme }, provide) => {
+    const contexts: BrowserContext[] = [];
+    await provide(async () => {
+      const clientIp = clientIps.next();
+      const context = await browser.newContext({
+        baseURL: app.url,
+        colorScheme,
+        extraHTTPHeaders: { "x-forwarded-for": clientIp },
       });
-      await context.addCookies(cookies);
-      return cookies;
+      contexts.push(context);
+      return {
+        context,
+        page: await context.newPage(),
+        clientIp,
+        signIn: (email) => signInto(context, app.url, clientIp, email),
+      };
     });
+    await Promise.all(contexts.map((context) => context.close()));
   },
 
   // Named `provide`, not `use`: React's rules-of-hooks lint mistakes Playwright's `use` for a hook.
