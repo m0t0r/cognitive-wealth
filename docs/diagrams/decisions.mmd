@@ -13,6 +13,7 @@ flowchart LR
   a12["0012 One package<br/>per domain area"]
   a13["0013 Money, shares, prices<br/>and rates are separate types"]
   a14["0014 AI SDK,<br/>smallest model first"]
+  a15["0015 Positions counted<br/>by trade date"]
 
   ir["incident-response.md"]
   host["Hosting must keep<br/>after() work alive"]
@@ -30,6 +31,7 @@ flowchart LR
   a7 --> harness
   a8 -->|"e2e runs prod guards"| a7
   a9 -->|"a separate service"| a11
+  a9 -->|"rebuilt and reconciled"| a15
   a9 -->|"decimal strings at the contract"| a13
   a10 -->|"pure calculations as tools"| a12
   a10 -->|"tools are AI SDK tools"| a14

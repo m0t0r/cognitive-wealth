@@ -65,13 +65,13 @@ Dana opens an individual Account and the Advisor invests it in two invented exch
 | 7   | Wed 4 Mar  | Wed 4 Mar       | Fee          |            |        |         | −45.00     |
 | 8   | Thu 5 Mar  | Thu 5 Mar       | Withdrawal   |            |        |         | −1,000.00  |
 
-All dates are in 2026. The dividend in row 5 is $0.03 a share on 300 shares. The fee in row 7 is the quarter's Advisory fee. How dividends are declared and paid is in a later primer; here it's only cash arriving.
+All dates are in 2026. Both contributions arrive by wire, which lands the same day. The dividend in row 5 is $0.03 a share on 300 shares. Row 7 is a fee the Custodian charges the Account. How dividends are declared and paid is in a later primer; here it's only cash arriving.
 
 Adding the rows up to the end of each day gives the Positions:
 
 | End of day | Rows added | Cash     | Stock Fund | Bond Fund |
 | ---------- | ---------- | -------- | ---------- | --------- |
-| Fri 27 Feb | 1–2        | 2,000.00 | 0          | 300       |
+| Thu 26 Feb | 1–2        | 2,000.00 | 0          | 300       |
 | Mon 2 Mar  | 3–4        | 5,990.00 | 40         | 300       |
 | Tue 3 Mar  | 5          | 5,999.00 | 40         | 300       |
 | Wed 4 Mar  | 6–7        | 7,474.00 | 30         | 300       |
@@ -87,36 +87,36 @@ Every Transaction carries more than one date, and each answers a different quest
 
 ### Trade date: when it was agreed
 
-The **Trade date** is the day the Transaction happened: the day the buy order was filled, or the day the dividend was paid. On Monday 2 March, Dana's Account agreed to buy 40 shares at $150.25. From that moment the shares are Dana's and the $6,010.00 is owed, so the Positions above count both on Monday. Positions counted this way are called trade-date Positions, and they're what Cognitive Wealth shows.
+The **Trade date** is the day the Transaction happened: the day the buy order was filled, or the day the dividend was paid. On Monday 2 March, Dana's Account agreed to buy 40 shares at $150.25. From that moment the shares are Dana's and the $6,010.00 is owed, so the Positions above count both on Monday. Counting Positions from the Trade date is a choice, not a law: some reports count from the Settlement date instead. Cognitive Wealth and its simulated Custodian both count from the Trade date ([ADR 0015](../adr/0015-positions-counted-by-trade-date.md)).
 
 ### Settlement date: when it became final
 
-The **Settlement date** is the day the cash and the shares actually change hands. For most US securities trades it's one business day after the Trade date, written **T+1**. A business day is a weekday the markets are open, so a Friday trade settles on Monday.
+The **Settlement date** is the day the cash and the shares actually change hands. The gap between the two is the **Settlement cycle**. For most US securities trades it's one Business day, written **T+1**. A Business day is a weekday the markets are open, so a Friday trade settles on Monday.
 
-T+1 is a rule, not a convention. SEC Rule 15c6-1 says a broker-dealer can't make a contract to buy or sell a security that settles "later than the first business day after the date of the contract", unless the parties expressly agree otherwise ([17 CFR 240.15c6-1](https://www.ecfr.gov/current/title-17/chapter-II/part-240/section-240.15c6-1)). The SEC shortened the cycle from two business days to one, with compliance from 28 May 2024 ([SEC press release 2023-29](https://www.sec.gov/newsroom/press-releases/2023-29)). Cash movements such as contributions, fees and dividends aren't trades, so here they settle on the day they happen.
+T+1 is a rule, not a convention. SEC Rule 15c6-1 says a broker-dealer can't make a contract to buy or sell a security that settles "later than the first business day after the date of the contract", unless the parties expressly agree otherwise ([17 CFR 240.15c6-1](https://www.ecfr.gov/current/title-17/chapter-II/part-240/section-240.15c6-1)). The SEC shortened the cycle from two business days to one, with compliance from 28 May 2024 ([SEC press release 2023-29](https://www.sec.gov/newsroom/press-releases/2023-29)). Cash movements that aren't trades follow their own timing: a wire lands the same day, while a check or a bank transfer can take days. In this example every non-trade row settles on its Trade date.
 
-Settlement matters for one number in particular: **Settled cash**, the cash that has actually arrived. Dana can only withdraw settled cash. Between the Trade date and the Settlement date, the cash from a sale is Dana's but not yet in the Account.
+Settlement matters for one number in particular: **Settled cash**, the cash Dana can actually withdraw. It's counted cautiously. Money going out, such as a buy, counts at once, because it's already owed. Money coming in, such as the proceeds of a sale, counts only once it has settled. Between a sale's Trade date and its Settlement date, the proceeds are Dana's but not yet in the Account.
 
-Here is the same week, with settled cash next to cash. A row counts toward settled cash on its Settlement date:
+Here is the same week, with settled cash next to cash:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/ledger-week.dark.svg">
   <img alt="A timeline of Monday 2 to Friday 6 March 2026. The buy in row 4 is agreed on Monday with $6,010.00 owed, and settles on Tuesday when the cash is paid. The sell in row 6 is agreed on Wednesday with $1,520.00 in transit, and settles on Thursday when the cash arrives. The dividend in rows 5, 9 and 10 shows $9.00 in the Ledger from Tuesday until the Correction to $10.50 is posted on Friday." src="../diagrams/ledger-week.light.svg">
 </picture>
 
-| End of day | Cash     | Settled cash | Why they differ                                     |
-| ---------- | -------- | ------------ | --------------------------------------------------- |
-| Fri 27 Feb | 2,000.00 | 2,000.00     | Row 2's buy settled today                           |
-| Mon 2 Mar  | 5,990.00 | 12,000.00    | Row 4's $6,010.00 for the buy is owed, not yet paid |
-| Tue 3 Mar  | 5,999.00 | 5,999.00     | Row 4 settled: 12,000.00 − 6,010.00 + 9.00          |
-| Wed 4 Mar  | 7,474.00 | 5,954.00     | Row 6's $1,520.00 from the sale hasn't arrived      |
-| Thu 5 Mar  | 6,474.00 | 6,474.00     | Row 6 settled: 5,954.00 + 1,520.00 − 1,000.00       |
+| End of day | Cash     | Settled cash | Why they differ                                 |
+| ---------- | -------- | ------------ | ----------------------------------------------- |
+| Thu 26 Feb | 2,000.00 | 2,000.00     | Same: row 2's buy is owed, so it counts at once |
+| Mon 2 Mar  | 5,990.00 | 5,990.00     | Same: row 4's buy is owed, so it counts at once |
+| Tue 3 Mar  | 5,999.00 | 5,999.00     | Same: row 5's dividend arrived the same day     |
+| Wed 4 Mar  | 7,474.00 | 5,954.00     | Row 6's $1,520.00 from the sale hasn't arrived  |
+| Thu 5 Mar  | 6,474.00 | 6,474.00     | Row 6 settled: 5,954.00 + 1,520.00 − 1,000.00   |
 
 On Wednesday, Dana could withdraw at most $5,954.00, even though the Account's cash is $7,474.00. By Thursday the two agree again.
 
 ### As-of date: which day a figure describes
 
-The **As-of date** is the business day a number describes. "Cash as of 3 March is $5,999.00" is a statement about the end of 3 March, computed from every Transaction with a Trade date up to 3 March.
+The **As-of date** is the Business day a number describes. "Cash as of 3 March is $5,999.00" is a statement about the end of 3 March, computed from every Transaction with a Trade date up to 3 March.
 
 The As-of date isn't the day the number was computed. A report as of 3 March can be produced on 4 March or a year later. With an unchanging Ledger it gives the same answer every time, which is the point: a statement or a bill can be reproduced exactly from the data it was built on.
 
@@ -187,18 +187,18 @@ The custodian's ledger slice (#35) stores facts and derives everything else.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/ledger-fold.dark.svg">
-  <img alt="Two stored, append-only inputs: the Ledger of Transactions, each with a Trade, Settlement and Posting date, and Prices, one per Security per business day. For an As-of date, adding the rows with a Trade date up to it gives the Positions, and adding the rows with a Settlement date up to it gives Settled cash. Positions times prices give Market value." src="../diagrams/ledger-fold.light.svg">
+  <img alt="Two stored, append-only inputs: the Ledger of Transactions, each with a Trade, Settlement and Posting date, and Prices, one per Security per Business day. First, the rows posted by the day asked are kept. Of those, adding the rows with a Trade date up to the As-of date gives the Positions; adding money going out by Trade date and money coming in by Settlement date gives Settled cash. Positions times prices give Market value." src="../diagrams/ledger-fold.light.svg">
 </picture>
 
 **Stored**, and never changed once written:
 
 - The Ledger's Transactions: Account, kind, Security, the change in shares, the change in cash, Trade date, Settlement date, Posting date, and, for a Reversal, the row it reverses
-- Each Security's price for each business day
+- Each Security's price for each Business day
 
-**Derived** from those, on demand, for any As-of date:
+**Derived** from those, on demand, for an As-of date and the day asked (section 5), counting only rows posted by the day asked:
 
-- Positions: shares per Security and cash, by trade date
-- Settled cash, by settlement date
+- Positions: shares per Security and cash, by Trade date ([ADR 0015](../adr/0015-positions-counted-by-trade-date.md))
+- Settled cash: money going out by Trade date, money coming in by Settlement date
 - Market value: Positions × prices
 
 Two rules come with it:

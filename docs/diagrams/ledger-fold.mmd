@@ -1,14 +1,16 @@
 flowchart LR
   subgraph stored["Stored, append-only"]
-    tx["Ledger<br/>Transactions, each with a Trade,<br/>Settlement and Posting date"]
-    px["Prices<br/>one per Security per business day"]
+    tx["Ledger<br/>Transactions with Trade,<br/>Settlement and Posting dates"]
+    px["Prices<br/>one per Security per Business day"]
   end
-  subgraph derived["Derived for an As-of date"]
+  subgraph derived["Derived for an As-of date, as known on the day asked"]
+    known["Rows posted<br/>by the day asked"]
     pos["Positions<br/>shares per Security, and cash"]
     settled["Settled cash"]
     mv["Market value"]
   end
-  tx -->|"add rows with Trade date ≤ As-of date"| pos
-  tx -->|"add rows with Settlement date ≤ As-of date"| settled
+  tx -->|"Posting date ≤ day asked"| known
+  known -->|"Trade date ≤ As-of date"| pos
+  known -->|"out by Trade date,<br/>in by Settlement date"| settled
   pos -->|"shares × price"| mv
   px --> mv
