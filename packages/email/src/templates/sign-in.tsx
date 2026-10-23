@@ -1,6 +1,12 @@
 import { Button, Heading, Hr, Link, Section, Text } from "react-email";
 import type { CSSProperties } from "react";
-import { BRAND, SIGN_IN_IGNORE_NOTICE, minutes, signInExpiryNotice } from "../copy";
+import {
+  BRAND,
+  SIGN_IN_IGNORE_NOTICE,
+  SIGN_IN_SUBJECT,
+  minutes,
+  signInExpiryNotice,
+} from "../copy";
 import { colors, fonts, Layout, styles } from "./components/layout";
 
 export interface SignInEmailProps {
@@ -10,8 +16,6 @@ export interface SignInEmailProps {
   code: string;
   expiresInMinutes: number;
 }
-
-export const SIGN_IN_SUBJECT = `Your ${BRAND} sign-in link`;
 
 const codeStyle: CSSProperties = {
   margin: "0 0 24px",

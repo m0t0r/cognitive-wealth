@@ -16,7 +16,12 @@ export {
   callbackPathOrDefault,
   sanitizeCallbackPath,
 } from "./callback-path";
-export { AUTH_BASE_PATH, COOKIE_PREFIX, SESSION_COOKIE_NAMES } from "./constants";
+export {
+  AUTH_BASE_PATH,
+  COOKIE_PREFIX,
+  DEVICE_COOKIE_NAMES,
+  SESSION_COOKIE_NAMES,
+} from "./constants";
 export type {
   InvitationStatus,
   PublicInvitation,
@@ -36,7 +41,12 @@ export {
   type AuthErrorCode,
   type AuthRoute,
 } from "./route-handler";
-export { SIGN_IN_EMAIL_LIMITS, SIGN_IN_EXPIRES_IN, type BackgroundRunner } from "./sign-in";
+export {
+  SIGN_IN_EMAIL_LIMITS,
+  SIGN_IN_EXPIRES_IN,
+  normalizeEmail,
+  type BackgroundRunner,
+} from "./sign-in";
 export type { SecondaryStorage } from "./storage/types";
 export {
   INVITE_LIMIT,
@@ -53,9 +63,12 @@ export {
   listMemberships,
   removeMember,
   requireTenant,
+  revokeUserSessions,
   switchOrganization,
+  tenantOf,
   updateProfileName,
   type Result,
   type TenantErrorCode,
+  type TenantViewer,
   type Viewer,
 } from "./tenant";

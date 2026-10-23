@@ -1,4 +1,6 @@
 import { type Page, expect } from "@playwright/test";
+import { DEVICE_COOKIE_NAMES, SESSION_COOKIE_NAMES } from "@repo/auth/constants";
+import { SIGN_IN_SUBJECT, invitationSubject } from "@repo/email/copy";
 import {
   type Mailpit,
   type SignInEmail,
@@ -8,13 +10,11 @@ import {
 
 // Driving the real UI (unlike the `signIn` fixture, which uses the HTTP harness).
 
-// Production builds (which e2e runs) use secure cookies, so Better Auth adds the `__Secure-` prefix:
-// the second of `SESSION_COOKIE_NAMES` in `@repo/auth/constants`, and the device cookie of ADR 0001.
-export const SESSION_COOKIE = "__Secure-cw.session_token";
-export const DEVICE_COOKIE = "__Secure-cw.device";
+// Production builds (which e2e runs) use secure cookies, so Better Auth adds the `__Secure-` prefix.
+export const [, SESSION_COOKIE] = SESSION_COOKIE_NAMES;
+export const [, DEVICE_COOKIE] = DEVICE_COOKIE_NAMES;
 
-export const SIGN_IN_SUBJECT = "Your Cognitive Wealth sign-in link";
-export const INVITATION_SUBJECT = /^You're invited to join /;
+export { SIGN_IN_SUBJECT };
 
 /**
  * Reads the inbox before `trigger` runs, so the email returned is the one it caused, not an
@@ -51,11 +51,12 @@ export async function confirmSignIn(page: Page, link: SignInEmail): Promise<void
   await page.getByRole("button", { name: "Continue to Cognitive Wealth" }).click();
 }
 
-/** Waits for the invitation email to `to` that `trigger` sends, and returns its link. */
+/** Waits for the invitation to `organizationName` that `trigger` sends `to`; returns its link. */
 export async function invitationLink(
   mailbox: Mailpit,
-  to: string,
+  { to, organizationName }: { to: string; organizationName: string },
   trigger: () => Promise<void>,
 ): Promise<string> {
-  return parseInvitationEmail((await nextEmail(mailbox, to, INVITATION_SUBJECT, trigger)).text).url;
+  const message = await nextEmail(mailbox, to, invitationSubject(organizationName), trigger);
+  return parseInvitationEmail(message.text).url;
 }

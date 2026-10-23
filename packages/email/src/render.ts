@@ -4,17 +4,15 @@ import {
   BRAND,
   INVITATION_IGNORE_NOTICE,
   SIGN_IN_IGNORE_NOTICE,
+  SIGN_IN_SUBJECT,
   formatExpiry,
   invitationHeadline,
+  invitationSubject,
   invitationSummary,
   signInExpiryNotice,
 } from "./copy";
-import {
-  InvitationEmail,
-  invitationSubject,
-  type InvitationEmailProps,
-} from "./templates/invitation";
-import { SIGN_IN_SUBJECT, SignInEmail, type SignInEmailProps } from "./templates/sign-in";
+import { InvitationEmail, type InvitationEmailProps } from "./templates/invitation";
+import { SignInEmail, type SignInEmailProps } from "./templates/sign-in";
 
 export interface RenderedEmail {
   subject: string;

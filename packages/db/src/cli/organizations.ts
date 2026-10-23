@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import type { Database } from "../index";
+import type { Database } from "../index.ts";
 import { auditEvent, member, organization, user } from "../schema/index.ts";
 
 /** A problem with the operator's input, printed as is (no stack trace). */
@@ -13,7 +13,7 @@ const EMAIL = /^[^\s@/\\]+@[^\s@/\\]+\.[^\s@/\\]+$/;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** Trims and lowercases `raw` (the `user.email` check requires lowercase) and checks its shape. */
-export function normalizeEmail(raw: string): string {
+export function parseOwnerEmail(raw: string): string {
   const email = raw.trim().toLowerCase();
   if (!EMAIL.test(email)) throw new CliError(`Not an email address: ${raw}`);
   return email;
@@ -71,7 +71,7 @@ export async function createOrganization(
 ): Promise<CreatedOrganization> {
   const name = input.name.trim();
   if (!name) throw new CliError("The organization name is empty.");
-  const email = normalizeEmail(input.ownerEmail);
+  const email = parseOwnerEmail(input.ownerEmail);
   const slug = input.slug === undefined ? slugFromName(name) : normalizeSlug(input.slug);
 
   return db.transaction(async (tx) => {

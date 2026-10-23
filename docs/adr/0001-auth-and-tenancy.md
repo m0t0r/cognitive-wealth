@@ -77,6 +77,13 @@ Configuration (`createAuth(deps)`, a factory so tests inject PGlite, a memory ma
   - `organization({ allowUserToCreateOrganization: false, creatorRole: "owner", invitationExpiresIn: 7d, cancelPendingInvitationsOnReInvite: true, requireEmailVerificationOnInvitation: true, sendInvitationEmail, schema: { …publicId additionalFields } })` with access control from `@repo/auth/access`
   - `nextCookies()` last, so Server Actions that call `auth.api` set cookies
 
+### Session cache trade-off
+
+- **What:** with `secondaryStorage`, Better Auth's `findSession` serves the session and a snapshot of its user from Redis without checking Postgres. The entry lives as long as the session (TTL = its expiry, up to 7 days, extended on refresh).
+- **Consequence:** changes made outside Better Auth's functions (SQL deletes of sessions, a user delete that cascades, direct updates to user rows) don't sign anyone out or refresh the cached user until the entry expires. A Redis miss, flush or eviction falls back to Postgres, which is safe. Membership and tenant checks always read Postgres (`getViewer`), so removing a member still takes effect on the next request.
+- **Why accepted:** fast session lookups; the gap only opens through a deliberate bypass of Better Auth.
+- **Rules:** revoke sessions and delete or deactivate users only through Better Auth (`auth.api.revokeSessions`/`revokeOtherSessions`, the internal adapter's `deleteUserSessions`/`deleteUser`) or `revokeUserSessions`, never raw SQL. Domain code that disables an account must also revoke the user's sessions.
+
 ### Sign-in request (one email, link and code)
 
 `sendMagicLink({ email, token, url })` runs inside Better Auth's `POST /sign-in/magic-link` handler, which answers `{ status: true }` as soon as it returns. Its latency must not reveal which addresses can sign in (account enumeration), so in-request it does only work that costs the same for every address: normalize the email, read and verify the device cookie (whether or not the address has a user), resolve the client IP and capture the user agent. The magic-link plugin's own token insert, before the callback, is also the same for all. Everything below runs in a **background task** from those captured values (never the request context, which may be gone), through `runInBackground` in `AuthDeps`. `apps/web` passes Next's `after()`, which keeps the task alive on every host Next supports: `next start` and the Docker image drain pending callbacks on SIGTERM (give the platform a 10 to 30 second stop grace period), and serverless platforms supply `waitUntil` to it. **Deployment requirement:** a host that freezes the process after the response without wiring `waitUntil` into `after()` would silently never send sign-in emails. The package default (for non-Next callers) starts the task in-process, which only works on a long-lived Node process. Verified live on the standalone build: the email arrives through `after()`, and warm responses for known and unknown addresses take the same time (5.2 ms against 4.4 ms on average, within noise). Any failure in the task is logged and the link deleted; the response never changes.
@@ -116,18 +123,21 @@ The handler rebuilds every request it forwards from checked parts: exact, case-s
 
 ### Tenant and session API (server only)
 
-- `getViewer(auth, headers)` returns `null` or `{ user: PublicUser, session: { createdAt, expiresAt, isFresh }, tenant: Tenant | null, memberships: PublicMembership[], internal: { userId, organizationId } }`. `internal` stays on the server; it never goes into props or responses.
-- On session creation (`databaseHooks.session.create.before`), set `activeOrganizationId` to the user's most recently created membership.
+- `getViewer(auth, headers)` returns `null` or `{ user: PublicUser, session: { createdAt, expiresAt, isFresh }, tenant: Tenant | null, memberships: PublicMembership[], internal: { userId, organizationId, memberId } }`. `internal` stays on the server; it never goes into props or responses. The result carries a unique-symbol brand that only `getViewer` sets, so a `Viewer` can't be built by hand.
+- `requireTenant(auth, headers)` returns `Result<TenantViewer>` (a `Viewer` whose `tenant` and `internal.organizationId`/`memberId` are non-null), failing with `unauthenticated` or `no_tenant`. `tenantOf(viewer)` does the same for a viewer already looked up.
+- On session creation (`databaseHooks.session.create.before`), set `activeOrganizationId` to the organization of the user's latest session while they still belong to it (so signing in again, e.g. to confirm a sensitive action, doesn't switch workspaces), otherwise to their most recently created membership.
 - If the active org is missing, or the user is no longer a member, `getViewer` falls back to another membership (and updates the session) or returns `tenant: null`.
-- Organization operations take `headers` plus `publicId`s, resolve them to internal IDs after checking membership, call `auth.api.*`, write an `audit_event`, and return DTOs:
-  - switch org, list members/invitations, invite, change role, remove member, cancel invitation, get/accept/decline invitation, update profile name
+- **Reads take a verified viewer**, not `headers`, so a page looks the session up once per request (`apps/web/lib/auth/viewer.ts` caches it with React `cache`) and passes it down: `listMemberships(viewer: Viewer): PublicMembership[]`, `listMembers(auth, viewer: TenantViewer): Promise<PublicMember[]>`, `listInvitations(auth, viewer: TenantViewer): Promise<PublicInvitation[]>` (pending only).
+- **Mutations** take `headers` (Better Auth's `auth.api.*` needs them) plus `publicId`s, resolve the viewer's tenant, resolve the `publicId`s to internal IDs within it, call `auth.api.*`, write an `audit_event`, and return DTOs:
+  - switch org, invite, change role, remove member, cancel invitation, get/accept/decline invitation, update profile name
   - role changes, member removal and invitation cancellation require a **fresh** session (created within 1 hour); otherwise they return `{ error: "reauth_required" }`
+- `revokeUserSessions(auth, userPublicId)`: signs a user out everywhere at once through Better Auth's internal adapter (`deleteUserSessions`, which deletes the Postgres rows and the cached `<token>` and `active-sessions-<userId>` keys) and audits `auth.sessions_revoked`; `not_found` for an unknown publicId. For incident response and for domain code that disables an account.
 - Server-side rate limiter (`consumeRateLimit(storage, key, { window, max })` over `secondaryStorage.increment`), used by the invite action (20 per hour per user) and anything else costly.
 - DTOs: `PublicUser { publicId, name, email, image }`, `PublicOrganization { publicId, name, slug, logo }`, `PublicMember { publicId, role, user: PublicUser, createdAt }`, `PublicInvitation { publicId, email, role, status, expiresAt, organization: PublicOrganization, inviter: { name } }`. Mappers drop every internal ID.
 
-Client (`@repo/auth/client`): `createAuthClient` from `better-auth/react` with `magicLinkClient()` and `emailOTPClient()`, used only for the allowlisted calls.
+Client (`@repo/auth/client`): typed `fetch` helpers for the allowlisted calls (`requestSignIn`, `verifyMagicLink`, `verifyCode`, `signOut`), each returning `{ ok: true } | { ok: false, error: AuthErrorCode }`. Not Better Auth's React client: the allowlist replaces response bodies with `{ ok }`, which that client doesn't expect.
 
-Audit events: `auth.sign_in` (method), `auth.sign_out`, `org.invitation.created|accepted|declined|cancelled`, `org.member.role_changed|removed`, `org.switched`, `user.profile_updated`. Writing an audit event never blocks the user action: on failure, log and continue.
+Audit events: `auth.sign_in` (method), `auth.sign_out`, `auth.sessions_revoked`, `org.invitation.created|accepted|declined|cancelled`, `org.member.role_changed|removed`, `org.switched`, `user.profile_updated`. Writing an audit event never blocks the user action: on failure, log and continue.
 
 ## Email (`@repo/email`)
 
@@ -152,11 +162,20 @@ Audit events: `auth.sign_in` (method), `auth.sign_out`, `org.invitation.created|
   - New secrets: `redis_password`, `better_auth_secret`.
 - `compose.dev.yaml` also publishes Redis on `127.0.0.1:6379` and Mailpit SMTP on `127.0.0.1:1025` for `pnpm dev`.
 - E2E global setup also starts Redis and Mailpit containers (images read from `compose.yaml`, like Postgres). Each worker's server gets a unique `REDIS_KEY_PREFIX`, `AUTH_TRUSTED_IP_HEADER=x-forwarded-for` and `SMTP_URL`. Each test sends a unique `x-forwarded-for` and uses unique email addresses, so rate limits and mailboxes never collide.
+- **Deliberate exception:** the local Compose stack (published on loopback only) and e2e set `AUTH_TRUSTED_IP_HEADER=x-forwarded-for` without `AUTH_TRUSTED_PROXIES`, so they trust a client-set `x-forwarded-for`. That is acceptable there only because nothing beyond loopback reaches them. A real deployment must use a header its edge proxy overwrites, or `x-forwarded-for` with `AUTH_TRUSTED_PROXIES`.
 
 Environment variables (server, read at request time; declared in `turbo.json` `dev.passThroughEnv`):
 `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_SECRET_FILE`, `AUTH_TRUSTED_IP_HEADER`, `AUTH_TRUSTED_PROXIES`, `REDIS_URL`, `REDIS_PASSWORD_FILE`, `REDIS_KEY_PREFIX`, `EMAIL_TRANSPORT`, `EMAIL_FROM`, `SMTP_URL`, `RESEND_API_KEY`, `RESEND_API_KEY_FILE`, `MAILPIT_URL` (harness only).
 
 Environments: `NODE_ENV` is the build mode, and every deployed image (and e2e, and Compose) is `production`. It only drives fail-closed guards: a production build refuses to start without explicit config, and never gets a relaxed check. Differences between environments are explicit capability settings (`EMAIL_TRANSPORT`, `BETTER_AUTH_URL`, `AUTH_TRUSTED_IP_HEADER`, …), not branches on an environment name. When the first multi-environment deployment lands, add `APP_ENV` as a label only (an enum, required with no default in production, used for error-tracking and log tags). It must never enable a dev tool or weaken a security check.
+
+### Incident response
+
+See "Session cache trade-off": SQL alone doesn't reach the Redis cache.
+
+- **Sign out one user** (immediate): `revokeUserSessions(auth, userPublicId)`. Or SQL `delete from session where user_id = …` **plus** deleting that user's Redis keys (their session tokens and `active-sessions-<user id>`, under `REDIS_KEY_PREFIX`); the SQL alone leaves cached sessions valid for up to 7 days.
+- **Sign out everyone** (immediate once both steps are done): `delete from session`, then flush the app's Redis keys (prefix `REDIS_KEY_PREFIX`, default `cw:`) through an admin connection, since the app's ACL user can't `SCAN`. Or simply restart Redis: it has no persistence, so this also resets rate-limit counters.
+- **Strongest** (immediate on deploy): rotate `BETTER_AUTH_SECRET`. It invalidates every signed session and device cookie, whatever Postgres or Redis still hold.
 
 ## Dev and test sign-in harness (`@repo/testing`)
 
@@ -190,6 +209,7 @@ Routes:
 - `/invite/[publicId]`: signed out, it redirects to `/sign-in?next=/invite/<id>`; signed in, it shows the org, inviter and role with Accept/Decline. A wrong account sees a neutral "This invitation is for a different email".
 - `/no-workspace`: signed in without memberships.
 - `/` (app home): requires a tenant; app shell with org switcher, account menu (sign out) and a placeholder.
+- `/settings`: redirects to `/settings/members`.
 - `/settings/members`
   - members and pending invitations
   - invite form for owners and admins
@@ -210,22 +230,13 @@ UI: shadcn and `@repo/design-system` components only (add missing ones with the 
 
 ## Testing
 
-- Unit:
-  - callbackPath sanitizer, allowlist matcher and `Sec-Fetch` rule, response stripping
-  - DTO mappers, email plain-text contract, Mailpit parsers, Redis adapter (against a fake)
-- Integration (PGlite plus memory mailer and storage):
-  - serial IDs, publicIds and the FK behaviour
-  - Better Auth schema check passes against the migrated database
-  - sign-in by link and by code, replay, expiry, sibling-credential cleanup
-  - eligibility (unknown email gets no mail and no user), invite acceptance only with a matching email
-  - roles and permissions, active-org lifecycle, fresh-session gating, audit events, append-only audit for `app`
-- UI (RTL plus axe): sign-in form states, confirm page, members table, invite form.
-- E2E:
-  - sign-in by link and by code (new invitee, existing user), replay and expiry
-  - scanner simulation (navigating to verify is rejected and the token survives)
-  - unknown email gets no mail
-  - invitation with two browser contexts, role enforcement, org switching, removing a member ends their access
-  - sign-out, `next` and open-redirect handling
-  - the allowlist (everything else 404s)
-  - cookie flags, cross-origin POST rejected, rate limits, no internal ID in HTML or auth responses, security headers
-  - axe on every route in light and dark, keyboard journeys, aria snapshots
+Each behaviour has one owning layer: test it there, and give other layers at most one representative case.
+
+| Level                                         | Owns                                                                                                                                                                                             | Shouldn't repeat                                                       |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Unit                                          | Pure logic with many edge cases: callback-path sanitizer, allowlist path matcher, Sec-Fetch and origin rules, env parsing, device-cookie parsing, DTO mappers                                    | Anything needing Better Auth or a database                             |
+| Integration (PGlite + real Better Auth)       | The main home for auth and security rules: replay and expiry, sibling cleanup, eligibility gate, throttle rules, roles and permissions, tenant scoping, fresh-session gating, audit rows, timing | Browser behaviour                                                      |
+| UI (RTL + happy-dom)                          | Component state machines: sign-in steps, resend cooldown, the confirm page not calling verify before a click, dialog confirms                                                                    | The full journey, or server rules                                      |
+| E2E (real Chromium, Redis, Mailpit, Postgres) | Only what needs the real stack; one representative case per category already covered by integration tests                                                                                        | The full permission matrix, every error variant, every rate-limit rule |
+
+Beyond the table, E2E owns what only a browser or the deployed build can show: cookie flags, security headers and CSP, the scanner simulation (navigating to verify never spends a token), axe scans of every route in light and dark, keyboard journeys and aria snapshots.

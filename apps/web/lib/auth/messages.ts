@@ -13,18 +13,39 @@ const SIGN_IN_ERRORS: Record<AuthErrorCode, string> = {
   unknown: "Unable to reach Cognitive Wealth. Check your connection and try again.",
 };
 
-export function signInErrorMessage(code: AuthErrorCode): string {
-  return SIGN_IN_ERRORS[code];
+/**
+ * Where a sign-in error shows up, for codes whose advice depends on it:
+ * - `request`: asking for the email
+ * - `code`: entering the 6-digit code
+ * - `link`: the confirm page, spending the link's token
+ * - `arrival`: a `?error=` code on `/sign-in`
+ */
+export type SignInErrorContext = "request" | "code" | "link" | "arrival";
+
+const SIGN_IN_ERRORS_IN: Record<SignInErrorContext, Partial<Record<AuthErrorCode, string>>> = {
+  request: {},
+  code: {
+    invalid_or_expired: "That code didn't work. Check it and try again, or send a new email.",
+  },
+  link: { invalid_or_expired: "This sign-in link has expired or was already used." },
+  arrival: {
+    invalid_or_expired:
+      "That sign-in link has expired or was already used. Enter your email to get a new one.",
+  },
+};
+
+export function signInErrorMessage(
+  code: AuthErrorCode,
+  context: SignInErrorContext = "request",
+): string {
+  return SIGN_IN_ERRORS_IN[context][code] ?? SIGN_IN_ERRORS[code];
 }
 
 /** Copy for a `?error=` code on arrival; anything unrecognized gets a neutral message. */
 export function arrivalErrorMessage(code: string | null | undefined): string | null {
   if (!code) return null;
-  if (code === "invalid_or_expired") {
-    return "That sign-in link has expired or was already used. Enter your email to get a new one.";
-  }
   return isSignInErrorCode(code)
-    ? SIGN_IN_ERRORS[code]
+    ? signInErrorMessage(code, "arrival")
     : "Unable to sign you in. Enter your email to get a new sign-in link.";
 }
 

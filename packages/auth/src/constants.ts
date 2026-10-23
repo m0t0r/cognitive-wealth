@@ -13,3 +13,12 @@ export const SESSION_COOKIE_NAMES = [
   `${COOKIE_PREFIX}.session_token`,
   `__Secure-${COOKIE_PREFIX}.session_token`,
 ] as const;
+
+/** The device cookie's name before Better Auth adds `cw.` (ADR 0001, "Sign-in request"). */
+export const DEVICE_COOKIE = "device";
+
+/** The device cookie's full name, without and with secure cookies. */
+export const DEVICE_COOKIE_NAMES = [
+  `${COOKIE_PREFIX}.${DEVICE_COOKIE}`,
+  `__Secure-${COOKIE_PREFIX}.${DEVICE_COOKIE}`,
+] as const;

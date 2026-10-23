@@ -1,11 +1,10 @@
 import { Button, Heading, Hr, Link, Section, Text } from "react-email";
 import {
-  BRAND,
   INVITATION_IGNORE_NOTICE,
   formatExpiry,
   invitationHeadline,
+  invitationSubject,
   invitationSummary,
-  singleLine,
 } from "../copy";
 import { Layout, styles } from "./components/layout";
 
@@ -18,10 +17,6 @@ export interface InvitationEmailProps {
   /** `owner`, `admin` or `member` (other values are shown as is). */
   role: string;
   expiresAt: Date | string | number;
-}
-
-export function invitationSubject(organizationName: string): string {
-  return `You're invited to join ${singleLine(organizationName)} on ${BRAND}`;
 }
 
 export function InvitationEmail(props: InvitationEmailProps) {

@@ -30,11 +30,15 @@ test("an owner invites a new address and the invitee joins from their own browse
 
   // Browser A: the owner sends the invitation from the members page.
   await page.goto("/settings/members");
-  const url = await invitationLink(mailbox, inviteeEmail, async () => {
-    await page.getByRole("textbox", { name: "Email" }).fill(inviteeEmail);
-    await page.getByRole("button", { name: "Send invitation" }).click();
-    await expect(page.getByText(`Invitation sent to ${inviteeEmail}.`)).toBeVisible();
-  });
+  const url = await invitationLink(
+    mailbox,
+    { to: inviteeEmail, organizationName: "Acme" },
+    async () => {
+      await page.getByRole("textbox", { name: "Email" }).fill(inviteeEmail);
+      await page.getByRole("button", { name: "Send invitation" }).click();
+      await expect(page.getByText(`Invitation sent to ${inviteeEmail}.`)).toBeVisible();
+    },
+  );
   const invitationPath = new URL(url).pathname;
   await expect(page.getByRole("table", { name: /Pending invitations/ })).toContainText(
     inviteeEmail,

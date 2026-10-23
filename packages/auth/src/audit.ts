@@ -5,6 +5,7 @@ export type AuditAction =
   | "auth.sign_in"
   | "auth.sign_in_throttled"
   | "auth.sign_out"
+  | "auth.sessions_revoked"
   | "org.invitation.created"
   | "org.invitation.accepted"
   | "org.invitation.declined"
