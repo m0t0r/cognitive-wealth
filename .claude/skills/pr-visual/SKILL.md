@@ -15,7 +15,7 @@ Every chart, file tree, ER diagram and diff excerpt comes from the real diff or 
 
 ## 1. Verify first, then scope the work unit
 
-1. The change must have a PASS from the `verifier-web` skill in this session. If it doesn't, run that skill first; its screenshots and traces are this PR's evidence.
+1. If the change reaches `apps/web` (CLAUDE.md, "Verification"), it must have a PASS from the `verifier-web` skill in this session. If it doesn't, run that skill first; its screenshots and traces are this PR's evidence. If it doesn't reach `apps/web` (docs, tooling, a package the app doesn't render), skip verification and step 3, and say in Evidence what ran instead (tests, lint, rendered diagrams).
 2. The scope is the whole branch against its base, including later fixes, tests, docs and skill changes, not only the last edit. Leave out unrelated dirty files.
 3. Write an **inventory** before authoring. List each changed route, component, dialog or popover, role or access variant, empty, error or loading state, schema table, server action or endpoint, and package boundary. Each item ends up in a visual or is left out deliberately because it's tiny or invisible. That list is the step's completion criterion.
 
