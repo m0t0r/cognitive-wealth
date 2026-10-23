@@ -73,7 +73,7 @@ One Dockerfile (`apps/web/Dockerfile`) builds both images, pinned by `tag@digest
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/decisions.dark.svg">
-  <img alt="How the ADRs relate: 0001 (Better Auth, passwordless, invite-only) leads to 0003 through its ID defaults, to 0004 through its HTTP surface, to 0005 because we own sessions, and to 0006 to avoid enumeration. 0003 feeds 0004. 0005 leads to the incident-response runbook, 0006 to the hosting requirement, 0002 to deferred RLS, 0007 to the dev sign-in harness, and 0008 to 0007 because e2e runs production guards." src="diagrams/decisions.light.svg">
+  <img alt="How the ADRs relate: 0001 (Better Auth, passwordless, invite-only) leads to 0003 through its ID defaults, to 0004 through its HTTP surface, to 0005 because we own sessions, and to 0006 to avoid enumeration. 0003 feeds 0004. 0005 leads to the incident-response runbook, 0006 to the hosting requirement, 0002 to deferred RLS, 0007 to the dev sign-in harness, and 0008 to 0007 because e2e runs production guards. 0009 leads to 0015, Positions counted by trade date, because they are rebuilt and reconciled." src="diagrams/decisions.light.svg">
 </picture>
 
 | ADR                                                                  | Decision                                                                                                 |

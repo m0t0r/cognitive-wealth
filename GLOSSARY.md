@@ -112,15 +112,15 @@ Something an Account can hold: a fund, a stock, a bond, or the cash sweep.
 _Avoid_: Instrument, asset, holding
 
 **Transaction**:
-A dated movement the Custodian records in an Account: a buy, sell, dividend, interest payment, contribution, withdrawal, fee or transfer.
+A dated movement the Custodian records in an Account: a buy, sell, dividend, interest payment, contribution, withdrawal, fee or transfer, or the Reversal of one.
 _Avoid_: Activity, trade (a trade is only a buy or a sell)
-
-**Trade date**:
-The day a Transaction happened.
 
 **Ledger**:
 The Custodian's append-only list of an Account's Transactions. Rows are added, never changed or deleted.
 _Avoid_: Journal, history
+
+**Trade date**:
+The day a Transaction happened.
 
 **Settlement date**:
 The day a Transaction became final, when cash and Securities actually changed hands.
@@ -137,15 +137,15 @@ The fix for a wrong Transaction: a Reversal of it plus a new, right Transaction,
 _Avoid_: Edit, amendment, cancel/rebill
 
 **Reversal**:
-A Transaction that exactly undoes an earlier one, with every amount negated, and points back at it.
+A Transaction that exactly undoes an earlier one, with every amount negated, and names the one it undoes.
 _Avoid_: Cancel, void
 
 **Settled cash**:
-The cash in an Account whose Transactions have reached their Settlement date: what can actually be withdrawn.
+The cash an Account can actually withdraw: money going out counts from its Trade date, money coming in only from its Settlement date.
 _Avoid_: Available cash, buying power
 
 **Position**:
-The shares of one Security held in one Account on a given date, rebuilt from the Account's Transactions.
+The shares of one Security held in one Account on a given date, rebuilt from the Account's Transactions by Trade date.
 _Avoid_: Holding
 
 **Tax lot**:
@@ -161,7 +161,7 @@ The shares of a Position multiplied by the Security's price on a given date.
 _Avoid_: Balance (for a Position)
 
 **Cash sweep**:
-Where the Custodian keeps an Account's uninvested cash overnight, such as a bank deposit or a money market fund, earning interest. Treated as a Security priced at exactly $1.00, so cash is a Position like any other.
+Where the Custodian keeps an Account's uninvested cash overnight, such as a bank deposit or a money market fund, earning interest. It is a Security worth exactly $1.00 a share, so cash is a Position like any other.
 _Avoid_: Cash balance, money market (when the sweep is meant)
 
 **Business day**:
@@ -169,11 +169,11 @@ A weekday on which US markets are open.
 _Avoid_: Trading day, working day
 
 **Close**:
-The end of a business day at the Custodian, which produces that day's prices, Transactions and Positions.
+The end of a Business day at the Custodian, which produces that day's prices, Transactions and Positions.
 _Avoid_: End of day, batch
 
 **As-of date**:
-The business day a figure describes, which is the latest Close it was computed from.
+The Business day a figure describes, which is the latest Close it was computed from.
 
 **Custodian feed**:
 The files the Custodian publishes for each Close.
