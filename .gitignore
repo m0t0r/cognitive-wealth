@@ -44,3 +44,6 @@ yarn-error.log*
 
 # Dev sign-in harness output (session cookies)
 .dev/
+
+# Claude Code agent worktrees
+.claude/worktrees/
