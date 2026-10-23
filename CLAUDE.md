@@ -15,9 +15,10 @@ Every task that changes the repo runs in its own git worktree, whether or not th
 1. **Start**: call `EnterWorktree` with a short kebab-case name for the task before the first edit. It branches `worktree-<name>` from `origin/dev` (`worktree.baseRef: "fresh"`) under `.claude/worktrees/`. `.worktreeinclude` copies `apps/web/.env.local`, and the `prepare-worktree` hook runs `pnpm install`. If `node_modules` is still missing, run `pnpm install --frozen-lockfile`.
 2. **Branch**: rename the branch to the repo's `<type>/<topic>` form (`git branch -m feat/billing`) before you push.
 3. **Run**: `pnpm dev` serves the worktree at `https://<branch>.cognitive-wealth.localhost`. Compose and `.secrets/` stay in the main checkout and serve every worktree.
-4. **Finish**: commit, push and open the PR from the worktree. Remove it (`ExitWorktree` with `remove`, or `git worktree remove`) only once the PR is merged or the user says so.
+4. **Sync**: to pick up a newer `dev`, run `git fetch origin && git rebase origin/dev` in the worktree and resolve conflicts there. In the main checkout, only `git pull --ff-only` (or `git merge --ff-only origin/dev`) is allowed. Run it when `dev` has moved, since the hooks run from the main checkout's copy.
+5. **Finish**: commit, push and open the PR from the worktree. Remove it (`ExitWorktree` with `remove`, or `git worktree remove`) only once the PR is merged or the user says so.
 
-`.claude/hooks/require-worktree.mjs` enforces this. It denies edits inside the main checkout, and commands there that commit, stage, switch branches or rewrite files in place. A denial is the cue to call `EnterWorktree`, not to work around it. Reads, `gh` and files outside the repo (the scratchpad, memory) are unaffected. When the user explicitly wants work done in the main checkout, they start Claude with `CLAUDE_MAIN_CHECKOUT=1`.
+`.claude/hooks/require-worktree.mjs` enforces this. It denies edits inside the main checkout, and commands there that commit, stage, switch branches or rewrite files in place. A denial is the cue to call `EnterWorktree`, not to work around it. Reads, `gh`, a fast-forward of the main checkout and files outside the repo (the scratchpad, memory) are unaffected. When the user explicitly wants work done in the main checkout, they start Claude with `CLAUDE_MAIN_CHECKOUT=1`.
 
 ## Commands
 

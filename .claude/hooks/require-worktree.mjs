@@ -6,7 +6,8 @@
 //   - Edit / Write / NotebookEdit of a file inside the main checkout
 //   - Bash in the main checkout that moves branches or the index, or rewrites files in place
 //
-// Reads (cat, grep, git log, gh) and files outside the repo (scratchpad, memory) stay allowed.
+// Reads (cat, grep, git log, gh), files outside the repo (scratchpad, memory) and a fast-forward of
+// the checked-out branch (`git pull --ff-only`) stay allowed.
 // Once a session is in a worktree, Claude Code's own isolation keeps it there. This is a guardrail,
 // not a sandbox: a shell redirect still gets through. Start Claude with CLAUDE_MAIN_CHECKOUT=1 for
 // work that has to happen in the main checkout (e.g. merging a release).
@@ -43,11 +44,16 @@ const MUTATING = [
   /\bpnpm\s+(add|remove|rm|up|update|dlx\s+shadcn)\b/,
 ];
 
+// Fast-forwarding the main checkout to origin can't create a commit or a conflict, and it's how
+// the main checkout (where these hooks run from) picks up a new dev. Only the whole command counts,
+// so `git pull --ff-only && git commit …` is still checked.
+const FAST_FORWARD = /^\s*git\s+(pull\s+--ff-only(\s+origin(\s+dev)?)?|merge\s+--ff-only\s+origin\/dev)\s*$/;
+
 let main = null;
 if (["Edit", "Write", "NotebookEdit"].includes(tool)) {
   const path = args.file_path ?? args.notebook_path;
   if (path) main = mainCheckout(dirname(isAbsolute(path) ? path : resolve(cwd, path)));
-} else if (tool === "Bash" && MUTATING.some((re) => re.test(args.command ?? ""))) {
+} else if (tool === "Bash" && !FAST_FORWARD.test(args.command ?? "") && MUTATING.some((re) => re.test(args.command ?? ""))) {
   main = mainCheckout(cwd);
 }
 if (!main) process.exit(0);
