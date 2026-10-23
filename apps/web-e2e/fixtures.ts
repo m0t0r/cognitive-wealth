@@ -159,7 +159,11 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       await workerDatabase.truncateAll();
       await provide(workerDatabase.db);
     },
-    // Auto: the reset runs before every test, even ones that never touch `db`.
+    // Auto: the reset runs before every test, even ones that never touch `db`. The worker's
+    // server outlives tests, so a sign-in request's `after()` work may land after the next test's
+    // reset. It only touches rows and keys of that request's own address and IP, which
+    // `uniqueEmail` and `clientIp` make unique per test, plus audit rows, which no spec asserts
+    // on. Keep it that way: don't count audit rows or reuse an address across tests.
     { auto: true },
   ],
 

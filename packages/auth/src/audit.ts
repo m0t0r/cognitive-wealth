@@ -26,6 +26,9 @@ export interface AuditEventInput {
   metadata?: Record<string, unknown>;
 }
 
+/** Longer user agents are cut: the header is client-set, and every request may write one. */
+export const MAX_USER_AGENT_LENGTH = 512;
+
 /**
  * Appends an audit event. Never throws: the user's action already happened, so a failed write is
  * logged and swallowed rather than turned into an error for them.
@@ -39,7 +42,7 @@ export async function writeAuditEvent(db: Database, event: AuditEventInput): Pro
       targetType: event.target?.type ?? null,
       targetId: event.target?.publicId ?? null,
       ipAddress: event.ipAddress || null,
-      userAgent: event.userAgent || null,
+      userAgent: event.userAgent?.slice(0, MAX_USER_AGENT_LENGTH) || null,
       metadata: event.metadata ?? null,
     });
   } catch (error) {

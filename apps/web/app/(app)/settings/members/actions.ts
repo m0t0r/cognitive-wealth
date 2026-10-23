@@ -25,7 +25,7 @@ import { formString } from "@/lib/form-data";
 const organizationPublicId = z.uuid();
 const inviteSchema = z.object({
   organizationPublicId,
-  email: z.email().max(254),
+  email: z.string().transform(normalizeEmail).pipe(z.email().max(254)),
   role: z.enum(ROLES),
 });
 const roleSchema = z.object({
@@ -83,10 +83,11 @@ export async function cancelInvitationAction(input: {
 
 async function invite(input: {
   organizationPublicId: unknown;
-  email: string;
+  email: unknown;
   role: unknown;
 }): Promise<ActionResult> {
-  const parsed = inviteSchema.safeParse({ ...input, email: normalizeEmail(input.email) });
+  // Server Actions take whatever a client sends: parse before touching any field.
+  const parsed = inviteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
   return done(await inviteMember(getAuth(), await headers(), parsed.data));
 }

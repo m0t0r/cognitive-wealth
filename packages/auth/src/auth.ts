@@ -1,15 +1,16 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Database } from "@repo/db";
 import * as schema from "@repo/db/schema";
 import { member, session as sessionTable } from "@repo/db/schema";
 import { renderInvitationEmail, type Mailer } from "@repo/email";
 import { betterAuth, type BetterAuthPlugin } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { createAuthMiddleware, getIP, getSessionFromCtx } from "better-auth/api";
+import { APIError, createAuthMiddleware, getIP, getSessionFromCtx } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { magicLink } from "better-auth/plugins/magic-link";
 import { organization } from "better-auth/plugins/organization";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { ac, roles } from "./access";
+import { ac, can, roles } from "./access";
 import { writeAuditEvent } from "./audit";
 import { AUTH_BASE_PATH, COOKIE_PREFIX } from "./constants";
 import { setDeviceCookie } from "./device";
@@ -92,6 +93,11 @@ export function createAuth(deps: AuthDeps) {
     runInBackground: deps.runInBackground ?? runInBackground,
   });
 
+  // Better Auth awaits `sendInvitationEmail` but logs and swallows its errors, so `createInvitation`
+  // succeeds whether or not the email went out. The callback marks a failure here instead, for
+  // `trackInvitationEmail` to report.
+  const invitationEmail = new AsyncLocalStorage<{ failed: boolean }>();
+
   const ourPlugins = [
     emailOTP({
       otpLength: 6,
@@ -117,22 +123,36 @@ export function createAuth(deps: AuthDeps) {
       invitationExpiresIn: INVITATION_EXPIRES_IN,
       cancelPendingInvitationsOnReInvite: true,
       requireEmailVerificationOnInvitation: true,
+      organizationHooks: {
+        // Better Auth checks the inviter's rights when the invitation is created, never again.
+        // Without this, someone removed from a workspace (or demoted) could rejoin with their old
+        // role through an invitation they sent to another address of theirs.
+        async beforeAcceptInvitation({ invitation: accepted }) {
+          if (!(await inviterMayGrant(db, accepted))) throw inviterGoneError();
+        },
+      },
       async sendInvitationEmail({ invitation, organization: org, inviter }) {
-        const { publicId } = invitation as typeof invitation & { publicId?: unknown };
-        if (typeof publicId !== "string") throw new Error("Invitation has no publicId");
-        const email = await renderInvitationEmail({
-          url: new URL(`/invite/${encodeURIComponent(publicId)}`, origin).toString(),
-          organizationName: org.name,
-          inviterName: inviter.user.name,
-          role: invitation.role,
-          expiresAt: invitation.expiresAt,
-        });
-        await mailer.send({
-          to: invitation.email,
-          ...email,
-          tags: { category: "invitation" },
-          idempotencyKey: `invitation/${publicId}`,
-        });
+        try {
+          const { publicId } = invitation as typeof invitation & { publicId?: unknown };
+          if (typeof publicId !== "string") throw new Error("Invitation has no publicId");
+          const email = await renderInvitationEmail({
+            url: new URL(`/invite/${encodeURIComponent(publicId)}`, origin).toString(),
+            organizationName: org.name,
+            inviterName: inviter.user.name,
+            role: invitation.role,
+            expiresAt: invitation.expiresAt,
+          });
+          await mailer.send({
+            to: invitation.email,
+            ...email,
+            tags: { category: "invitation" },
+            idempotencyKey: `invitation/${publicId}`,
+          });
+        } catch (error) {
+          const tracked = invitationEmail.getStore();
+          if (tracked) tracked.failed = true;
+          throw error;
+        }
       },
       schema: {
         organization: { additionalFields: publicIdField },
@@ -202,15 +222,21 @@ export function createAuth(deps: AuthDeps) {
         const method = SIGN_IN_METHODS[ctx.path];
         const created = ctx.context.newSession;
         if (method === undefined || !created) return;
-        // The credential just used is consumed; the other one (link or code) must die too. Not
-        // caught: if this fails, the sign-in fails rather than leave a live sibling behind.
-        await deleteSiblingCredentials(db, storage, created.user.email);
-        // Mark this browser as one the user signs in from, so it keeps getting sign-in emails
-        // while others flood the address (`sendMagicLink`). Reissued on every sign-in to restart
-        // its 180 days.
-        const { publicId } = created.user as typeof created.user & { publicId?: unknown };
-        if (typeof publicId !== "string") throw new Error("Signed-in user has no publicId");
-        await setDeviceCookie(ctx, publicId);
+        try {
+          // The credential just used is consumed; the other one (link or code) must die too.
+          await deleteSiblingCredentials(db, storage, created.user.email);
+          // Mark this browser as one the user signs in from, so it keeps getting sign-in emails
+          // while others flood the address (`sendMagicLink`). Reissued on every sign-in to
+          // restart its 180 days.
+          const { publicId } = created.user as typeof created.user & { publicId?: unknown };
+          if (typeof publicId !== "string") throw new Error("Signed-in user has no publicId");
+          await setDeviceCookie(ctx, publicId);
+        } catch (error) {
+          // The session already exists. If a sibling may still be live, the sign-in fails as a
+          // whole: end the session too, so a failure never leaves one behind.
+          await ctx.context.internalAdapter.deleteSession(created.session.token);
+          throw error;
+        }
         const headers = ctx.request?.headers ?? ctx.headers;
         await writeAuditEvent(db, {
           action: "auth.sign_in",
@@ -248,10 +274,50 @@ export function createAuth(deps: AuthDeps) {
 
   issueOtp = (email) => auth.api.sendVerificationOTP({ body: { email, type: "sign-in" } });
 
-  return Object.assign(auth, { $deps: { db, storage, baseURL: origin } });
+  /** Runs `create` (an `auth.api.createInvitation` call) and says whether its email went out. */
+  async function trackInvitationEmail<T>(
+    create: () => Promise<T>,
+  ): Promise<{ result: T; emailSent: boolean }> {
+    const tracked = { failed: false };
+    const result = await invitationEmail.run(tracked, create);
+    return { result, emailSent: !tracked.failed };
+  }
+
+  return Object.assign(auth, { $deps: { db, storage, baseURL: origin, trackInvitationEmail } });
 }
 
 export type Auth = ReturnType<typeof createAuth>;
+
+/**
+ * Whether the inviter could still send `invitation` today: they are still a member, their role
+ * still grants `invitation:create`, and an owner invitation still comes from an owner. Checked on
+ * accept (and before showing an invitation), since Better Auth only checks when it's created.
+ */
+export async function inviterMayGrant(
+  db: Database,
+  invitation: { inviterId: string | number; organizationId: string | number; role: string | null },
+): Promise<boolean> {
+  const [row] = await db
+    .select({ role: member.role })
+    .from(member)
+    .where(
+      and(
+        eq(member.userId, Number(invitation.inviterId)),
+        eq(member.organizationId, Number(invitation.organizationId)),
+      ),
+    )
+    .limit(1);
+  if (row === undefined || !can(row.role, "invitation:create")) return false;
+  return invitation.role !== "owner" || row.role === "owner";
+}
+
+/** Better Auth's own error for an inviter who has left, so callers map it like its check. */
+function inviterGoneError(): APIError {
+  return new APIError("BAD_REQUEST", {
+    code: "INVITER_IS_NO_LONGER_A_MEMBER_OF_THE_ORGANIZATION",
+    message: "Inviter is no longer a member of the organization",
+  });
+}
 
 function notInitialized(): Promise<never> {
   return Promise.reject(new Error("Auth is not initialized"));

@@ -6,12 +6,15 @@ import type { TenantErrorCode } from "@repo/auth";
 const SIGN_IN_ERRORS: Record<AuthErrorCode, string> = {
   invalid_or_expired:
     "That sign-in link or code has expired or was already used. Send a new email.",
-  too_many_attempts: "Too many tries with this code. Send a new email to get a new code.",
   rate_limited: "Too many sign-in attempts. Wait a minute, then try again.",
   invalid_request: "Check the email address and try again.",
   forbidden: "Unable to sign in from this page. Reload it and try again.",
   unknown: "Unable to reach Cognitive Wealth. Check your connection and try again.",
 };
+
+/** After a code's last try: the server forgets it, so nothing typed can work any more. */
+export const CODE_LOCKED_MESSAGE =
+  "Too many tries with this code. Send a new email to get a new code.";
 
 /**
  * Where a sign-in error shows up, for codes whose advice depends on it:
@@ -65,6 +68,8 @@ const TENANT_ERRORS: Record<TenantErrorCode, string> = {
   last_owner: "A workspace needs at least one owner. Make someone else an owner first.",
   already_member: "That person is already a member of this workspace.",
   wrong_recipient: "This invitation was sent to a different email address.",
+  email_failed:
+    "The invitation is saved, but its email couldn't be sent. Send it again in a moment.",
   unknown: "Unable to finish that. Try again.",
 };
 

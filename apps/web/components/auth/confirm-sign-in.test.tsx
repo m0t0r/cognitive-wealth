@@ -49,6 +49,25 @@ describe("ConfirmSignIn", () => {
     expect(assign).toHaveBeenCalledWith("/settings/members");
   });
 
+  it("warns someone already signed in that continuing switches account", async () => {
+    arriveAt("/sign-in/confirm#token=t0k3n");
+    const { container } = setup(<ConfirmSignIn signedInAs="ada@example.com" />);
+
+    await screen.findByRole("button", { name: "Continue to Cognitive Wealth" });
+    expect(screen.getByText(/You're signed in as/)).toHaveTextContent(
+      "You're signed in as ada@example.com. Continuing signs you in with the account this link was sent to instead.",
+    );
+    expect(verifyMagicLink).not.toHaveBeenCalled();
+    await expect(container).toHaveNoA11yViolations();
+  });
+
+  it("says nothing about accounts to a signed-out visitor", async () => {
+    arriveAt("/sign-in/confirm#token=t0k3n");
+    setup(<ConfirmSignIn />);
+    await screen.findByRole("button", { name: "Continue to Cognitive Wealth" });
+    expect(screen.queryByText(/signed in as/)).not.toBeInTheDocument();
+  });
+
   it("goes home when next points off-site", async () => {
     arriveAt("/sign-in/confirm#token=t0k3n&next=%2F%2Fevil.example");
     const { user } = setup(<ConfirmSignIn />);

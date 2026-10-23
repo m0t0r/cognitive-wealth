@@ -23,7 +23,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@repo/design-system/compo
 import { Spinner } from "@repo/design-system/components/spinner";
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import * as z from "zod";
-import { signInErrorMessage } from "@/lib/auth/messages";
+import { CODE_LOCKED_MESSAGE, signInErrorMessage } from "@/lib/auth/messages";
 import { formString } from "@/lib/form-data";
 
 /** Seconds before "Resend email" works again. */
@@ -54,16 +54,23 @@ interface VerifyState {
   attempt: number;
   /** The code the error is about: editing it makes the error stale, so it's hidden. */
   code: string;
-  /** Too many wrong codes for this email: its code can't work any more, whatever is typed. */
-  locked: boolean;
+  /** Codes refused for this email. The server allows {@link CODE_ATTEMPTS}, then forgets it. */
+  failures: number;
 }
+
+/**
+ * Tries a code allows (the emailOTP plugin's `allowedAttempts`). The server answers a used-up
+ * code like any wrong one, so it can't tell an attacker which addresses were sent a code; this
+ * page counts instead, to say what happened.
+ */
+export const CODE_ATTEMPTS = 3;
 
 const INITIAL_VERIFY: VerifyState = {
   error: null,
   done: false,
   attempt: 0,
   code: "",
-  locked: false,
+  failures: 0,
 };
 
 const INITIAL_REQUEST: RequestState = { error: null, notice: null };
@@ -104,22 +111,26 @@ export function SignInFlow({ next, arrivalError, purpose = null }: SignInFlowPro
   const [verifyState, verify, verifying] = useActionState(
     async (previous: VerifyState, input: { code: string }): Promise<VerifyState> => {
       const base = { done: false, attempt, code: input.code };
-      const locked = previous.locked && previous.attempt === attempt;
-      if (sentTo === null) return { ...base, error: null, locked };
+      const failures = previous.attempt === attempt ? previous.failures : 0;
+      if (sentTo === null) return { ...base, error: null, failures };
       if (!CODE_PATTERN.test(input.code)) {
-        return { ...base, error: "Enter the 6-digit code from the email.", locked };
+        return { ...base, error: "Enter the 6-digit code from the email.", failures };
       }
       const result = await verifyCode(sentTo, input.code);
       if (!result.ok) {
-        // After a lockout the server forgets the code, so later tries read as expired; keep
-        // saying what actually happened (and that a new email is the way out).
-        const nowLocked = locked || result.error === "too_many_attempts";
-        const error = nowLocked ? "too_many_attempts" : result.error;
-        return { ...base, error: signInErrorMessage(error, "code"), locked: nowLocked };
+        if (result.error !== "invalid_or_expired") {
+          return { ...base, error: signInErrorMessage(result.error, "code"), failures };
+        }
+        // Once the code's tries are used up, every later one fails too: say so, and that a new
+        // email is the way out, instead of "didn't work" again.
+        const counted = failures + 1;
+        const error =
+          counted >= CODE_ATTEMPTS ? CODE_LOCKED_MESSAGE : signInErrorMessage(result.error, "code");
+        return { ...base, error, failures: counted };
       }
       // A full navigation, so Server Components see the new session cookie.
       window.location.assign(next ?? "/");
-      return { ...base, error: null, done: true, locked: false };
+      return { ...base, error: null, done: true, failures: 0 };
     },
     INITIAL_VERIFY,
   );

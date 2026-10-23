@@ -51,7 +51,6 @@ function post(path: string, body: unknown): Promise<AuthResult> {
 
 const ERROR_CODES: readonly AuthErrorCode[] = [
   "invalid_or_expired",
-  "too_many_attempts",
   "rate_limited",
   "invalid_request",
   "forbidden",

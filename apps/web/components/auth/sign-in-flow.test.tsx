@@ -105,7 +105,7 @@ describe("SignInFlow", () => {
 
   it.each([
     ["invalid_or_expired", "That code didn't work."],
-    ["too_many_attempts", "Too many tries with this code."],
+    ["rate_limited", "Too many sign-in attempts."],
   ] as const)("explains a %s code", async (error, message) => {
     vi.mocked(verifyCode).mockResolvedValue({ ok: false, error });
     const { user, container } = setup(<SignInFlow next={null} arrivalError={null} />);
@@ -133,24 +133,56 @@ describe("SignInFlow", () => {
     expect(field).not.toHaveAttribute("aria-invalid");
   });
 
-  it("keeps saying the code is locked after a lockout, instead of “didn't work”", async () => {
-    vi.mocked(verifyCode)
-      .mockResolvedValueOnce({ ok: false, error: "too_many_attempts" })
-      // The server forgot the code, so the next try reads as expired.
-      .mockResolvedValueOnce({ ok: false, error: "invalid_or_expired" });
+  it("says the code is used up after its 3rd wrong try, and keeps saying so", async () => {
+    // The server answers a used-up code like a wrong one (so it can't reveal who was sent a
+    // code); the page counts the tries itself.
+    vi.mocked(verifyCode).mockResolvedValue({ ok: false, error: "invalid_or_expired" });
     const { user } = setup(<SignInFlow next={null} arrivalError={null} />);
     await submitEmail(user);
     const field = screen.getByLabelText("Sign-in code");
-    await user.type(field, "123456");
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    const tryCode = async (code: string) => {
+      await user.clear(field);
+      await user.type(field, code);
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+    };
+
+    await tryCode("111111");
+    expect(await screen.findByRole("alert")).toHaveTextContent("That code didn't work.");
+    await tryCode("222222");
+    expect(await screen.findByRole("alert")).toHaveTextContent("That code didn't work.");
+    await tryCode("333333");
     expect(await screen.findByRole("alert")).toHaveTextContent("Too many tries with this code.");
-
-    await user.clear(field);
-    await user.type(field, "654321");
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
-
+    await tryCode("444444");
     expect(await screen.findByRole("alert")).toHaveTextContent("Too many tries with this code.");
     expect(screen.getByRole("alert")).not.toHaveTextContent("didn't work");
+  });
+
+  it("starts counting again after a new email", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    vi.mocked(verifyCode).mockResolvedValue({ ok: false, error: "invalid_or_expired" });
+    render(<SignInFlow next={null} arrivalError={null} />);
+    await submitEmail(user);
+    const tryCode = async (code: string) => {
+      const field = screen.getByLabelText("Sign-in code");
+      await user.clear(field);
+      await user.type(field, code);
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+    };
+    await tryCode("111111");
+    await tryCode("222222");
+    await tryCode("333333");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too many tries with this code.");
+
+    for (let second = 0; second < RESEND_COOLDOWN; second++) {
+      // One tick per second: each re-render schedules the next one.
+      // oxlint-disable-next-line no-await-in-loop
+      await act(() => vi.advanceTimersByTimeAsync(1000));
+    }
+    await user.click(screen.getByRole("button", { name: "Resend email" }));
+    await tryCode("444444");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("That code didn't work.");
   });
 
   it("says it's for an invitation, without naming the workspace", () => {

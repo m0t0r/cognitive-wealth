@@ -52,6 +52,7 @@ export function authOptionsFromEnv(env: AuthEnv): AuthEnvOptions {
 
   const baseURL = parseBaseURL(
     vars.BETTER_AUTH_URL ?? (production ? undefined : vars.PORTLESS_URL),
+    production,
   );
 
   const secret = readSecret(vars.BETTER_AUTH_SECRET, vars.BETTER_AUTH_SECRET_FILE);
@@ -86,7 +87,7 @@ export function authOptionsFromEnv(env: AuthEnv): AuthEnvOptions {
   };
 }
 
-function parseBaseURL(value: string | undefined): string {
+function parseBaseURL(value: string | undefined, production: boolean): string {
   if (value === undefined) {
     throw new Error("BETTER_AUTH_URL must be set (outside production, PORTLESS_URL also works)");
   }
@@ -98,6 +99,11 @@ function parseBaseURL(value: string | undefined): string {
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") {
     throw new Error("BETTER_AUTH_URL must use http or https");
+  }
+  // Sign-in links carry their token in the fragment, which anyone who can rewrite plain-http
+  // pages could read. Plain http is only for this machine (the Compose stack, e2e).
+  if (production && url.protocol === "http:" && !isLoopbackHost(url.hostname)) {
+    throw new Error("BETTER_AUTH_URL must use https in production, except on localhost");
   }
   // Links and the origin check are built from the origin alone; a path here would be ignored or
   // half-applied, so refuse it.
@@ -163,3 +169,12 @@ function isIpOrCidr(entry: string): boolean {
 // Re-exported for `apps/web`, which builds the mailer next to the auth options but doesn't depend
 // on `@repo/email` itself.
 export { mailerFromEnv } from "@repo/email";
+
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "[::1]" ||
+    /^127(?:\.\d{1,3}){3}$/.test(hostname)
+  );
+}

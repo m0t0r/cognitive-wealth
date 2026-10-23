@@ -21,7 +21,7 @@ import {
   declineInvitationAction,
 } from "@/app/(auth)/invite/[publicId]/actions";
 import { ConfirmActionDialog } from "@/components/confirm-action-dialog";
-import type { ActionResult } from "@/lib/action-result";
+import type { ActionResult, FormState } from "@/lib/action-result";
 import { tenantErrorMessage } from "@/lib/auth/messages";
 import { ROLE_LABELS } from "@/lib/roles";
 
@@ -46,7 +46,15 @@ export function InvitationResponse({
   /** Whether the viewer already belongs to a workspace (where to send them after declining). */
   hasWorkspace: boolean;
 }) {
-  const [acceptState, accept, accepting] = useActionState(acceptInvitationAction, null);
+  // Which answer was tried last: its error is the one to show, not an older one from the other.
+  const [latest, setLatest] = useState<"accept" | "decline" | null>(null);
+  const [acceptState, accept, accepting] = useActionState(
+    (previous: FormState, formData: FormData) => {
+      setLatest("accept");
+      return acceptInvitationAction(previous, formData);
+    },
+    null,
+  );
   const [declineResult, setDeclineResult] = useState<ActionResult | null>(null);
   const [confirming, setConfirming] = useState(false);
   const declinedHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -61,6 +69,7 @@ export function InvitationResponse({
 
   async function decline() {
     setDeclineResult(await declineInvitationAction({ invitationPublicId: invitation.publicId }));
+    setLatest("decline");
     setConfirming(false);
   }
 
@@ -91,8 +100,8 @@ export function InvitationResponse({
     );
   }
 
-  const failure =
-    acceptState?.ok === false ? acceptState : declineResult?.ok === false ? declineResult : null;
+  const result = latest === "accept" ? acceptState : latest === "decline" ? declineResult : null;
+  const failure = result?.ok === false ? result : null;
 
   return (
     <Card>

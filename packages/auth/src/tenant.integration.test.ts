@@ -226,6 +226,25 @@ describe("revokeUserSessions", () => {
   });
 });
 
+describe("revokeUserSessions without the cached session list", () => {
+  test("still signs out a session the list lost (eviction, or two sign-ins racing)", async ({
+    t,
+    world,
+  }) => {
+    expect(await getViewer(t.auth, world.as.cy)).not.toBeNull();
+    // Better Auth finds cached sessions through this list; Redis may evict it, or two
+    // concurrent sign-ins may each write it without the other's session.
+    await t.storage.delete(`active-sessions-${world.users.cy.id}`);
+
+    expect(await revokeUserSessions(t.auth, world.users.cy.publicId)).toEqual({
+      ok: true,
+      data: null,
+    });
+
+    expect(await getViewer(t.auth, world.as.cy)).toBeNull();
+  });
+});
+
 describe("members", () => {
   test("lists the tenant's members only", async ({ t, world }) => {
     const members = await listMembers(t.auth, await tenantViewer(t, world.as.cy));
@@ -538,6 +557,106 @@ describe("invitations", () => {
     });
   });
 
+  test("a stale session must re-authenticate to invite an owner or admin, not a member", async ({
+    t,
+    world,
+  }) => {
+    makeSessionsStale();
+    const emailsBefore = t.mailer.messages.length;
+    for (const [as, role] of [
+      [world.as.ada, "owner"],
+      [world.as.ada, "admin"],
+      [world.as.bob, "admin"],
+    ] as const) {
+      // Sequential on purpose: each case checks the database afterwards.
+      // oxlint-disable-next-line no-await-in-loop
+      const result = await inviteMember(t.auth, as, {
+        organizationPublicId: world.acme.publicId,
+        email: "dee@example.com",
+        role,
+      });
+      expect(result).toEqual({ ok: false, error: "reauth_required" });
+    }
+    expect(await t.auth.$deps.db.$count(invitation)).toBe(0);
+    expect(t.mailer.messages).toHaveLength(emailsBefore);
+    expect(await auditActions(t)).toEqual([]);
+
+    expect(
+      await inviteMember(t.auth, world.as.bob, {
+        organizationPublicId: world.acme.publicId,
+        email: "dee@example.com",
+        role: "member",
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
+  test("an invite that's refused doesn't spend the hourly limit", async ({ t, world }) => {
+    for (let i = 0; i < 25; i++) {
+      // Sequential on purpose: each attempt would count against the limit.
+      // oxlint-disable-next-line no-await-in-loop
+      const result = await inviteMember(t.auth, world.as.bob, {
+        organizationPublicId: world.acme.publicId,
+        email: i % 2 === 0 ? "cy@example.com" : "dee@example.com",
+        // An admin can't invite an owner; Cy is already a member.
+        role: i % 2 === 0 ? "member" : "owner",
+      });
+      expect(result).toMatchObject({ ok: false });
+    }
+
+    expect(
+      await inviteMember(t.auth, world.as.bob, {
+        organizationPublicId: world.acme.publicId,
+        email: "dee@example.com",
+        role: "member",
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
+  test("keeps and records an invitation whose email failed, and says so", async ({ t, world }) => {
+    const first = await inviteMember(t.auth, world.as.ada, {
+      organizationPublicId: world.acme.publicId,
+      email: "dee@example.com",
+      role: "member",
+    });
+    if (!first.ok) throw new Error(first.error);
+    vi.spyOn(t.mailer, "send").mockRejectedValueOnce(new Error("SMTP is down"));
+
+    expect(
+      await inviteMember(t.auth, world.as.ada, {
+        organizationPublicId: world.acme.publicId,
+        email: "dee@example.com",
+        role: "member",
+      }),
+    ).toEqual({ ok: false, error: "email_failed" });
+
+    // Better Auth replaced the first invitation before the send failed: both are on record.
+    const pending = await listInvitations(t.auth, await tenantViewer(t, world.as.ada));
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.publicId).not.toBe(first.data.publicId);
+    expect(await auditActions(t)).toEqual([
+      { action: "org.invitation.created", targetType: "invitation", targetId: first.data.publicId },
+      {
+        action: "org.invitation.created",
+        targetType: "invitation",
+        targetId: pending[0]!.publicId,
+      },
+      {
+        action: "org.invitation.cancelled",
+        targetType: "invitation",
+        targetId: first.data.publicId,
+      },
+    ]);
+
+    // Sending again works, and replaces it.
+    expect(
+      await inviteMember(t.auth, world.as.ada, {
+        organizationPublicId: world.acme.publicId,
+        email: "dee@example.com",
+        role: "member",
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
   test("limits invitations to 20 per hour per user", async ({ t, world }) => {
     for (let i = 0; i < 20; i++) {
       // Sequential on purpose: each step depends on the ones before.
@@ -832,6 +951,112 @@ describe("inviting an address again", () => {
   });
 });
 
+describe("an inviter who leaves or loses the role", () => {
+  test("removing them cancels the invitations they sent", async ({ t, world }) => {
+    await t.seedUser({ email: "dee@example.com", name: "Dee" });
+    const invited = await inviteMember(t.auth, world.as.bob, {
+      organizationPublicId: world.acme.publicId,
+      email: "dee@example.com",
+      role: "admin",
+    });
+    if (!invited.ok) throw new Error(invited.error);
+
+    await removeMember(t.auth, world.as.ada, {
+      organizationPublicId: world.acme.publicId,
+      memberPublicId: world.members.bob.publicId,
+    });
+
+    expect(await listInvitations(t.auth, await tenantViewer(t, world.as.ada))).toEqual([]);
+    const dee = await t.signInAs("dee@example.com");
+    expect(
+      await acceptInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId }),
+    ).toEqual({ ok: false, error: "not_found" });
+    expect(await auditActions(t)).toContainEqual({
+      action: "org.invitation.cancelled",
+      targetType: "invitation",
+      targetId: invited.data.publicId,
+    });
+  });
+
+  test("demoting an owner cancels only the invitations they can no longer send", async ({
+    t,
+    world,
+  }) => {
+    await changeMemberRole(t.auth, world.as.ada, {
+      organizationPublicId: world.acme.publicId,
+      memberPublicId: world.members.bob.publicId,
+      role: "owner",
+    });
+    const asOwner = await inviteMember(t.auth, world.as.bob, {
+      organizationPublicId: world.acme.publicId,
+      email: "dee@example.com",
+      role: "owner",
+    });
+    const asMember = await inviteMember(t.auth, world.as.bob, {
+      organizationPublicId: world.acme.publicId,
+      email: "eve@example.com",
+      role: "member",
+    });
+    if (!asOwner.ok || !asMember.ok) throw new Error("invite failed");
+
+    await changeMemberRole(t.auth, world.as.ada, {
+      organizationPublicId: world.acme.publicId,
+      memberPublicId: world.members.bob.publicId,
+      role: "admin",
+    });
+
+    const pending = await listInvitations(t.auth, await tenantViewer(t, world.as.ada));
+    expect(pending.map((i) => i.publicId)).toEqual([asMember.data.publicId]);
+  });
+
+  test("an invitation left pending by a departed inviter can't be read, listed or accepted", async ({
+    t,
+    world,
+  }) => {
+    const invited = await inviteMember(t.auth, world.as.bob, {
+      organizationPublicId: world.acme.publicId,
+      email: "dee@example.com",
+      role: "admin",
+    });
+    if (!invited.ok) throw new Error(invited.error);
+    const dee = await t.signInAs("dee@example.com");
+    // Not through `removeMember` (which cancels it): any other way the membership ends.
+    await t.auth.$deps.db.delete(member).where(eq(member.id, world.members.bob.id));
+
+    const viewer = await getViewer(t.auth, dee);
+    expect(await listMyInvitations(t.auth, viewer!)).toEqual([]);
+    expect(await getInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId })).toEqual(
+      { ok: false, error: "not_found" },
+    );
+    expect(
+      await acceptInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId }),
+    ).toEqual({ ok: false, error: "not_found" });
+    expect(await t.auth.$deps.db.$count(member, eq(member.organizationId, world.acme.id))).toBe(2);
+  });
+
+  test("an owner invitation from someone no longer an owner can't be accepted", async ({
+    t,
+    world,
+  }) => {
+    const invited = await inviteMember(t.auth, world.as.ada, {
+      organizationPublicId: world.acme.publicId,
+      email: "dee@example.com",
+      role: "owner",
+    });
+    if (!invited.ok) throw new Error(invited.error);
+    const dee = await t.signInAs("dee@example.com");
+    await t.auth.$deps.db
+      .update(member)
+      .set({ role: "admin" })
+      .where(eq(member.id, world.members.ada.id));
+
+    expect(
+      await acceptInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId }),
+    ).toEqual({ ok: false, error: "not_found" });
+    expect((await getViewer(t.auth, dee))?.tenant).toBeNull();
+  });
+});
+
 describe("listMyInvitations", () => {
   test("lists only the viewer's own invitations they can still answer", async ({ t, world }) => {
     const toDee = (organizationPublicId: string) =>
@@ -898,8 +1123,17 @@ describe("profile", () => {
     });
   });
 
-  test("refuses empty, long or multi-line names", async ({ t, world }) => {
-    for (const name of ["", "   ", "x".repeat(101), "Cy\nYoung"]) {
+  test("refuses empty, long, multi-line or direction-changing names", async ({ t, world }) => {
+    for (const name of [
+      "",
+      "   ",
+      "x".repeat(101),
+      "Cy\nYoung",
+      // C1 control (NEL), line separator, and a bidi override that reverses what follows.
+      "Cy\u0085Young",
+      "Cy\u2028Young",
+      "Support \u202Emoc.live",
+    ]) {
       // Sequential on purpose: each step depends on the ones before.
       // oxlint-disable-next-line no-await-in-loop
       expect(await updateProfileName(t.auth, world.as.cy, { name })).toEqual({
