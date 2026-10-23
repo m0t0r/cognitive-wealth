@@ -16,9 +16,13 @@ repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 tree=$(mktemp -d)
 trap 'git -C "$main" worktree remove --force "$tree" >/dev/null 2>&1 || true' EXIT
 
+# Build on the existing history, remote first, then a local branch (the remote one has gone missing
+# before). Earlier PRs link their images by commit, so those commits must stay reachable.
 git -C "$main" fetch --quiet origin pr-assets 2>/dev/null || true
 if git -C "$main" rev-parse --verify --quiet origin/pr-assets >/dev/null; then
   git -C "$main" worktree add --quiet --detach "$tree" origin/pr-assets
+elif git -C "$main" rev-parse --verify --quiet refs/heads/pr-assets >/dev/null; then
+  git -C "$main" worktree add --quiet --detach "$tree" pr-assets
 else
   git -C "$main" worktree add --quiet --detach "$tree"
   git -C "$tree" checkout --quiet --orphan pr-assets-new
@@ -37,7 +41,12 @@ if git -C "$tree" diff --cached --quiet; then
 else
   git -C "$tree" commit --quiet -m "pr-$pr: charts and diagrams"
   sha=$(git -C "$tree" rev-parse HEAD)
-  git -C "$tree" push --quiet origin "HEAD:refs/heads/pr-assets"
+  # GitHub's "create a pull request" hint is noise here; a failed push still stops the script.
+  if ! out=$(git -C "$tree" push --quiet origin "HEAD:refs/heads/pr-assets" 2>&1); then
+    echo "$out" >&2
+    exit 1
+  fi
+  git -C "$main" branch --force pr-assets "$sha" >/dev/null
 fi
 
 echo "https://raw.githubusercontent.com/$repo/$sha/pr-$pr"
