@@ -1,6 +1,11 @@
 "use client";
 
-import { callbackPathOrDefault, sanitizeCallbackPath, verifyMagicLink } from "@repo/auth/client";
+import {
+  callbackPathOrDefault,
+  isWellFormedSignInToken,
+  sanitizeCallbackPath,
+  verifyMagicLink,
+} from "@repo/auth/client";
 import { Alert, AlertDescription } from "@repo/design-system/components/alert";
 import { Button, buttonVariants } from "@repo/design-system/components/button";
 import {
@@ -16,8 +21,14 @@ import { startTransition, useActionState, useEffect, useState } from "react";
 import { signInErrorMessage } from "@/lib/auth/messages";
 import { signInPath } from "@/lib/auth/paths";
 
-/** What the email's link carried in its fragment. `undefined` until read in the browser. */
-type FragmentLink = { token: string; next: string | null } | null | undefined;
+/**
+ * What the email's link carried in its fragment. `undefined` until read in the browser.
+ * `malformed`: a token no link of ours carries (mangled by a mail client, or made up).
+ */
+type FragmentLink = { token: string; next: string | null; malformed: boolean } | null | undefined;
+
+/** Codes that mean this link can never work: offer a new one rather than a retry. */
+const DEAD_LINK_ERRORS = new Set(["invalid_or_expired", "invalid_request"]);
 
 interface ConfirmState {
   error: string | null;
@@ -44,7 +55,13 @@ export function ConfirmSignIn() {
         `${window.location.pathname}${window.location.search}`,
       );
     }
-    const found = token ? { token, next: sanitizeCallbackPath(params.get("next")) } : null;
+    const found = token
+      ? {
+          token,
+          next: sanitizeCallbackPath(params.get("next")),
+          malformed: !isWellFormedSignInToken(token),
+        }
+      : null;
     // A second run (React's dev double-invoke) finds the fragment already cleared: keep the first.
     // oxlint-disable-next-line react/set-state-in-effect
     setLink((current) => current ?? found);
@@ -55,9 +72,11 @@ export function ConfirmSignIn() {
       if (!link) return { error: null, expired: false, done: false };
       const result = await verifyMagicLink(link.token);
       if (!result.ok) {
+        // A link the server refuses as malformed is as dead as an expired one.
+        const dead = DEAD_LINK_ERRORS.has(result.error);
         return {
-          error: signInErrorMessage(result.error, "link"),
-          expired: result.error === "invalid_or_expired",
+          error: signInErrorMessage(dead ? "invalid_or_expired" : result.error, "link"),
+          expired: dead,
           done: false,
         };
       }
@@ -106,23 +125,24 @@ export function ConfirmSignIn() {
   }
 
   const retryHref = signInPath(link.next);
+  // A malformed token is never sent to the server: it shows the dead-link state straight away.
+  const expired = state.expired || link.malformed;
+  const error = link.malformed ? signInErrorMessage("invalid_or_expired", "link") : state.error;
   return (
     <Card>
       <CardHeader>
         <CardTitle>
           <h1 className="font-heading text-xl">Finish signing in</h1>
         </CardTitle>
-        {state.expired ? null : (
-          <CardDescription>Continue to sign in on this device.</CardDescription>
-        )}
+        {expired ? null : <CardDescription>Continue to sign in on this device.</CardDescription>}
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
-        {state.error === null ? null : (
+        {error === null ? null : (
           <Alert variant="destructive">
-            <AlertDescription>{state.error}</AlertDescription>
+            <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-        {state.expired ? (
+        {expired ? (
           <Link href={retryHref} className={buttonVariants({ size: "lg" })}>
             Get a new sign-in link
           </Link>

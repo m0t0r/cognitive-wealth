@@ -127,10 +127,16 @@ The handler rebuilds every request it forwards from checked parts: exact, case-s
 - `requireTenant(auth, headers)` returns `Result<TenantViewer>` (a `Viewer` whose `tenant` and `internal.organizationId`/`memberId` are non-null), failing with `unauthenticated` or `no_tenant`. `tenantOf(viewer)` does the same for a viewer already looked up.
 - On session creation (`databaseHooks.session.create.before`), set `activeOrganizationId` to the organization of the user's latest session while they still belong to it (so signing in again, e.g. to confirm a sensitive action, doesn't switch workspaces), otherwise to their most recently created membership.
 - If the active org is missing, or the user is no longer a member, `getViewer` falls back to another membership (and updates the session) or returns `tenant: null`.
-- **Reads take a verified viewer**, not `headers`, so a page looks the session up once per request (`apps/web/lib/auth/viewer.ts` caches it with React `cache`) and passes it down: `listMemberships(viewer: Viewer): PublicMembership[]`, `listMembers(auth, viewer: TenantViewer): Promise<PublicMember[]>`, `listInvitations(auth, viewer: TenantViewer): Promise<PublicInvitation[]>` (pending only).
+- **Reads take a verified viewer**, not `headers`, so a page looks the session up once per request (`apps/web/lib/auth/viewer.ts` caches it with React `cache`) and passes it down:
+  - `listMemberships(viewer: Viewer): PublicMembership[]`
+  - `listMembers(auth, viewer: TenantViewer): Promise<PublicMember[]>`
+  - `listInvitations(auth, viewer: TenantViewer): Promise<PublicInvitation[]>`: the tenant's `pending` invitations, expired ones included, so the members page can mark them **Expired** and offer to send them again
+  - `listMyInvitations(auth, viewer: Viewer): Promise<PublicInvitation[]>`: invitations addressed to the viewer's own normalized email that they can still answer (`pending`, not expired), newest first, for `/no-workspace`. It never returns another address's invitations.
 - **Mutations** take `headers` (Better Auth's `auth.api.*` needs them) plus `publicId`s, resolve the viewer's tenant, resolve the `publicId`s to internal IDs within it, call `auth.api.*`, write an `audit_event`, and return DTOs:
   - switch org, invite, change role, remove member, cancel invitation, get/accept/decline invitation, update profile name
+  - **Tenant mutations** (`inviteMember`, `changeMemberRole`, `removeMember`, `cancelInvitation`, and every later one, all through `mutateTenant`) also take a required `organizationPublicId`: the workspace the caller's page showed. If it isn't the viewer's verified active organization (another tab switched the session), they return `{ error: "tenant_changed" }` before any other check or side effect: no input validation, rate-limit hit, Better Auth call, email or audit row. The tenant is the session's, not the URL's, so without this a page left open in one tab would act on whatever workspace another tab switched to. Only `unauthenticated` and `no_tenant` come first. The web app sends the `organizationPublicId` of the tenant DTO the page rendered, and on `tenant_changed` says "You switched workspace in another tab. This page now shows <workspace>." and re-renders the page in the active tenant.
   - role changes, member removal and invitation cancellation require a **fresh** session (created within 1 hour); otherwise they return `{ error: "reauth_required" }`
+  - inviting an address again replaces its pending invitations in that organization, expired ones included. Better Auth's `cancelPendingInvitationsOnReInvite` only sees unexpired ones (its `findPendingInvitation` filters expired rows out), so `inviteMember` cancels the rest through `auth.api.cancelInvitation` once the new invitation exists, and audits each replaced one as `org.invitation.cancelled` with `metadata: { replacedBy }`. A resend is an ordinary invite: same permission, same 20-per-hour limit.
 - `revokeUserSessions(auth, userPublicId)`: signs a user out everywhere at once through Better Auth's internal adapter (`deleteUserSessions`, which deletes the Postgres rows and the cached `<token>` and `active-sessions-<userId>` keys) and audits `auth.sessions_revoked`; `not_found` for an unknown publicId. For incident response and for domain code that disables an account.
 - Server-side rate limiter (`consumeRateLimit(storage, key, { window, max })` over `secondaryStorage.increment`), used by the invite action (20 per hour per user) and anything else costly.
 - DTOs: `PublicUser { publicId, name, email, image }`, `PublicOrganization { publicId, name, slug, logo }`, `PublicMember { publicId, role, user: PublicUser, createdAt }`, `PublicInvitation { publicId, email, role, status, expiresAt, organization: PublicOrganization, inviter: { name } }`. Mappers drop every internal ID.
@@ -185,9 +191,10 @@ See "Session cache trade-off": SQL alone doesn't reach the Redis cache.
   2. Wait for the email in Mailpit and parse the token.
   3. `GET /api/auth/magic-link/verify?token=…` with `Sec-Fetch-Site: same-origin`, `Sec-Fetch-Mode: cors`.
   4. Return the cookies and a Playwright `storageState`.
-- CLI: `pnpm dev:sign-in <email> [--link] [--state <file>] [--app <url>]`
+- CLI: `pnpm dev:sign-in <email> [--link] [--state <file>] [--app <url>] [--ip <addr>]`
   - The default does the full sign-in and writes `.dev/auth/<email>.json` (gitignored, mode 0600), loadable with `agent-browser --state <file>` or Playwright `storageState`.
   - `--link` only prints the confirm URL and code, for walking through the UI by hand.
+  - `--ip <addr>` passes one IP to `signIn`/`requestSignInEmail` as `x-forwarded-for`, so sessions against a stack that trusts it (Compose) get separate rate-limit buckets.
   - Refuses unless the app and Mailpit hosts are loopback or `*.localhost`.
 - Seed (`pnpm db:seed`, refuses when `NODE_ENV=production` or the database host isn't local):
   - users `owner@cognitive-wealth.test` (owner of Acme and Globex), `admin@cognitive-wealth.test` (admin of Acme), `member@cognitive-wealth.test` (member of Acme)
@@ -206,14 +213,21 @@ Routes:
   - `?next=` preserved
 - `/sign-in/confirm`: reads `#token`/`#next`, clears the fragment with `history.replaceState`, shows "Continue to Cognitive Wealth"; the click calls verify by `fetch`, then navigates to `next`. Never auto-submits.
 - `/welcome`: a user with an empty name sets it before entering the app.
-- `/invite/[publicId]`: signed out, it redirects to `/sign-in?next=/invite/<id>`; signed in, it shows the org, inviter and role with Accept/Decline. A wrong account sees a neutral "This invitation is for a different email".
-- `/no-workspace`: signed in without memberships.
+- `/sign-in?next=/invite/…` is headed "Sign in to view your invitation", without naming the organization to a signed-out visitor.
+- `/sign-in/confirm`: a token that fails the shape check (the verify route's own pattern, `SIGN_IN_TOKEN_PATTERN`) is never sent, and verify's `invalid_request` is treated like `invalid_or_expired`: both show "This sign-in link has expired or was already used" with "Get a new sign-in link" (keeping `next`).
+- `/invite/[publicId]`: signed out, it redirects to `/sign-in?next=/invite/<id>`; signed in, it shows the org, inviter and role with Accept/Decline. Decline is confirmed in an AlertDialog, then the card says "Invitation declined" and links to the viewer's workspace (or onward to `/no-workspace`). A wrong account sees a neutral "This invitation is for someone else" with Sign out, plus "Go to your workspace" when they have one. An invitation that can't be used (expired, cancelled, answered) links to the viewer's workspace, or without one to `/no-workspace`.
+- `/no-workspace`: signed in without memberships. Lists the viewer's own open invitations (`listMyInvitations`), each linking to `/invite/<publicId>`; with none, says to ask an owner or admin to invite them.
 - `/` (app home): requires a tenant; app shell with org switcher, account menu (sign out) and a placeholder.
 - `/settings`: redirects to `/settings/members`.
 - `/settings/members`
   - members and pending invitations
   - invite form for owners and admins
-  - change role, remove, cancel; destructive actions confirmed in an AlertDialog
+  - change role, remove, cancel; destructive actions confirmed in an AlertDialog, and so is making someone an owner or changing an owner's role (owners have full control, including removing other owners)
+  - expired invitations carry an "Expired" badge and offer **Resend** (`inviteMember` with the same email and role) next to Cancel
+  - an Actions column only when the viewer can act on at least one row of that table
+  - dates in the viewer's locale and time zone (`components/local-date.tsx`: UTC on the server and during hydration, the local date right after; an inline script would need the per-request CSP nonce)
+  - focus never drops to the page: when a row goes (removed, cancelled, resent), it moves to the next row's actions, else the section heading; after an invitation is sent, to the emptied email field
+  - every action sends the page's `organizationPublicId`; `tenant_changed`, `forbidden`, `not_found` and `no_tenant` refresh the page so it shows the current workspace, role and rows
   - re-auth prompt when not fresh
 - `/design-system`: the former `/` preview (public).
 
@@ -232,11 +246,11 @@ UI: shadcn and `@repo/design-system` components only (add missing ones with the 
 
 Each behaviour has one owning layer: test it there, and give other layers at most one representative case.
 
-| Level                                         | Owns                                                                                                                                                                                             | Shouldn't repeat                                                       |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| Unit                                          | Pure logic with many edge cases: callback-path sanitizer, allowlist path matcher, Sec-Fetch and origin rules, env parsing, device-cookie parsing, DTO mappers                                    | Anything needing Better Auth or a database                             |
-| Integration (PGlite + real Better Auth)       | The main home for auth and security rules: replay and expiry, sibling cleanup, eligibility gate, throttle rules, roles and permissions, tenant scoping, fresh-session gating, audit rows, timing | Browser behaviour                                                      |
-| UI (RTL + happy-dom)                          | Component state machines: sign-in steps, resend cooldown, the confirm page not calling verify before a click, dialog confirms                                                                    | The full journey, or server rules                                      |
-| E2E (real Chromium, Redis, Mailpit, Postgres) | Only what needs the real stack; one representative case per category already covered by integration tests                                                                                        | The full permission matrix, every error variant, every rate-limit rule |
+| Level                                         | Owns                                                                                                                                                                                                                      | Shouldn't repeat                                                       |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Unit                                          | Pure logic with many edge cases: callback-path sanitizer, allowlist path matcher, Sec-Fetch and origin rules, env parsing, device-cookie parsing, DTO mappers                                                             | Anything needing Better Auth or a database                             |
+| Integration (PGlite + real Better Auth)       | The main home for auth and security rules: replay and expiry, sibling cleanup, eligibility gate, throttle rules, roles and permissions, tenant scoping (incl. `tenant_changed`), fresh-session gating, audit rows, timing | Browser behaviour                                                      |
+| UI (RTL + happy-dom)                          | Component state machines: sign-in steps, resend cooldown, the confirm page not calling verify before a click, dialog confirms, focus after a row goes, refresh on stale-page errors                                       | The full journey, or server rules                                      |
+| E2E (real Chromium, Redis, Mailpit, Postgres) | Only what needs the real stack; one representative case per category already covered by integration tests                                                                                                                 | The full permission matrix, every error variant, every rate-limit rule |
 
 Beyond the table, E2E owns what only a browser or the deployed build can show: cookie flags, security headers and CSP, the scanner simulation (navigating to verify never spends a token), axe scans of every route in light and dark, keyboard journeys and aria snapshots.

@@ -23,8 +23,12 @@ export default async function HomePage() {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
       <header className="flex flex-col gap-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">Welcome, {user.name}</h1>
-        <p className="text-muted-foreground">{YOUR_ROLE[tenant.role](tenant.organization.name)}</p>
+        <h1 className="font-heading text-2xl font-semibold tracking-tight wrap-anywhere">
+          Welcome, {user.name}
+        </h1>
+        <p className="wrap-anywhere text-muted-foreground">
+          {YOUR_ROLE[tenant.role](tenant.organization.name)}
+        </p>
       </header>
       <Empty className="border">
         <EmptyHeader>
@@ -34,7 +38,7 @@ export default async function HomePage() {
           <EmptyTitle>
             <h2>More is on the way</h2>
           </EmptyTitle>
-          <EmptyDescription>
+          <EmptyDescription className="wrap-anywhere">
             Tools for {tenant.organization.name} will appear here as they&apos;re ready.
           </EmptyDescription>
         </EmptyHeader>

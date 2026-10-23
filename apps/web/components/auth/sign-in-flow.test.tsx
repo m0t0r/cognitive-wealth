@@ -119,6 +119,47 @@ describe("SignInFlow", () => {
     await expect(container).toHaveNoA11yViolations();
   });
 
+  it("clears a code error once the code is edited, and while a new try runs", async () => {
+    vi.mocked(verifyCode).mockResolvedValueOnce({ ok: false, error: "invalid_or_expired" });
+    const { user } = setup(<SignInFlow next={null} arrivalError={null} />);
+    await submitEmail(user);
+    const field = screen.getByLabelText("Sign-in code");
+    await user.type(field, "123456");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("That code didn't work.");
+
+    await user.type(field, "{Backspace}");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(field).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("keeps saying the code is locked after a lockout, instead of “didn't work”", async () => {
+    vi.mocked(verifyCode)
+      .mockResolvedValueOnce({ ok: false, error: "too_many_attempts" })
+      // The server forgot the code, so the next try reads as expired.
+      .mockResolvedValueOnce({ ok: false, error: "invalid_or_expired" });
+    const { user } = setup(<SignInFlow next={null} arrivalError={null} />);
+    await submitEmail(user);
+    const field = screen.getByLabelText("Sign-in code");
+    await user.type(field, "123456");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too many tries with this code.");
+
+    await user.clear(field);
+    await user.type(field, "654321");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too many tries with this code.");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("didn't work");
+  });
+
+  it("says it's for an invitation, without naming the workspace", () => {
+    setup(<SignInFlow next="/invite/abc" arrivalError={null} purpose="invitation" />);
+    expect(
+      screen.getByRole("heading", { name: "Sign in to view your invitation" }),
+    ).toBeInTheDocument();
+  });
+
   it("goes back to the email field, keeping the address", async () => {
     const { user } = setup(<SignInFlow next={null} arrivalError={null} />);
     await submitEmail(user);

@@ -18,6 +18,7 @@ import {
   SidebarMenuItem,
 } from "@repo/design-system/components/sidebar";
 import { Spinner } from "@repo/design-system/components/spinner";
+import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
 import { switchWorkspace } from "@/app/(app)/actions";
@@ -25,6 +26,7 @@ import { tenantErrorMessage } from "@/lib/auth/messages";
 import { ROLE_LABELS } from "@/lib/roles";
 
 export function OrgSwitcher({ memberships }: { memberships: PublicMembership[] }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const active = memberships.find((membership) => membership.isActive) ?? memberships[0];
   if (active === undefined) return null;
@@ -36,8 +38,13 @@ export function OrgSwitcher({ memberships }: { memberships: PublicMembership[] }
       const result = await switchWorkspace({
         organizationPublicId: membership.organization.publicId,
       });
-      if (result.ok) toast.success(`Switched to ${membership.organization.name}`);
-      else toast.error(tenantErrorMessage(result.error));
+      if (result.ok) {
+        toast.success(`Switched to ${membership.organization.name}`);
+        return;
+      }
+      toast.error(tenantErrorMessage(result.error));
+      // The list is out of date (that membership is gone): show the current one.
+      router.refresh();
     });
   }
 
@@ -49,6 +56,7 @@ export function OrgSwitcher({ memberships }: { memberships: PublicMembership[] }
             render={<SidebarMenuButton size="lg" />}
             disabled={pending}
             className="data-popup-open:bg-sidebar-accent"
+            title={active.organization.name}
           >
             <span
               aria-hidden
@@ -74,7 +82,10 @@ export function OrgSwitcher({ memberships }: { memberships: PublicMembership[] }
               />
             )}
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="min-w-56" align="start">
+          <DropdownMenuContent
+            className="min-w-56 max-w-[min(20rem,var(--available-width))]"
+            align="start"
+          >
             <DropdownMenuGroup>
               <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
               <DropdownMenuRadioGroup value={active.organization.publicId} onValueChange={select}>
@@ -85,7 +96,7 @@ export function OrgSwitcher({ memberships }: { memberships: PublicMembership[] }
                     closeOnClick
                   >
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate">{membership.organization.name}</span>
+                      <span className="wrap-anywhere">{membership.organization.name}</span>
                       <span className="text-xs font-normal text-muted-foreground">
                         {ROLE_LABELS[membership.role]}
                       </span>

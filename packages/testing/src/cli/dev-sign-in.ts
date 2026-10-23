@@ -4,29 +4,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import tls from "node:tls";
-import { parseArgs } from "node:util";
 import { createMailpit, parseSignInEmail } from "../mailpit.ts";
 import { requestSignInEmail, signIn } from "../sign-in.ts";
+import { parseDevSignInArgs, USAGE } from "./args.ts";
 import { localUrl, portlessCaPath } from "./local.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
 const DEFAULT_APP = "https://cognitive-wealth.localhost";
 const DEFAULT_MAILPIT = "http://127.0.0.1:8025";
-const EMAIL = /^[^\s@/\\]+@[^\s@/\\]+$/;
-
-const USAGE = `Usage: pnpm dev:sign-in <email> [--link] [--state <file>] [--app <url>] [--mailpit <url>]
-
-Signs <email> in through the app's real sign-in flow, reading the email from Mailpit.
-
-  (default)        Save the session to .dev/auth/<email>.json (or --state) for
-                   agent-browser --state or Playwright storageState.
-  --link           Only request the email and print the confirm link and code.
-  --state <file>   Where to save the session.
-  --app <url>      App URL. Default: BETTER_AUTH_URL, PORTLESS_URL or ${DEFAULT_APP}.
-  --mailpit <url>  Mailpit URL. Default: MAILPIT_URL or ${DEFAULT_MAILPIT}.
-
-Only local hosts are allowed (localhost, 127.0.0.1, ::1, *.localhost). The user must exist
-(pnpm db:seed) or have a pending invitation: anyone else gets no email.`;
 
 /**
  * `pnpm dev` serves the app over HTTPS with portless's local CA, which Node doesn't trust. Node
@@ -51,24 +36,12 @@ async function saveState(file: string, state: unknown) {
 }
 
 async function main() {
-  const { values, positionals } = parseArgs({
-    allowPositionals: true,
-    options: {
-      link: { type: "boolean", default: false },
-      state: { type: "string" },
-      app: { type: "string" },
-      mailpit: { type: "string" },
-      help: { type: "boolean", short: "h", default: false },
-    },
-  });
+  const values = parseDevSignInArgs(process.argv.slice(2));
   if (values.help) {
     console.log(USAGE);
     return;
   }
-  const [rawEmail, ...extra] = positionals;
-  if (!rawEmail || extra.length > 0) throw new Error(USAGE);
-  const email = rawEmail.toLowerCase();
-  if (!EMAIL.test(email)) throw new Error(`Not an email address: ${rawEmail}`);
+  const { email, ip } = values;
 
   const app = localUrl(
     "the app",
@@ -84,14 +57,14 @@ async function main() {
   if (values.link) {
     const mailpit = createMailpit(mailpitUrl);
     const exclude = await mailpit.messageIds(email);
-    await requestSignInEmail({ appUrl, email });
+    await requestSignInEmail({ appUrl, email, ip });
     const message = await mailpit.waitForMessage({ to: email, exclude });
     const { url, code } = parseSignInEmail(message.text);
     console.log(`Sign-in link: ${url}\nSign-in code: ${code}`);
     return;
   }
 
-  const { storageState } = await signIn({ appUrl, email, mailpitUrl });
+  const { storageState } = await signIn({ appUrl, email, mailpitUrl, ip });
   const file = values.state ? resolve(values.state) : join(REPO_ROOT, ".dev/auth", `${email}.json`);
   await saveState(file, storageState);
   console.log(`Signed in as ${email}; session saved to ${file}`);

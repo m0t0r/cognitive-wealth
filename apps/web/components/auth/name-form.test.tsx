@@ -47,7 +47,10 @@ describe("NameForm", () => {
     await user.type(screen.getByLabelText("Name"), "Ada");
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
-    expect(await screen.findByRole("button", { name: /Continue/ })).toBeDisabled();
+    // Disabled but still focused, so focus isn't dropped to the page while it saves.
+    const button = await screen.findByRole("button", { name: /Continue/ });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveFocus();
     expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
 
     pending.resolve({ ok: false, error: "unknown" });
@@ -64,6 +67,16 @@ describe("NameForm", () => {
     expect(field).toHaveAccessibleDescription("Enter your name, up to 100 characters.");
     expect(field).toHaveAttribute("aria-invalid", "true");
     await expect(container).toHaveNoA11yViolations();
+  });
+
+  it("answers an empty name with its own message, not the browser's", async () => {
+    const { user } = setup(<NameForm next={null} />);
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(screen.getByLabelText("Name")).toHaveAccessibleDescription(
+      "Enter your name, up to 100 characters.",
+    );
+    expect(saveName).not.toHaveBeenCalled();
   });
 
   it("shows other errors in the same place", async () => {

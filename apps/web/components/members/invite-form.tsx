@@ -25,22 +25,34 @@ const FIELD_ERRORS: Partial<Record<string, string>> = {
   already_member: "This person is already a member of this workspace.",
 };
 
+/**
+ * Invites someone by email. Focus stays on the button while it sends, then goes to the emptied
+ * email field (ready for the next person) or, on a field error, stays with the field.
+ */
 export function InviteForm({ viewerRole }: { viewerRole: Role }) {
-  const { report } = useMembersFeedback();
+  const { organizationPublicId, report } = useMembersFeedback();
   const items = assignableRoles(viewerRole).map((role) => ({
     value: role,
     label: ROLE_LABELS[role],
   }));
   const [role, setRole] = useState<Role>("member");
   const formRef = useRef<HTMLFormElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
 
   const [state, invite, pending] = useActionState(
     async (_previous: FormState, formData: FormData): Promise<FormState> => {
       const result = await inviteMemberAction(formData);
-      if (!result.ok && FIELD_ERRORS[result.error] !== undefined) return result;
-      if (report(result, `Invitation sent to ${formString(formData, "email").trim()}.`)) {
+      if (!result.ok && FIELD_ERRORS[result.error] !== undefined) {
+        emailRef.current?.focus();
+        return result;
+      }
+      const sent = report(result, `Invitation sent to ${formString(formData, "email").trim()}.`);
+      // After a switch in another tab the page now shows a different workspace: clear what was
+      // typed for the old one, so sending again can't invite that person to the new one.
+      if (sent || (!result.ok && result.error === "tenant_changed")) {
         formRef.current?.reset();
         setRole("member");
+        emailRef.current?.focus();
       }
       return result;
     },
@@ -58,11 +70,13 @@ export function InviteForm({ viewerRole }: { viewerRole: Role }) {
         startTransition(() => invite(formData));
       }}
     >
+      <input type="hidden" name="organizationPublicId" value={organizationPublicId} />
       <FieldGroup className="gap-5">
         <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,12rem)]">
           <Field data-invalid={emailError !== null || undefined}>
             <FieldLabel htmlFor="invite-email">Email</FieldLabel>
             <Input
+              ref={emailRef}
               id="invite-email"
               name="email"
               type="email"
@@ -103,7 +117,7 @@ export function InviteForm({ viewerRole }: { viewerRole: Role }) {
           </Field>
         </div>
         <div>
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" disabled={pending} focusableWhenDisabled>
             {pending ? <Spinner data-icon="inline-start" /> : null}
             Send invitation
           </Button>

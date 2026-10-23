@@ -38,6 +38,8 @@ interface SignInFlowProps {
   next: string | null;
   /** Copy for a `?error=` code the page arrived with. */
   arrivalError: string | null;
+  /** Why the visitor is signing in, when `next` says: `invitation` for an invitation link. */
+  purpose?: "invitation" | null;
 }
 
 interface RequestState {
@@ -50,7 +52,19 @@ interface VerifyState {
   done: boolean;
   /** Which email the result belongs to; a resend starts a new one. */
   attempt: number;
+  /** The code the error is about: editing it makes the error stale, so it's hidden. */
+  code: string;
+  /** Too many wrong codes for this email: its code can't work any more, whatever is typed. */
+  locked: boolean;
 }
+
+const INITIAL_VERIFY: VerifyState = {
+  error: null,
+  done: false,
+  attempt: 0,
+  code: "",
+  locked: false,
+};
 
 const INITIAL_REQUEST: RequestState = { error: null, notice: null };
 
@@ -59,7 +73,7 @@ const INITIAL_REQUEST: RequestState = { error: null, notice: null };
  * (`/sign-in/confirm`); this page only takes the code. Every response reads the same whether or
  * not the address can sign in.
  */
-export function SignInFlow({ next, arrivalError }: SignInFlowProps) {
+export function SignInFlow({ next, arrivalError, purpose = null }: SignInFlowProps) {
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [lastEmail, setLastEmail] = useState("");
   const [cooldown, setCooldown] = useState(0);
@@ -88,19 +102,26 @@ export function SignInFlow({ next, arrivalError }: SignInFlowProps) {
   );
 
   const [verifyState, verify, verifying] = useActionState(
-    async (_previous: VerifyState, input: { code: string }): Promise<VerifyState> => {
-      if (sentTo === null) return { error: null, done: false, attempt };
+    async (previous: VerifyState, input: { code: string }): Promise<VerifyState> => {
+      const base = { done: false, attempt, code: input.code };
+      const locked = previous.locked && previous.attempt === attempt;
+      if (sentTo === null) return { ...base, error: null, locked };
       if (!CODE_PATTERN.test(input.code)) {
-        return { error: "Enter the 6-digit code from the email.", done: false, attempt };
+        return { ...base, error: "Enter the 6-digit code from the email.", locked };
       }
       const result = await verifyCode(sentTo, input.code);
-      if (!result.ok)
-        return { error: signInErrorMessage(result.error, "code"), done: false, attempt };
+      if (!result.ok) {
+        // After a lockout the server forgets the code, so later tries read as expired; keep
+        // saying what actually happened (and that a new email is the way out).
+        const nowLocked = locked || result.error === "too_many_attempts";
+        const error = nowLocked ? "too_many_attempts" : result.error;
+        return { ...base, error: signInErrorMessage(error, "code"), locked: nowLocked };
+      }
       // A full navigation, so Server Components see the new session cookie.
       window.location.assign(next ?? "/");
-      return { error: null, done: true, attempt };
+      return { ...base, error: null, done: true, locked: false };
     },
-    { error: null, done: false, attempt: 0 },
+    INITIAL_VERIFY,
   );
 
   useEffect(() => {
@@ -129,7 +150,11 @@ export function SignInFlow({ next, arrivalError }: SignInFlowProps) {
       <Card>
         <CardHeader>
           <CardTitle>
-            <h1 className="font-heading text-xl">Sign in to Cognitive Wealth</h1>
+            <h1 className="font-heading text-xl">
+              {purpose === "invitation"
+                ? "Sign in to view your invitation"
+                : "Sign in to Cognitive Wealth"}
+            </h1>
           </CardTitle>
           <CardDescription>Enter your email to get a sign-in link and code.</CardDescription>
         </CardHeader>
@@ -178,8 +203,13 @@ export function SignInFlow({ next, arrivalError }: SignInFlowProps) {
     );
   }
 
-  const codeError =
-    (verifyState.attempt === attempt ? verifyState.error : null) ?? requestState.error;
+  // A code error is about the code it was given: hidden while a new try runs, or once the code
+  // is edited, so it never describes a code that isn't on screen.
+  const verifyError =
+    verifyState.attempt === attempt && !verifying && verifyState.code === code
+      ? verifyState.error
+      : null;
+  const codeError = verifyError ?? requestState.error;
   return (
     <Card>
       <CardHeader>

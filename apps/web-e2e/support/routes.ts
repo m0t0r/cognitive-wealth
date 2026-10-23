@@ -78,9 +78,16 @@ export const SIGNED_IN_ROUTES: SignedInRoute[] = [
     },
   },
   {
+    // With an open invitation, so its list renders.
     name: "/no-workspace",
     async setUp(db, email) {
       await seedUser(db, { email, name: "Nia Nomad" });
+      const owner = await seedUser(db, { email: `owner-${email}`, name: "Ada Owner" });
+      const acme = await seedOrganization(db, {
+        name: "Acme",
+        members: [{ user: owner, role: "owner" }],
+      });
+      await seedInvitation(db, { organization: acme, email, role: "member", inviter: owner });
       return "/no-workspace";
     },
   },

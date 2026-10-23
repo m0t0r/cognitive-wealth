@@ -40,6 +40,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
       toastOptions={{
         classNames: {
           toast: "cn-toast",
+          // Toasts quote names people chose, which may have no spaces to break at.
+          title: "wrap-anywhere",
+          description: "wrap-anywhere",
         },
       }}
       {...props}

@@ -26,7 +26,13 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
             orientation="vertical"
             className="data-vertical:h-4 data-vertical:self-center"
           />
-          <p className="truncate text-sm font-medium">{viewer.tenant.organization.name}</p>
+          {/* One line; `title` shows a long name in full on hover (the text itself is whole). */}
+          <p
+            className="min-w-0 truncate text-sm font-medium"
+            title={viewer.tenant.organization.name}
+          >
+            {viewer.tenant.organization.name}
+          </p>
         </header>
         <div className="flex flex-1 flex-col px-4 py-8 md:px-8">{children}</div>
       </SidebarInset>
