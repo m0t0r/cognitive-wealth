@@ -5,6 +5,11 @@
 
 Requesting a sign-in email returns the same `{ status: true }` for every address. If the request did the eligibility check, the rate limits and the send in-line, its latency would reveal which addresses belong to users or invitees. So the request does only work that costs the same for every address (normalize the email, read the device cookie, resolve the client IP and user agent), and everything else runs in a background task built from those captured values.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/sign-in-request.dark.svg">
+  <img alt="Sequence: the browser posts the email; Better Auth's sendMagicLink does same-cost work and schedules an after() task, and the browser gets status true for every address before any address-dependent work. The task then checks eligibility, checks the limits, and either stops, throttles or sends one email with the link and the code." src="../diagrams/sign-in-request.light.svg">
+</picture>
+
 `apps/web` runs that task with Next's `after()`. The package default, for callers outside Next, starts it in-process, which only works in a long-lived Node process. Measured on the standalone build, warm responses for known and unknown addresses took the same time (5.2 ms against 4.4 ms on average, within noise).
 
 ## Consequences

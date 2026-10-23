@@ -1,0 +1,32 @@
+flowchart LR
+  person([Person in a browser])
+  operator([Operator])
+
+  subgraph web["web · Next.js 16 standalone, one Node process"]
+    proxy["proxy.ts<br/>cookie check, CSP nonce"]
+    pages["Server Components<br/>and Server Actions"]
+    authapi["/api/auth/*<br/>4-route allowlist"]
+    lib["@repo/auth<br/>Better Auth + tenancy"]
+  end
+
+  subgraph data["data network · internal"]
+    pg[("Postgres 18<br/>source of truth")]
+    redis[("Redis 8<br/>session cache, rate limits")]
+  end
+
+  mail["SMTP: Mailpit in dev and e2e<br/>Resend in production"]
+  migrate["migrate job<br/>drizzle migrations"]
+  cli["pnpm org:create"]
+
+  person -->|HTTPS| proxy
+  proxy --> pages
+  person -->|fetch| authapi
+  pages --> lib
+  authapi --> lib
+  lib -->|"app role, DML only"| pg
+  lib -->|"app ACL user, cw: keys"| redis
+  lib -->|"after the response"| mail
+  mail -.->|sign-in link and code| person
+  migrate -->|"migrator role, DDL"| pg
+  operator --> cli
+  cli -->|app role| pg

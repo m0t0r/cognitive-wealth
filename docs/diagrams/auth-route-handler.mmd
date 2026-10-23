@@ -1,0 +1,20 @@
+flowchart TB
+  req([Browser request to /api/auth/*]) --> match{"method and path<br/>in the allowlist?"}
+  match -->|no| nf["404, Better Auth never sees it"]
+  match -->|yes| kind{route}
+
+  kind -->|GET verify| fetch{"same-origin fetch?<br/>Sec-Fetch-Mode not navigate"}
+  fetch -->|no| forbidden["403 forbidden"]
+  fetch -->|"yes, only ?token"| ba
+
+  kind -->|POST| post{"no query string,<br/>Origin is ours?"}
+  post -->|no| reject["400 invalid_request<br/>or 403 forbidden"]
+  post -->|yes| body{"strict JSON body,<br/>4 KiB, listed fields only"}
+  body -->|no| reject
+  body -->|"yes, sign-out or sign-in"| ba
+  body -->|"yes, code"| budget{"code attempts for the<br/>address under 10 a day?"}
+  budget -->|no| same["400 invalid_or_expired<br/>same as a wrong code"]
+  budget -->|yes| ba
+
+  ba["Better Auth router<br/>per-IP rate limit, rebuilt request"] --> map["body replaced with ok or one of<br/>5 error codes; Set-Cookie kept"]
+  map --> res([Response to the browser])

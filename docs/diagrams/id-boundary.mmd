@@ -1,0 +1,15 @@
+flowchart LR
+  subgraph browser["Browser"]
+    b["publicId: UUIDv7<br/>in props, URLs, form data"]
+  end
+  subgraph server["Server Components and Actions"]
+    in["take publicIds"] --> res["resolve within<br/>the viewer's tenant"]
+    res --> dto["map rows to DTOs<br/>internal IDs dropped"]
+  end
+  subgraph pg["Postgres"]
+    row["id: bigint identity, the PK and every FK<br/>public_id: uuid, unique, uuidv7()"]
+  end
+  b -->|"form data, route params"| in
+  res -->|"where public_id = $1 and organization_id = tenant"| row
+  row --> dto
+  dto -->|"PublicUser, PublicMember, …"| b

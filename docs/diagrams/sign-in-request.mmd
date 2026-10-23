@@ -1,0 +1,29 @@
+sequenceDiagram
+  autonumber
+  participant B as Browser
+  participant H as Route handler
+  participant BA as Better Auth
+  participant T as after() task
+  participant R as Redis
+  participant D as Postgres
+  participant M as Mailer
+
+  B->>H: POST /sign-in/magic-link { email, callbackURL }
+  H->>BA: rebuilt request
+  BA->>BA: sendMagicLink: normalize email, read device cookie, resolve IP
+  Note over BA: same cost for every address
+  BA->>T: schedule with the captured values
+  BA-->>H: 200
+  H-->>B: { status: true } for every address
+  T->>D: eligibility: user, or pending unexpired invitation
+  alt not eligible
+    T->>T: stop, nothing sent
+  else eligible
+    T->>R: sign-in email limits
+    alt a limit trips
+      T->>D: delete the stored link, audit auth.sign_in_throttled
+    else within limits
+      T->>BA: issue the 6-digit code
+      T->>M: one email: the confirm link, token in its fragment, and the code
+    end
+  end

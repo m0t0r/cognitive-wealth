@@ -1,0 +1,8 @@
+flowchart LR
+  base["base<br/>node 24 slim, pinned digest"] --> prune["prune<br/>turbo prune web"]
+  prune --> deps["deps<br/>pnpm install, store cache mount"]
+  deps --> build["build<br/>next build, standalone"]
+  deps --> dbdeploy["db-deploy<br/>@repo/db and its runtime deps"]
+  build --> web(["web target<br/>distroless nodejs24, non-root"])
+  dbdeploy --> migrate(["migrate target<br/>distroless nodejs24, non-root"])
+  dependabot["Dependabot<br/>bumps tag@digest pins"] -.-> base

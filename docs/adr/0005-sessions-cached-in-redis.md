@@ -11,6 +11,11 @@ Redis holds only what we can lose: the session cache and rate-limit counters. Ve
 
 Session lookups are fast, and a Redis miss, flush or eviction falls back to Postgres, which is safe. The gap opens only when something bypasses Better Auth.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/session-cache.dark.svg">
+  <img alt="Every request looks the session token up in Redis: a hit serves the cached session and user without checking Postgres; a miss, flush or eviction reads Postgres and re-caches. Signing someone out through revokeUserSessions or Better Auth's APIs deletes the Postgres rows and each cached entry, so they are signed out on the next request; a raw SQL delete or update leaves Redis holding the session, so they stay signed in for up to 7 days." src="../diagrams/session-cache.light.svg">
+</picture>
+
 ## Consequences
 
 - Better Auth serves a cached session without checking Postgres, for as long as the session lives (up to 7 days). Deleting session rows with SQL, deleting a user so their sessions cascade, or updating user rows directly doesn't sign anyone out or refresh the cached user.

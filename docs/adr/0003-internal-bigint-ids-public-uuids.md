@@ -7,6 +7,11 @@ Primary keys are `bigint generated always as identity` (Better Auth's `advanced.
 
 Internal IDs never reach the browser. Server Components and Server Actions take `publicId`s, resolve them to internal IDs within the viewer's tenant, and return DTOs that carry no internal ID. The browser-facing auth endpoints return no IDs at all ([ADR 0004](0004-browser-reaches-better-auth-through-an-allowlist.md)).
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/id-boundary.dark.svg">
+  <img alt="The browser only holds UUIDv7 publicIds. Server Components and Actions take publicIds, resolve them within the viewer's tenant by public_id and organization_id against Postgres, where bigint id is the primary key and every foreign key, and map rows to DTOs that drop internal IDs, such as PublicUser and PublicMember." src="../diagrams/id-boundary.light.svg">
+</picture>
+
 ## Consequences
 
 - `generateId: "serial"` turns off Better Auth's deterministic single-use "reserve" checks (SAML assertion IDs, DPoP, JWT assertions). We use none of those plugins; adding SSO or an OAuth provider needs a re-check.

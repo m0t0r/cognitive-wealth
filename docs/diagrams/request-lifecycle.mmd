@@ -1,0 +1,26 @@
+sequenceDiagram
+  autonumber
+  participant B as Browser
+  participant P as proxy.ts
+  participant S as Page or Server Action
+  participant A as @repo/auth
+  participant R as Redis
+  participant D as Postgres
+
+  B->>P: GET /settings/members
+  alt no session cookie
+    P-->>B: redirect to /sign-in?next=…
+  else cookie present (optimistic check only)
+    P->>S: render with a per-request CSP nonce
+  end
+  S->>A: getViewer(headers), cached per request
+  A->>R: session by token
+  opt cache miss, flush or eviction
+    A->>D: session and user
+  end
+  A->>D: memberships and active organization
+  A-->>S: Viewer (internal IDs stay on the server)
+  S->>A: requireTenant, then tenant-scoped reads
+  A->>D: select … where organization_id = tenant
+  A-->>S: DTOs with publicIds only
+  S-->>B: HTML or action result, no internal IDs

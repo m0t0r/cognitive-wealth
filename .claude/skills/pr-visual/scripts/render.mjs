@@ -3,15 +3,18 @@
 // <name>.dark.svg, themed with the design system's own tokens (packages/design-system globals.css),
 // so a PR's diagrams match the app and follow GitHub's theme through <picture>.
 //
-//   node render.mjs <dir> [name ...]
+//   node render.mjs <dir> [name ...] [--svg-only]
 //
 // Then rasterizes each SVG to a 2x PNG with agent-browser, because GitHub's attachments take PNG.
+// `--svg-only` stops at the SVGs: docs/diagrams (`pnpm docs:diagrams`) commits those and no PNGs.
 import { execFileSync, spawnSync } from "node:child_process";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
-const [dirArg, ...only] = process.argv.slice(2);
-if (!dirArg) throw new Error("usage: render.mjs <dir> [name ...]");
+const args = process.argv.slice(2);
+const svgOnly = args.includes("--svg-only");
+const [dirArg, ...only] = args.filter((a) => a !== "--svg-only");
+if (!dirArg) throw new Error("usage: render.mjs <dir> [name ...] [--svg-only]");
 const dir = resolve(dirArg);
 const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
 const peleRender = join(root, ".claude/skills/pele/scripts/render.mjs");
@@ -97,7 +100,12 @@ for (const name of names) {
   }
   const svg = readFileSync(base, "utf8");
   for (const [mode, vars] of Object.entries(THEMES)) writeFileSync(join(dir, `${name}.${mode}.svg`), themed(svg, vars));
+  if (svgOnly) rmSync(base);
   receipts.push({ name, type: receipt.type, width: receipt.width, height: receipt.height });
+}
+if (svgOnly) {
+  console.log(JSON.stringify({ ok: process.exitCode !== 1, dir, rendered: receipts }));
+  process.exit();
 }
 
 // ---- Rasterize -----------------------------------------------------------------------------

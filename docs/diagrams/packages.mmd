@@ -1,0 +1,19 @@
+flowchart TB
+  web["web<br/>Next.js App Router"]
+  e2e["web-e2e<br/>Playwright"]
+  auth["@repo/auth<br/>Better Auth, tenancy, DTOs"]
+  ds["@repo/design-system<br/>shadcn/ui on Base UI"]
+  db["@repo/db<br/>Drizzle schema, migrations, CLIs"]
+  email["@repo/email<br/>React Email, mailers"]
+  testing["@repo/testing<br/>Vitest config, PGlite, sign-in harness"]
+
+  web --> auth
+  web --> ds
+  web --> db
+  auth --> db
+  auth --> email
+
+  e2e -.-> auth
+  e2e -.-> db
+  e2e -.-> email
+  e2e -.-> testing

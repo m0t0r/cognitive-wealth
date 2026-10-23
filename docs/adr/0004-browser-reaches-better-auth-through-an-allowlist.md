@@ -7,6 +7,11 @@ Better Auth mounts dozens of endpoints by default, and their responses carry int
 
 The handler rebuilds each forwarded request from validated parts and replaces each response body with `{ ok }` and a small fixed set of error codes. No Better Auth body, header or redirect reaches the browser. The exact rules are in [docs/auth.md](../auth.md), "Browser-facing HTTP surface".
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/auth-route-handler.dark.svg">
+  <img alt="Decision flow for a request to /api/auth: not in the allowlist gives 404. The verify GET must be a same-origin fetch, else 403. A POST must have no query string and our Origin, then a strict JSON body of at most 4 KiB with listed fields, else 400 or 403; a code attempt also needs the address under 10 attempts a day. Accepted requests go to Better Auth's router, and the body is replaced with ok or one of five error codes, keeping Set-Cookie." src="../diagrams/auth-route-handler.light.svg">
+</picture>
+
 Adding a browser-facing endpoint changes this decision: update this ADR in the same change.
 
 ## Consequences
