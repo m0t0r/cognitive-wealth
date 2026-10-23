@@ -4,6 +4,7 @@ import { authOptionsFromEnv, mailerFromEnv } from "@repo/auth/env";
 import { nextCookies } from "@repo/auth/next";
 import { createRedisClient, createRedisStorage, type RedisClient } from "@repo/auth/redis";
 import { getDb } from "@repo/db/client";
+import { after } from "next/server";
 
 const globalForAuth = globalThis as typeof globalThis & { authRedis?: RedisClient };
 
@@ -26,6 +27,14 @@ export function getAuth(): Auth {
     trustedIpHeader: options.trustedIpHeader,
     trustedProxies: options.trustedProxies,
     secureCookies: options.secureCookies,
+    // Sign-in work that runs after the response (so its timing can't reveal who is a client).
+    // `after` keeps it alive on every host Next supports: `next start` and Docker drain pending
+    // callbacks on SIGTERM, and serverless platforms supply `waitUntil` to it.
+    runInBackground: (task) => {
+      after(() =>
+        task().catch((error: unknown) => console.error("Background auth task failed", error)),
+      );
+    },
     // Lets Server Actions that call `auth.api` set cookies. Must stay last.
     plugins: [nextCookies()],
   });

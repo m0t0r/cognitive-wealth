@@ -96,8 +96,8 @@ export type BackgroundRunner = (task: () => Promise<void>) => void;
 
 /**
  * The default {@link BackgroundRunner}: starts the task on the next turn of the event loop and
- * logs a rejection. It relies on a long-lived Node process (the standalone server), which keeps
- * running the task after the response is sent; a serverless deploy must pass its `waitUntil`.
+ * logs a rejection. It relies on a long-lived Node process that keeps running the task after the
+ * response is sent. `apps/web` passes Next's `after()` instead, which also covers serverless hosts.
  */
 export const runInBackground: BackgroundRunner = (task) => {
   setImmediate(() => {

@@ -50,6 +50,7 @@ Internal packages are linked with `workspace:*`. In `turbo.json`, `build` and `c
 - The browser talks to Better Auth only through the ADR's allowlist (`createAuthRouteHandler`); everything else 404s. A new browser-facing endpoint is an ADR change.
 - On the server, authorize with `getViewer`/`requireTenant` from `@repo/auth` (adapted in `apps/web/lib/auth/`) and scope every query to the tenant they return. `proxy.ts` only does an optimistic cookie check.
 - Dev and test sign-in run the real email flow through the harness ([docs/dev-sign-in.md](docs/dev-sign-in.md)); the app has no backdoor, test-only route or bypass flag.
+- Sign-in emails are sent after the response, through Next's `after()` (`apps/web/lib/auth/server.ts`), so timing can't reveal who is a client. Hosting must support `after()`: `next start` and Docker do, with a stop grace period so pending sends drain on SIGTERM; serverless needs `waitUntil` wired in, or sign-in emails silently never send.
 
 ## Testing
 
