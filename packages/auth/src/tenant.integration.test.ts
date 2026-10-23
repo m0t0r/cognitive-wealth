@@ -1,5 +1,5 @@
 import { test as dbTest } from "@repo/db/testing";
-import { auditEvent, invitation, member, session } from "@repo/db/schema";
+import { auditEvent, invitation, member } from "@repo/db/schema";
 import { parseInvitationEmail } from "@repo/testing/mailpit";
 import { asc, eq } from "drizzle-orm";
 import { describe, expect, onTestFinished, vi } from "vitest";
@@ -142,12 +142,15 @@ describe("getViewer", () => {
     await removeMember(t.auth, world.as.bob, { memberPublicId: world.members.ada.publicId });
 
     const viewer = await getViewer(t.auth, world.as.ada);
-    expect(viewer?.tenant?.organization.slug).toBe("globex");
-    const sessions = await t.auth.$deps.db
-      .select({ activeOrganizationId: session.activeOrganizationId })
-      .from(session)
-      .where(eq(session.userId, world.users.ada.id));
-    expect(sessions).toEqual([{ activeOrganizationId: String(world.globex.id) }]);
+    expect(viewer?.tenant?.organization.publicId).toBe(world.globex.publicId);
+
+    // Rejoining Acme makes it her newest membership. She stays in Globex only if the fallback
+    // was saved to the session; otherwise the session would still point at Acme.
+    await t.auth.$deps.db
+      .insert(member)
+      .values({ organizationId: world.acme.id, userId: world.users.ada.id, role: "member" });
+    const later = await getViewer(t.auth, world.as.ada);
+    expect(later?.tenant?.organization.publicId).toBe(world.globex.publicId);
   });
 });
 

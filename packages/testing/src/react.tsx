@@ -20,3 +20,13 @@ export function setup(
 ): RenderResult & { user: UserEvent } {
   return { user: userEvent.setup(), ...render(ui, options) };
 }
+
+/** A promise and the function that settles it, for holding an action pending mid-test. */
+export function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve: ((value: T) => void) | undefined;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  // The executor runs synchronously, so `resolve` is set by now.
+  return { promise, resolve: resolve! };
+}

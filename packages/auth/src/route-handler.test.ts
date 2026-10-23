@@ -32,13 +32,19 @@ describe("matchAuthRoute", () => {
     ["POST", "/api/auth//sign-out"],
     ["POST", "/api/auth/sign%2Dout"],
     ["POST", "/api/auth/sign-in%2Fmagic-link"],
+    ["POST", "/api/auth/sign-in/magic-link/"],
+    ["POST", "/api/auth/Sign-In/Magic-Link"],
+    ["POST", "/api/auth//sign-in/magic-link"],
     ["POST", "/api/auth/./sign-out"],
     ["POST", "/api/auth/x/../sign-out"],
     ["POST", "/sign-out"],
+    ["GET", "/api/other/get-session"],
     ["POST", "/api/auth"],
     ["GET", "/api/auth/get-session"],
     ["POST", "/api/auth/email-otp/send-verification-otp"],
     ["POST", "/api/auth/sign-in/email"],
+    ["POST", "/api/auth/sign-up/email"],
+    ["GET", "/api/auth/ok"],
     ["GET", "/api/auth/organization/list"],
   ] as const)("refuses %s %s", ([method, path]) => {
     expect(matchAuthRoute(method, path)).toBeNull();
@@ -258,6 +264,17 @@ describe("createAuthRouteHandler", () => {
       `${ORIGIN}/api/auth/magic-link/verify?token=abc&callbackURL=/x`,
       "GET",
     ],
+    [
+      "newUserCallbackURL on verify",
+      `${ORIGIN}/api/auth/magic-link/verify?token=abc&newUserCallbackURL=https%3A%2F%2Fevil.example`,
+      "GET",
+    ],
+    [
+      "errorCallbackURL on verify",
+      `${ORIGIN}/api/auth/magic-link/verify?token=abc&errorCallbackURL=https%3A%2F%2Fevil.example`,
+      "GET",
+    ],
+    ["a repeated token", `${ORIGIN}/api/auth/magic-link/verify?token=a&token=b`, "GET"],
     ["no token on verify", `${ORIGIN}/api/auth/magic-link/verify`, "GET"],
     ["a malformed token", `${ORIGIN}/api/auth/magic-link/verify?token=a%20b`, "GET"],
   ] as const)("refuses %s without calling Better Auth", async ([, url, method]) => {
@@ -266,6 +283,77 @@ describe("createAuthRouteHandler", () => {
       method === "GET"
         ? await GET(new Request(url, { headers: browser }))
         : await POST(new Request(url, { method: "POST", headers: browser, body: "{}" }));
+    expect(response.status).toBe(400);
+    expect(requests).toEqual([]);
+  });
+
+  it.for([
+    ["extra body fields", JSON.stringify({ email: "ada@example.com", name: "Mallory" })],
+    ["a non-string email", JSON.stringify({ email: ["ada@example.com"] })],
+    ["no email", "{}"],
+    ["a body that isn't JSON", "email=ada@example.com"],
+    ["a JSON array", JSON.stringify(["ada@example.com"])],
+  ] as const)("refuses a sign-in request with %s without calling Better Auth", async ([, body]) => {
+    const { POST, requests } = fakeAuth(() => leakyResponse(200, {}));
+    const response = await POST(
+      new Request(`${ORIGIN}/api/auth/sign-in/magic-link`, {
+        method: "POST",
+        headers: { ...browser, "content-type": "application/json" },
+        body,
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: "invalid_request" });
+    expect(requests).toEqual([]);
+  });
+
+  it.for([
+    ["a cross-origin Origin", { origin: "https://evil.example" }],
+    ["no Origin", { origin: null }],
+    ["a cross-site fetch", { "sec-fetch-site": "cross-site" }],
+    ["Origin: null from another site", { origin: "null", "sec-fetch-site": "cross-site" }],
+  ] as const)("forbids a sign-in request with %s without calling Better Auth", async ([, init]) => {
+    const { POST, requests } = fakeAuth(() => leakyResponse(200, {}));
+    const headers = new Headers({ ...browser, "content-type": "application/json" });
+    for (const [name, value] of Object.entries(init)) {
+      if (value === null) headers.delete(name);
+      else headers.set(name, value);
+    }
+    const response = await POST(
+      new Request(`${ORIGIN}/api/auth/sign-in/magic-link`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ email: "ada@example.com" }),
+      }),
+    );
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ ok: false, error: "forbidden" });
+    expect(requests).toEqual([]);
+  });
+
+  it.for([
+    ["no Sec-Fetch headers (a scanner)", {}],
+    ["a cross-site fetch", { "sec-fetch-site": "cross-site", "sec-fetch-mode": "cors" }],
+    ["a same-site fetch", { "sec-fetch-site": "same-site", "sec-fetch-mode": "cors" }],
+    ["a no-cors subresource", { "sec-fetch-site": "same-origin", "sec-fetch-mode": "no-cors" }],
+  ] as const)("forbids verify from %s without calling Better Auth", async ([, headers]) => {
+    const { GET, requests } = fakeAuth(() => leakyResponse(200, {}));
+    const response = await GET(
+      new Request(`${ORIGIN}/api/auth/magic-link/verify?token=abc`, { headers: { ...headers } }),
+    );
+    expect(response.status).toBe(403);
+    expect(requests).toEqual([]);
+  });
+
+  it("refuses a form-encoded sign-in request without calling Better Auth", async () => {
+    const { POST, requests } = fakeAuth(() => leakyResponse(200, {}));
+    const response = await POST(
+      new Request(`${ORIGIN}/api/auth/sign-in/magic-link`, {
+        method: "POST",
+        headers: { ...browser, "content-type": "application/x-www-form-urlencoded" },
+        body: "email=ada@example.com",
+      }),
+    );
     expect(response.status).toBe(400);
     expect(requests).toEqual([]);
   });
@@ -292,6 +380,7 @@ describe("createAuthRouteHandler", () => {
     const response = await GET(new Request(`${ORIGIN}/api/auth/get-session`));
     expect(response.status).toBe(404);
     expect(await response.text()).toBe("Not Found");
+    expect(new Set(response.headers.keys())).toEqual(new Set(["cache-control", "content-type"]));
     expect(built).toBe(false);
   });
 

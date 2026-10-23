@@ -1,17 +1,13 @@
+// Sign-in through Better Auth and the route handler. Pure request rules (allowlist matching,
+// Sec-Fetch and Origin checks, body validation, response stripping, callback sanitizing) are owned
+// by route-handler.test.ts and callback-path.test.ts; each gets one wiring case here.
 import { test as dbTest } from "@repo/db/testing";
-import {
-  auditEvent,
-  invitation,
-  member,
-  organization,
-  session as sessionTable,
-  user,
-  verification,
-} from "@repo/db/schema";
-import { desc, eq, sql } from "drizzle-orm";
+import { auditEvent, invitation, member, organization, user, verification } from "@repo/db/schema";
+import { parseSetCookies } from "@repo/testing/sign-in";
+import { eq, sql } from "drizzle-orm";
 import { describe, expect } from "vitest";
-import { switchOrganization } from "./tenant";
-import { createTestAuth, type TestAuth } from "./testing";
+import { getViewer, switchOrganization } from "./tenant";
+import { createTestAuth, TEST_BASE_URL, type TestAuth } from "./testing";
 
 const test = dbTest.extend("t", ({ orm }) => createTestAuth({ orm }));
 
@@ -52,27 +48,15 @@ async function seedInvitation(
   return org;
 }
 
-const activeOrganizationIds = async (t: TestAuth) =>
-  (await t.auth.$deps.db.select({ id: sessionTable.activeOrganizationId }).from(sessionTable)).map(
-    (row) => row.id,
-  );
-
-const newestActiveOrganizationId = async (t: TestAuth) => {
-  const [newest] = await t.auth.$deps.db
-    .select({ id: sessionTable.activeOrganizationId })
-    .from(sessionTable)
-    .orderBy(desc(sessionTable.createdAt), desc(sessionTable.id))
-    .limit(1);
-  return newest?.id;
-};
+/** The publicId of the organization the session behind `headers` works in, or `null`. */
+const activeOrganization = async (t: TestAuth, headers: Headers) =>
+  (await getViewer(t.auth, headers))?.tenant?.organization.publicId ?? null;
 
 const expireAllVerifications = (t: TestAuth) =>
   t.auth.$deps.db.update(verification).set({ expiresAt: sql`now() - interval '1 second'` });
 
 describe("sign-in by link", () => {
-  test("signs an existing user in, with only `{ ok: true }` and the session cookie", async ({
-    t,
-  }) => {
+  test("signs an existing user in, with `{ ok: true }` and the session cookie", async ({ t }) => {
     await t.seedUser({ email: "ada@example.com" });
     const { token, code, next, url } = await t.requestSignIn("ada@example.com");
     expect(url.startsWith("http://localhost:3000/sign-in/confirm#token=")).toBe(true);
@@ -82,12 +66,11 @@ describe("sign-in by link", () => {
     const { status, body, response } = await verifyLink(t, token);
     expect(status).toBe(200);
     expect(body).toEqual({ ok: true });
-    expect(new Set(response.headers.keys())).toEqual(
-      new Set(["cache-control", "content-type", "set-cookie"]),
-    );
-    const cookies = response.headers.getSetCookie();
-    expect(cookies.some((c) => c.startsWith("cw.session_token="))).toBe(true);
-    expect(cookies.every((c) => /HttpOnly/i.test(c) && /SameSite=Lax/i.test(c))).toBe(true);
+    const cookies = parseSetCookies(response.headers.getSetCookie(), new URL(TEST_BASE_URL));
+    expect(cookies.map((cookie) => cookie.name)).toContain("cw.session_token");
+    for (const cookie of cookies) {
+      expect(cookie).toMatchObject({ httpOnly: true, sameSite: "Lax" });
+    }
 
     const session = await t.auth.api.getSession({ headers: t.sessionHeaders(response) });
     expect(session?.user.email).toBe("ada@example.com");
@@ -146,16 +129,11 @@ describe("sign-in by link", () => {
 
   test("refuses an off-site callback URL", async ({ t }) => {
     await t.seedUser({ email: "ada@example.com" });
-    for (const callbackURL of ["//evil.com", "https://evil.com", "/%2F%2Fevil.com"]) {
-      // Sequential on purpose: each step depends on the ones before.
-      // oxlint-disable-next-line no-await-in-loop
-      const response = await t.fetchAuth("/sign-in/magic-link", {
-        body: { email: "ada@example.com", callbackURL },
-      });
-      expect(response.status).toBe(400);
-      // oxlint-disable-next-line no-await-in-loop
-      expect(await response.json()).toEqual({ ok: false, error: "invalid_request" });
-    }
+    const response = await t.fetchAuth("/sign-in/magic-link", {
+      body: { email: "ada@example.com", callbackURL: "//evil.com" },
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: "invalid_request" });
     await t.settle();
     expect(t.mailer.messages).toEqual([]);
   });
@@ -412,58 +390,21 @@ describe("verify request rules", () => {
     expect((await verifyLink(t, token)).status).toBe(200);
   });
 
-  test.for([
-    ["no Sec-Fetch headers (a scanner)", { "sec-fetch-site": null, "sec-fetch-mode": null }],
-    ["a cross-site fetch", { "sec-fetch-site": "cross-site" }],
-    ["a same-site fetch", { "sec-fetch-site": "same-site" }],
-    ["a no-cors subresource", { "sec-fetch-mode": "no-cors", "sec-fetch-dest": "image" }],
-  ] as const)("refuses %s and leaves the token usable", async ([, headers], { t }) => {
+  test("refuses errorCallbackURL on verify and leaves the token usable", async ({ t }) => {
     await t.seedUser({ email: "ada@example.com" });
     const { token } = await t.requestSignIn("ada@example.com");
 
-    const refused = await t.fetchAuth(verifyPath(token), { headers: { ...headers } });
-    expect(refused.status).toBe(403);
-    expect((await verifyLink(t, token)).status).toBe(200);
-  });
-
-  test.for(["callbackURL", "newUserCallbackURL", "errorCallbackURL"])(
-    "refuses %s on verify",
-    async (param, { t }) => {
-      await t.seedUser({ email: "ada@example.com" });
-      const { token } = await t.requestSignIn("ada@example.com");
-
-      const response = await t.fetchAuth(`${verifyPath(token)}&${param}=https%3A%2F%2Fevil.com`);
-      expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({ ok: false, error: "invalid_request" });
-      expect(response.headers.get("location")).toBeNull();
-      expect((await verifyLink(t, token)).status).toBe(200);
-    },
-  );
-
-  test("refuses a repeated token parameter", async ({ t }) => {
-    const response = await t.fetchAuth("/magic-link/verify?token=a&token=b");
+    const response = await t.fetchAuth(
+      `${verifyPath(token)}&errorCallbackURL=https%3A%2F%2Fevil.com`,
+    );
     expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: "invalid_request" });
+    expect(response.headers.get("location")).toBeNull();
+    expect((await verifyLink(t, token)).status).toBe(200);
   });
 });
 
 describe("POST origin rules", () => {
-  test.for([
-    ["a cross-origin Origin", { origin: "https://evil.example" }],
-    ["no Origin", { origin: null }],
-    ["a cross-site fetch", { "sec-fetch-site": "cross-site" }],
-    ["Origin: null from another site", { origin: "null", "sec-fetch-site": "cross-site" }],
-  ] as const)("refuses a sign-in request with %s", async ([, headers], { t }) => {
-    await t.seedUser({ email: "ada@example.com" });
-    const response = await t.fetchAuth("/sign-in/magic-link", {
-      body: { email: "ada@example.com" },
-      headers: { ...headers },
-    });
-    expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ ok: false, error: "forbidden" });
-    await t.settle();
-    expect(t.mailer.messages).toEqual([]);
-  });
-
   test("refuses a cross-origin code submission (login CSRF)", async ({ t }) => {
     await t.seedUser({ email: "ada@example.com" });
     const { code } = await t.requestSignIn("ada@example.com");
@@ -472,9 +413,14 @@ describe("POST origin rules", () => {
       headers: { origin: "https://evil.example", "sec-fetch-site": "cross-site" },
     });
     expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ ok: false, error: "forbidden" });
     expect(response.headers.getSetCookie()).toEqual([]);
+    // Refused before Better Auth: the code wasn't spent.
+    expect((await verifyCode(t, "ada@example.com", code)).status).toBe(200);
   });
 
+  // Kept although the rule is unit-tested: Better Auth runs an origin check of its own on the
+  // forwarded request, and it must not refuse what ours accepts.
   test("accepts Origin: null on a same-origin fetch (Referrer-Policy: no-referrer)", async ({
     t,
   }) => {
@@ -486,59 +432,20 @@ describe("POST origin rules", () => {
     expect(response.status).toBe(200);
     await t.waitForEmail("ada@example.com");
   });
-
-  test.for([
-    ["extra body fields", { email: "ada@example.com", name: "Mallory" }],
-    ["a non-string email", { email: ["ada@example.com"] }],
-    ["no email", {}],
-  ] as const)("refuses a sign-in request with %s", async ([, body], { t }) => {
-    const response = await t.fetchAuth("/sign-in/magic-link", { body });
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ ok: false, error: "invalid_request" });
-  });
-
-  test("refuses a non-JSON body", async ({ t }) => {
-    const response = await t.fetchAuth("/sign-in/magic-link", {
-      body: "email=ada@example.com",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-    });
-    expect(response.status).toBe(400);
-  });
 });
 
 describe("allowlist", () => {
-  test.for([
-    ["GET", "/get-session"],
-    ["GET", "/organization/list"],
-    ["POST", "/email-otp/send-verification-otp"],
-    ["POST", "/sign-in/email"],
-    ["POST", "/sign-up/email"],
-    ["GET", "/ok"],
-    ["POST", "/magic-link/verify"],
-    ["GET", "/sign-in/magic-link"],
-    ["POST", "/sign-in/magic-link/"],
-    ["POST", "/Sign-In/Magic-Link"],
-    ["POST", "/sign-in%2Fmagic-link"],
-    ["POST", "//sign-in/magic-link"],
-  ] as const)("404s %s %s without reaching Better Auth", async ([method, path], { t }) => {
+  // A Better Auth endpoint that would issue a code; the matcher itself is unit-tested.
+  test("404s POST /email-otp/send-verification-otp without reaching Better Auth", async ({ t }) => {
     await t.seedUser({ email: "ada@example.com" });
-    const response = await t.fetchAuth(path, {
-      method,
-      body: method === "POST" ? { email: "ada@example.com", type: "sign-in" } : undefined,
+    const response = await t.fetchAuth("/email-otp/send-verification-otp", {
+      body: { email: "ada@example.com", type: "sign-in" },
     });
     expect(response.status).toBe(404);
     expect(await response.text()).toBe("Not Found");
-    expect(new Set(response.headers.keys())).toEqual(new Set(["cache-control", "content-type"]));
     await t.settle();
     expect(t.mailer.messages).toEqual([]);
     expect(await t.auth.$deps.db.$count(verification)).toBe(0);
-  });
-
-  test("404s paths outside the auth base path", async ({ t }) => {
-    const response = await t.handler.GET(
-      new Request("http://localhost:3000/api/other/get-session"),
-    );
-    expect(response.status).toBe(404);
   });
 });
 
@@ -630,8 +537,8 @@ describe("audit and sessions", () => {
       members: [{ userId: ada.id, role: "admin", createdAt: new Date("2026-03-01") }],
     });
 
-    await t.signInAs("ada@example.com");
-    expect(await activeOrganizationIds(t)).toEqual([String(globex.id)]);
+    const headers = await t.signInAs("ada@example.com");
+    expect(await activeOrganization(t, headers)).toBe(globex.publicId);
   });
 
   test("continues in the organization the user last worked in", async ({ t }) => {
@@ -652,9 +559,10 @@ describe("audit and sessions", () => {
       await switchOrganization(t.auth, first, { organizationPublicId: acme.publicId }),
     ).toEqual(expect.objectContaining({ ok: true }));
 
-    await t.signInAs("ada@example.com");
-    expect(await newestActiveOrganizationId(t)).toBe(String(acme.id));
-    expect(globex.id).not.toBe(acme.id);
+    // Globex is the newer membership, so only the remembered choice can make this Acme.
+    const again = await t.signInAs("ada@example.com");
+    expect(await activeOrganization(t, again)).toBe(acme.publicId);
+    expect(globex.publicId).not.toBe(acme.publicId);
   });
 
   test("falls back to the newest membership once the last organization is gone", async ({ t }) => {
@@ -673,14 +581,14 @@ describe("audit and sessions", () => {
     await switchOrganization(t.auth, first, { organizationPublicId: acme.publicId });
     await t.auth.$deps.db.delete(member).where(eq(member.organizationId, acme.id));
 
-    await t.signInAs("ada@example.com");
-    expect(await newestActiveOrganizationId(t)).toBe(String(globex.id));
+    const again = await t.signInAs("ada@example.com");
+    expect(await activeOrganization(t, again)).toBe(globex.publicId);
   });
 
   test("starts a session without an organization for a user with none", async ({ t }) => {
     await t.seedUser({ email: "ada@example.com" });
     await t.auth.$deps.db.insert(organization).values({ name: "Other", slug: "other" });
-    await t.signInAs("ada@example.com");
-    expect(await activeOrganizationIds(t)).toEqual([null]);
+    const headers = await t.signInAs("ada@example.com");
+    expect(await activeOrganization(t, headers)).toBeNull();
   });
 });

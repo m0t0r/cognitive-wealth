@@ -1,12 +1,14 @@
 import { invitation, member, organization, session, user } from "@repo/db/schema";
+import { findInternalIds } from "@repo/testing/internal-ids";
 import { expect, test } from "../fixtures";
-import { captureResponseBodies, findInternalIds } from "../support/internal-ids";
+import { captureResponseBodies } from "../support/internal-ids";
 import { seedInvitation, seedOrganization, seedUser, uniqueEmail } from "../support/seed";
 import { confirmSignIn, requestSignInFromUi } from "../support/sign-in";
 
 // The DTO mappers and the auth handler's response stripping are owned by unit and integration
-// tests (dto.test.ts, auth.integration.test.ts "handler responses carry no IDs…"). Here: whatever
-// Chromium actually receives over a whole journey, whichever layer produced it.
+// tests (dto.test.ts, auth.integration.test.ts "handler responses carry no IDs…"), and the matcher
+// by packages/testing/src/internal-ids.test.ts. Here: whatever Chromium actually receives over a
+// whole journey, whichever layer produced it.
 
 test("no internal ID reaches the browser through sign-in, home, members and a switch", async ({
   page,
@@ -63,9 +65,6 @@ test("no internal ID reaches the browser through sign-in, home, members and a sw
     db.select({ id: session.id }).from(session),
   ]);
   const ids = new Set(idRows.flat().map((row) => row.id));
-  // The matcher itself: it finds a planted ID and ignores public ones.
-  expect(findInternalIds(`{"id":${owner.id},"organizationId":"7"}`, ids)).toHaveLength(2);
-  expect(findInternalIds(`{"id":"${owner.publicId}","id":"sign-in-email"}`, ids)).toEqual([]);
 
   const bodies = await responses.collect();
   // The journey produced each kind of payload: pages, RSC navigations and actions, auth JSON.

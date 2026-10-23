@@ -1,19 +1,20 @@
-// Sign-in email limits and the device cookie (ADR 0001, "Sign-in request", step 2).
+// Sign-in email limits and the device cookie (ADR 0001, "Sign-in request", step 2). Parsing the
+// cookie and its value layout are owned by device.test.ts; here, what needs Better Auth.
 import { test as dbTest } from "@repo/db/testing";
 import { auditEvent, invitation, verification } from "@repo/db/schema";
-import { createHmac } from "node:crypto";
+import { parseSetCookies } from "@repo/testing/sign-in";
 import { eq } from "drizzle-orm";
-import { describe, expect, vi } from "vitest";
+import { describe, expect } from "vitest";
+import { AUTH_BASE_PATH, DEVICE_COOKIE_NAMES } from "./constants";
 import { DEVICE_COOKIE_MAX_AGE } from "./device";
-import { createTestAuth, TEST_SECRET, type TestAuth } from "./testing";
+import { createTestAuth, TEST_BASE_URL, type TestAuth } from "./testing";
 
 const test = dbTest.extend("t", ({ orm }) => createTestAuth({ orm }));
 
 const ADA = "ada@example.com";
 const ATTACKER = "203.0.113.66";
-const DEVICE = "cw.device";
-// 16 bytes of base64url: a device ID the parser accepts.
-const WELL_FORMED_ID = "AAAAAAAAAAAAAAAAAAAAAA";
+const [DEVICE, SECURE_DEVICE] = DEVICE_COOKIE_NAMES;
+const VERIFY_URL = new URL(`${TEST_BASE_URL}${AUTH_BASE_PATH}/magic-link/verify`);
 
 /** From `ip`, with `cookie` as the `Cookie` header. */
 type Init = { ip?: string; cookie?: string };
@@ -42,36 +43,34 @@ async function emailsFor(t: TestAuth, email: string, init: Init = {}) {
   return t.mailer.messages.slice(before).filter((m) => m.to === email).length;
 }
 
-/** The `Set-Cookie` header for the device cookie, if `response` set one. */
-function deviceSetCookie(response: Response, name = DEVICE): string | undefined {
-  return response.headers.getSetCookie().find((c) => c.startsWith(`${name}=`));
+/** The device cookie `response` set, as a browser would store it at `now`; `undefined` if none. */
+function deviceCookieOf(response: Response, name: string = DEVICE, now = Date.now()) {
+  return parseSetCookies(response.headers.getSetCookie(), VERIFY_URL, now).find(
+    (cookie) => cookie.name === name,
+  );
 }
 
 /** `name=value` of the device cookie `response` set, ready for a `Cookie` header. */
-function deviceCookie(response: Response, name = DEVICE): string {
-  const header = deviceSetCookie(response, name);
-  if (header === undefined) throw new Error("No device cookie set");
-  return header.split(";")[0]!;
+function deviceCookie(response: Response, name: string = DEVICE): string {
+  const cookie = deviceCookieOf(response, name);
+  if (cookie === undefined) throw new Error("No device cookie set");
+  return `${cookie.name}=${cookie.value}`;
 }
 
-/** The signed payload (`publicId.issuedAt.deviceId`) and signature of a device cookie. */
-function decode(cookie: string) {
-  const raw = decodeURIComponent(cookie.slice(cookie.indexOf("=") + 1));
-  const dot = raw.lastIndexOf(".");
-  const [publicId, issuedAt, deviceId] = raw.slice(0, dot).split(".");
-  return {
-    payload: raw.slice(0, dot),
-    signature: raw.slice(dot + 1),
-    publicId,
-    issuedAt,
-    deviceId,
-  };
-}
+/** Names of every cookie `response` sets, including ones it deletes. */
+const setCookieNames = (response: Response) =>
+  response.headers.getSetCookie().map((header) => header.slice(0, header.indexOf("=")));
 
-/** A device cookie with `payload` signed by the test secret, as better-call signs it. */
-function signed(payload: string): string {
-  const signature = createHmac("sha256", TEST_SECRET).update(payload).digest("base64");
-  return `${DEVICE}=${encodeURIComponent(`${payload}.${signature}`)}`;
+/**
+ * `cookie` with one character of its signature changed. better-call signs a cookie as
+ * `<value>.<signature>`, so only the part after the last `.` is touched.
+ */
+function tamperSignature(cookie: string): string {
+  const separator = cookie.indexOf("=");
+  const raw = decodeURIComponent(cookie.slice(separator + 1));
+  const at = raw.lastIndexOf(".") + 1;
+  const flipped = raw[at] === "A" ? "B" : "A";
+  return `${cookie.slice(0, separator)}=${encodeURIComponent(`${raw.slice(0, at)}${flipped}${raw.slice(at + 1)}`)}`;
 }
 
 /** Signs `email` in by link from a browser holding `cookie`, returning the verify response. */
@@ -212,47 +211,11 @@ describe("known device", () => {
     });
   });
 
-  test.for<[string, (s: { real: string; other: string }) => string]>([
-    [
-      "a tampered signature",
-      ({ real }) => {
-        const { payload, signature } = decode(real);
-        const flipped = (signature[0] === "A" ? "B" : "A") + signature.slice(1);
-        return `${DEVICE}=${encodeURIComponent(`${payload}.${flipped}`)}`;
-      },
-    ],
-    [
-      "a tampered value",
-      ({ real }) => {
-        const { publicId, issuedAt, signature } = decode(real);
-        return `${DEVICE}=${encodeURIComponent(`${publicId}.${issuedAt}.${WELL_FORMED_ID}.${signature}`)}`;
-      },
-    ],
-    ["no signature", ({ real }) => `${DEVICE}=${encodeURIComponent(decode(real).payload)}`],
-    ["another user's cookie", ({ other }) => other],
-    ["a signed value that isn't a device cookie", () => signed("not-a-device-cookie")],
-    [
-      "a signed value with a short device ID",
-      ({ real }) => {
-        const { publicId, issuedAt } = decode(real);
-        return signed(`${publicId}.${issuedAt}.short`);
-      },
-    ],
-    [
-      "a signed value with a non-numeric issue time",
-      ({ real }) => signed(`${decode(real).publicId}.soon.${WELL_FORMED_ID}`),
-    ],
-    [
-      "a signed value issued in the future",
-      ({ real }) => {
-        const future = Math.floor(Date.now() / 1000) + 3600;
-        return signed(`${decode(real).publicId}.${future}.${WELL_FORMED_ID}`);
-      },
-    ],
-    [
-      "a signed value with an extra part",
-      ({ real }) => signed(`${decode(real).payload}.${WELL_FORMED_ID}`),
-    ],
+  // The cookie's parser (wrong parts, bad issue time or device ID, age) is owned by
+  // device.test.ts. These two need Better Auth: its signature check, and a real other user.
+  test.for<[string, (cookies: { real: string; other: string }) => string]>([
+    ["a tampered signature", ({ real }) => tamperSignature(real)],
+    ["another user's valid cookie", ({ other }) => other],
   ])("gets no exemption with %s", async ([, forge], { t }) => {
     await t.seedUser({ email: ADA });
     await t.seedUser({ email: "grace@example.com" });
@@ -264,77 +227,81 @@ describe("known device", () => {
     // The genuine cookie still works, so the forgery, not the setup, was refused.
     expect(await emailsFor(t, ADA, { ip: "192.0.2.202", cookie: real })).toBe(1);
   });
-
-  test("gets no exemption with a cookie older than 180 days", async ({ t }) => {
-    await t.seedUser({ email: ADA });
-    const cookie = deviceCookie(await signInFrom(t, ADA));
-    await exhaustAddress(t, ADA, 1);
-
-    // Only `Date` moves; the rate-limit counters (on the real clock) stay where they are.
-    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + (DEVICE_COOKIE_MAX_AGE + 60) * 1000 });
-    try {
-      expect(await emailsFor(t, ADA, { ip: "192.0.2.201", cookie })).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
-    expect(await emailsFor(t, ADA, { ip: "192.0.2.202", cookie })).toBe(1);
-  });
 });
 
 describe("device cookie", () => {
   test("is set on sign-in by link and by code, scoped to the auth endpoints", async ({ t }) => {
     await t.seedUser({ email: ADA });
-    const byLink = deviceSetCookie(await signInFrom(t, ADA));
+    const byLink = await signInFrom(t, ADA);
     const { code } = await t.requestSignIn(ADA);
-    const byCode = deviceSetCookie(
-      await t.fetchAuth("/sign-in/email-otp", { body: { email: ADA, otp: code } }),
-    );
+    const byCode = await t.fetchAuth("/sign-in/email-otp", { body: { email: ADA, otp: code } });
+    expect(byCode.status).toBe(200);
 
-    for (const header of [byLink, byCode]) {
-      expect(header).toMatch(
-        /^cw\.device=[^;]+; Max-Age=15552000; Path=\/api\/auth; HttpOnly; SameSite=Lax$/,
-      );
+    const now = Date.now();
+    for (const response of [byLink, byCode]) {
+      expect(deviceCookieOf(response, DEVICE, now)).toMatchObject({
+        path: AUTH_BASE_PATH,
+        expires: Math.floor(now / 1000) + DEVICE_COOKIE_MAX_AGE,
+        httpOnly: true,
+        secure: false,
+        sameSite: "Lax",
+      });
     }
   });
 
-  test("gets the __Secure- prefix and Secure with secure cookies", async ({ orm }) => {
+  test("gets the __Secure- prefix and Secure with secure cookies, and is read under that name", async ({
+    orm,
+  }) => {
     const t = createTestAuth({ orm, secureCookies: true });
     await t.seedUser({ email: ADA });
     const response = await signInFrom(t, ADA);
-    const header = deviceSetCookie(response, `__Secure-${DEVICE}`);
-    expect(header).toMatch(
-      /^__Secure-cw\.device=[^;]+; Max-Age=15552000; Path=\/api\/auth; HttpOnly; Secure; SameSite=Lax$/,
-    );
-    expect(deviceSetCookie(response)).toBeUndefined();
+    expect(deviceCookieOf(response, SECURE_DEVICE)).toMatchObject({
+      path: AUTH_BASE_PATH,
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+    });
+    expect(deviceCookieOf(response, DEVICE)).toBeUndefined();
 
-    // And it's read under that name: the request is counted against the device rule.
-    const cookie = deviceCookie(response, `__Secure-${DEVICE}`);
-    expect(await emailsFor(t, ADA, { cookie })).toBe(1);
-    const { deviceId } = decode(cookie);
-    expect(t.storage.keys()).toContain(`rl:sign-in-email:dev:${ADA}:${deviceId}`);
+    // Past the requester limit, only a recognized device cookie still gets an email.
+    await requestEmails(t, ADA, 3, { ip: ATTACKER });
+    const cookie = deviceCookie(response, SECURE_DEVICE);
+    expect(await emailsFor(t, ADA, { ip: ATTACKER, cookie })).toBe(1);
   });
 
-  test("survives sign-out and keeps its device ID across sign-ins", async ({ t }) => {
-    const ada = await t.seedUser({ email: ADA });
-    await t.seedUser({ email: "grace@example.com" });
-    const first = await signInFrom(t, ADA);
-    const cookie = deviceCookie(first);
-    expect(decode(cookie).publicId).toBe(ada.publicId);
-    expect(decode(cookie).issuedAt).toMatch(/^\d+$/);
+  test("survives sign-out and still exempts", async ({ t }) => {
+    await t.seedUser({ email: ADA });
+    const signedIn = await signInFrom(t, ADA);
+    const cookie = deviceCookie(signedIn);
+    const session = t.sessionHeaders(signedIn);
 
     const signOut = await t.fetchAuth("/sign-out", {
       body: {},
-      headers: { cookie: t.sessionHeaders(first).get("cookie")! },
+      headers: { cookie: session.get("cookie")! },
     });
     expect(signOut.status).toBe(200);
-    expect(signOut.headers.getSetCookie().some((c) => c.includes("session_token=;"))).toBe(true);
-    expect(deviceSetCookie(signOut)).toBeUndefined();
+    expect(await t.auth.api.getSession({ headers: session })).toBeNull();
+    // Neither replaced nor cleared.
+    expect(setCookieNames(signOut)).not.toContain(DEVICE);
 
-    const again = deviceCookie(await signInFrom(t, ADA, cookie));
-    expect(decode(again).deviceId).toBe(decode(cookie).deviceId);
+    await requestEmails(t, ADA, 3, { ip: ATTACKER });
+    expect(await emailsFor(t, ADA, { ip: ATTACKER, cookie })).toBe(1);
+  });
 
-    // Another user on the same browser gets a device ID of their own.
-    const grace = deviceCookie(await signInFrom(t, "grace@example.com", again));
-    expect(decode(grace).deviceId).not.toBe(decode(cookie).deviceId);
+  test("a cookie issued by a real sign-in still exempts after signing in again, on the same device", async ({
+    t,
+  }) => {
+    await t.seedUser({ email: ADA });
+    const first = deviceCookie(await signInFrom(t, ADA));
+    // Signing in again from that browser reissues the cookie; its request is the device's 1st.
+    const again = deviceCookie(await signInFrom(t, ADA, first));
+
+    // Past the requester limit, the reissued cookie is still recognized (the device's 2nd)…
+    await requestEmails(t, ADA, 3, { ip: ATTACKER });
+    expect(await emailsFor(t, ADA, { ip: ATTACKER, cookie: again })).toBe(1);
+    // …and it kept the device ID: it shares the first cookie's limit of 3, so the 4th is refused.
+    // (Another IP: Better Auth's per-IP limit would stop a 6th request from this one.)
+    expect(await emailsFor(t, ADA, { ip: "203.0.113.67", cookie: again })).toBe(1);
+    expect(await emailsFor(t, ADA, { ip: "203.0.113.67", cookie: again })).toBe(0);
   });
 });
