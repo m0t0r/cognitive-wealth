@@ -4,7 +4,7 @@ test("dialog is keyboard operable and returns focus to its trigger", async ({
   page,
   makeAxeBuilder,
 }) => {
-  await page.goto("/");
+  await page.goto("/design-system");
   const trigger = page.getByRole("button", { name: "Open dialog" });
 
   await trigger.focus();

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Geist_Mono, Inter, Noto_Sans } from "next/font/google";
 import "@repo/design-system/globals.css";
+import { CSPProvider } from "@repo/design-system/components/csp-provider";
 import { Toaster } from "@repo/design-system/components/sonner";
 import { TooltipProvider } from "@repo/design-system/components/tooltip";
 import { cn } from "@repo/design-system/lib/utils";
@@ -12,8 +13,8 @@ const notoSansHeading = Noto_Sans({ subsets: ["latin"], variable: "--font-headin
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: "Cognitive Wealth",
-  description: "Design system preview",
+  title: { default: "Cognitive Wealth", template: "%s · Cognitive Wealth" },
+  description: "Cognitive Wealth",
 };
 
 export default async function RootLayout({
@@ -21,7 +22,8 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Set by proxy.ts; next-themes needs it for its inline no-flash script.
+  // Set by proxy.ts; next-themes needs it for its inline no-flash script, Base UI for its inline
+  // `<style>` elements.
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
@@ -36,10 +38,12 @@ export default async function RootLayout({
       )}
     >
       <body>
-        <ThemeProvider nonce={nonce}>
-          <TooltipProvider>{children}</TooltipProvider>
-          <Toaster />
-        </ThemeProvider>
+        <CSPProvider nonce={nonce}>
+          <ThemeProvider nonce={nonce}>
+            <TooltipProvider>{children}</TooltipProvider>
+            <Toaster />
+          </ThemeProvider>
+        </CSPProvider>
       </body>
     </html>
   );

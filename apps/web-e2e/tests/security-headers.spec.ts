@@ -63,7 +63,7 @@ for (const route of ROUTES) {
 
 test("interactive components stay within the CSP", async ({ page }) => {
   const violations = await recordViolations(page);
-  await page.goto("/");
+  await page.goto("/design-system");
 
   // Toasts inject sonner's stylesheet; the theme toggle re-runs next-themes.
   await page.getByRole("button", { name: "Show toast" }).click();
