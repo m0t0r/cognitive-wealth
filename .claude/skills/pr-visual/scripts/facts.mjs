@@ -35,7 +35,8 @@ function area(path) {
 function kind(path) {
   if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(path)) return "tests";
   if (path.startsWith("packages/db/migrations/")) return "migrations";
-  if (/\.mdx?$/.test(path)) return "docs";
+  // docs/ includes its diagrams' .mmd sources and rendered SVGs.
+  if (/\.mdx?$/.test(path) || path.startsWith("docs/")) return "docs";
   if (/(^|\/)(Dockerfile|compose[^/]*\.ya?ml|[^/]*\.config\.[cm]?[jt]s|tsconfig[^/]*\.json|package\.json|turbo\.json|\.[^/]+rc(\.json)?)$/.test(path) || path.startsWith(".github/")) return "config";
   return "source";
 }
