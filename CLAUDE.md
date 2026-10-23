@@ -20,6 +20,8 @@ Every task that changes the repo runs in its own git worktree, whether or not th
 
 `.claude/hooks/require-worktree.mjs` enforces this. It denies edits inside the main checkout, and commands there that commit, stage, switch branches or rewrite files in place. A denial is the cue to call `EnterWorktree`, not to work around it. Reads, `gh`, a fast-forward of the main checkout and files outside the repo (the scratchpad, memory) are unaffected. When the user explicitly wants work done in the main checkout, they start Claude with `CLAUDE_MAIN_CHECKOUT=1`.
 
+Claude Code's own worktree isolation (separate from that hook) refuses commands it can't parse for git use, with "names git in a form too complex to verify": `for`/`while` loops, heredocs, and anything containing a URL like `github.com/…` (it matches `git` inside `github`). In a worktree, edit files with Edit/Write, and put loops, heredocs and URL-bearing commands in a script file in the scratchpad and run it with `sh <file>`.
+
 ## Commands
 
 Run from the repo root (tasks fan out via Turborepo):

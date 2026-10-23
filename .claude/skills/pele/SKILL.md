@@ -127,6 +127,7 @@ A surrounding ` ```mermaid ` fence is stripped. Mermaid's own frontmatter is not
 - Node has no canvas measurer. Label widths can differ from a browser render. That is expected.
 - Do not pass `--max-width` unless the user asked for a narrow layout. It can change direction.
 - Headers are exact. `radar`, `venn`, `wardley`, `swimlane`, `treeView`, `usecase`, `cynefin`, `railroad`, `agentflow` all need `-beta`; `architecture` needs `-beta` too. There is no `fishbone` header; use `ishikawa-beta`.
+- Flowchart node ids can't be Mermaid keywords: `call`, `click`, `style`, `class`, `classDef`, `linkStyle`, `subgraph`, `end` (e.g. `call --> x` fails with `got 'CALLBACKNAME'`). Use another id and keep the word in the label: `rpc[call] --> x`.
 - Icon names (`fa:fa-user`, architecture icons other than `cloud`, `database`, `disk`, `internet`, `server`) render as an empty slot without an error. This script does not supply an icon callback. Drop the icon or replace it with text.
 - Source limit is 50,000 characters. Output limit is 4,000,000. Flowchart edge limit is 5,000.
 - `npm install` in the user's repo will not satisfy this script. The package lives in the skill root.
