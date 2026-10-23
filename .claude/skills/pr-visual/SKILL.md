@@ -27,13 +27,13 @@ node .claude/skills/pr-visual/scripts/facts.mjs --out .dev/pr-visual/<branch>   
 
 This writes `facts.json` (totals, per-file change and lines, test cases added and removed per layer, commits) and one `.mmd` per chart that has something to show:
 
-| Chart | Shows | Use when |
-| --- | --- | --- |
-| `mix` (sankey) | lines by area → source code, test code, docs, config, migrations | more than one area changed |
-| `churn` (treemap) | lines by area and file, largest first; vendored `.agents/skills` left out, its line count in the root label | always, unless only vendored files changed; it's the change's footprint |
-| `files` (treeView) | every changed file with change kind and `+/−` | up to 60 files |
-| `tests` (xychart) | test cases added and removed per layer | tests changed |
-| `commits` (gitGraph) | the branch's commits | 3–25 commits, when their order tells a story |
+| Chart                | Shows                                                                                                       | Use when                                                                |
+| -------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `mix` (sankey)       | lines by area → source code, test code, docs, config, migrations                                            | more than one area changed                                              |
+| `churn` (treemap)    | lines by area and file, largest first; vendored `.agents/skills` left out, its line count in the root label | always, unless only vendored files changed; it's the change's footprint |
+| `files` (treeView)   | every changed file with change kind and `+/−`                                                               | up to 60 files                                                          |
+| `tests` (xychart)    | test cases added and removed per layer                                                                      | tests changed                                                           |
+| `commits` (gitGraph) | the branch's commits                                                                                        | 3–25 commits, when their order tells a story                            |
 
 ## 3. Runtime evidence, before and after
 
@@ -58,6 +58,7 @@ Serve both sides with the verifier's isolated stack, each with its own fresh dat
   ```
 
   Do the same for INP when the change has interactions. Add a table of the exact numbers under the chart.
+
 - **Client JS**: gzip-summed bytes of `apps/web/.next/static/chunks/**/*.js` in each build (the base build lives in `.dev/worktrees/<sha>`). Report it when it moves by more than 1 kB.
 - **Accessibility**: `agent-browser a11y` violation counts per touched route on both servers.
 
@@ -65,14 +66,14 @@ Serve both sides with the verifier's isolated stack, each with its own fresh dat
 
 Map each item in the inventory to the smallest visual that carries it, and pick the exact header from the `pele` skill (`--types`). Use 1–3 diagrams, each with a one-line caption saying what to look at:
 
-| Change | Visual |
-| --- | --- |
-| Schema or migration | `erDiagram` of the changed tables only, with each changed column's comment `"added"`, `"removed"` or `"was <type>"`, read from the migration SQL |
-| Server action, route or auth flow | `sequenceDiagram` from browser to app to services, with the changed calls in the order the code makes them |
-| UI or flow state machine | `stateDiagram-v2` of the states and transitions the diff adds or changes |
-| Module or package boundaries | `flowchart` with one subgraph per package, laid out in two dimensions, with before and after as two subgraphs when the boundary moved |
-| Who can do what | a Markdown table of roles against actions; a diagram adds nothing here |
-| Rendered UI | screenshots (step 3), never a diagram |
+| Change                            | Visual                                                                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Schema or migration               | `erDiagram` of the changed tables only, with each changed column's comment `"added"`, `"removed"` or `"was <type>"`, read from the migration SQL |
+| Server action, route or auth flow | `sequenceDiagram` from browser to app to services, with the changed calls in the order the code makes them                                       |
+| UI or flow state machine          | `stateDiagram-v2` of the states and transitions the diff adds or changes                                                                         |
+| Module or package boundaries      | `flowchart` with one subgraph per package, laid out in two dimensions, with before and after as two subgraphs when the boundary moved            |
+| Who can do what                   | a Markdown table of roles against actions; a diagram adds nothing here                                                                           |
+| Rendered UI                       | screenshots (step 3), never a diagram                                                                                                            |
 
 ## 5. Render and look
 
@@ -86,7 +87,7 @@ Every `.mmd` becomes `<name>.light.png` and `<name>.dark.png` (2x, from SVGs in 
 
 Use this order, and budgets that keep it reviewable. The title is at most 70 characters and the Summary prose 1–3 short paragraphs. Key changes has 3–8 entries, each excerpt 40 lines or fewer. Leave out boilerplate: no "this PR…" preamble, no repeated file counts (the charts show them).
 
-~~~markdown
+````markdown
 ## Summary
 
 <objective, the key decision, the risk: 1–3 short paragraphs, in GLOSSARY.md's terms>
@@ -128,7 +129,7 @@ Use this order, and budgets that keep it reviewable. The title is at most 70 cha
 
 **Door:** <one-way or two-way>
 **Blast Radius:** <one word>
-~~~
+````
 
 Embed every chart and diagram as both of its PNGs, by local path, so `gh --attach` can swap in the uploaded asset. GitHub shows the one that matches the reader's theme:
 

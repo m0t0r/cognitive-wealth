@@ -22,7 +22,10 @@ const { tool_name: tool, tool_input: args = {}, cwd } = input;
 
 const git = (dir, ...a) => {
   try {
-    return execFileSync("git", ["-C", dir, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync("git", ["-C", dir, ...a], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
   } catch {
     return null;
   }
@@ -39,23 +42,34 @@ function mainCheckout(dir) {
 
 // Commands that change what's checked out, committed or staged, or edit files in place. An in-place
 // rewrite counts whatever its target: scratch files live in a worktree's `.dev/scratch/` instead.
-// GNU sed takes `-i` after the script too, so it counts anywhere in the command.
+// GNU sed takes `-i` after the script too, so it counts anywhere up to the next `|`, `;`, `&` or
+// newline (so `sed -n 1p f | grep -i x` is still a read).
 const MUTATING = [
   /\bgit\s+(commit|add|rm|mv|checkout|switch|restore|reset|merge|rebase|cherry-pick|revert|am|apply|stash|pull|branch\s+-[mMdD])\b/,
-  /\b(sed|perl)\s(.*\s)?(-[a-zA-Z]*i|--in-place)/,
+  /\b(sed|perl)\s([^|;&\n]*\s)?(-[a-zA-Z]*i|--in-place)/,
   /\bpnpm\s+(add|remove|rm|up|update|dlx\s+shadcn)\b/,
 ];
 
 // Fast-forwarding the main checkout to origin can't create a commit or a conflict, and it's how
 // the main checkout (where these hooks run from) picks up a new dev. Only the whole command counts,
 // so `git pull --ff-only && git commit …` is still checked.
-const FAST_FORWARD = /^\s*git\s+(pull\s+--ff-only(\s+origin(\s+dev)?)?|merge\s+--ff-only\s+origin\/dev)\s*$/;
+const FAST_FORWARD =
+  /^\s*git\s+(pull\s+--ff-only(\s+origin(\s+dev)?)?|merge\s+--ff-only\s+origin\/dev)\s*$/;
+
+// A `;` or `|` inside quotes (`sed 's/a;b/c/' -i f`) doesn't end the command, so the patterns also
+// run with quoted text blanked out. Either match denies; the raw one still sees `sh -c "sed -i …"`.
+const command = args.command ?? "";
+const unquoted = command.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, "''");
 
 let main = null;
 if (["Edit", "Write", "NotebookEdit"].includes(tool)) {
   const path = args.file_path ?? args.notebook_path;
   if (path) main = mainCheckout(dirname(isAbsolute(path) ? path : resolve(cwd, path)));
-} else if (tool === "Bash" && !FAST_FORWARD.test(args.command ?? "") && MUTATING.some((re) => re.test(args.command ?? ""))) {
+} else if (
+  tool === "Bash" &&
+  !FAST_FORWARD.test(command) &&
+  MUTATING.some((re) => re.test(command) || re.test(unquoted))
+) {
   main = mainCheckout(cwd);
 }
 if (!main) process.exit(0);
@@ -70,6 +84,10 @@ const reason = [
 ].join(" ");
 console.log(
   JSON.stringify({
-    hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason },
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: reason,
+    },
   }),
 );

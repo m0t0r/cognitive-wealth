@@ -11,11 +11,16 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 
 const { values } = parseArgs({
-  options: { base: { type: "string" }, head: { type: "string", default: "HEAD" }, out: { type: "string" } },
+  options: {
+    base: { type: "string" },
+    head: { type: "string", default: "HEAD" },
+    out: { type: "string" },
+  },
 });
 if (!values.out) throw new Error("--out <dir> is required");
 
-const git = (...args) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+const git = (...args) =>
+  execFileSync("git", args, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
 const head = values.head;
 const base = values.base ?? git("merge-base", "origin/dev", head).trim();
 const range = `${base}...${head}`;
@@ -37,23 +42,39 @@ function kind(path) {
   if (path.startsWith("packages/db/migrations/")) return "migrations";
   // docs/ includes its diagrams' .mmd sources and rendered SVGs.
   if (/\.mdx?$/.test(path) || path.startsWith("docs/")) return "docs";
-  if (/(^|\/)(Dockerfile|compose[^/]*\.ya?ml|[^/]*\.config\.[cm]?[jt]s|tsconfig[^/]*\.json|package\.json|turbo\.json|\.[^/]+rc(\.json)?)$/.test(path) || path.startsWith(".github/")) return "config";
+  if (
+    /(^|\/)(Dockerfile|compose[^/]*\.ya?ml|[^/]*\.config\.[cm]?[jt]s|tsconfig[^/]*\.json|package\.json|turbo\.json|\.[^/]+rc(\.json)?)$/.test(
+      path,
+    ) ||
+    path.startsWith(".github/")
+  )
+    return "config";
   return "source";
 }
 
 function layer(path) {
   if (/\.integration\.test\.[jt]sx?$/.test(path)) return "integration";
-  if (path.startsWith("apps/web-e2e/") && /\.spec\.ts$/.test(path)) return "e2e";
-  if (/\.test\.tsx$/.test(path)) return "ui";
+  if (path.startsWith("apps/web-e2e/") && path.endsWith(".spec.ts")) return "e2e";
+  if (path.endsWith(".test.tsx")) return "ui";
   if (/\.test\.[jt]s$/.test(path)) return "unit";
   return null;
 }
 
-const STATUS = { A: "added", M: "modified", D: "removed", R: "renamed", C: "copied", T: "modified" };
+const STATUS = {
+  A: "added",
+  M: "modified",
+  D: "removed",
+  R: "renamed",
+  C: "copied",
+  T: "modified",
+};
 const status = new Map();
 for (const line of git("diff", "--name-status", "-M", range).trim().split("\n").filter(Boolean)) {
   const [code, ...paths] = line.split("\t");
-  status.set(paths.at(-1), { change: STATUS[code[0]] ?? "modified", from: paths.length > 1 ? paths[0] : undefined });
+  status.set(paths.at(-1), {
+    change: STATUS[code[0]] ?? "modified",
+    from: paths.length > 1 ? paths[0] : undefined,
+  });
 }
 
 const files = [];
@@ -61,7 +82,12 @@ const ignored = { files: 0, lines: 0 };
 for (const line of git("diff", "--numstat", "-M", range).trim().split("\n").filter(Boolean)) {
   const [add, del, raw] = line.split("\t");
   // A rename prints as `dir/{old => new}/file` or `old => new`.
-  const path = raw.includes("=>") ? raw.replace(/\{[^}]* => ([^}]*)\}/, "$1").replace(/^.* => /, "").replace(/\/\//g, "/") : raw;
+  const path = raw.includes("=>")
+    ? raw
+        .replace(/\{[^}]* => ([^}]*)\}/, "$1")
+        .replace(/^.* => /, "")
+        .replace(/\/\//g, "/")
+    : raw;
   const binary = add === "-";
   const added = binary ? 0 : Number(add);
   const deleted = binary ? 0 : Number(del);
@@ -70,12 +96,25 @@ for (const line of git("diff", "--numstat", "-M", range).trim().split("\n").filt
     ignored.lines += added + deleted;
     continue;
   }
-  files.push({ path, area: area(path), kind: kind(path), added, deleted, binary, ...(status.get(path) ?? { change: "modified" }) });
+  files.push({
+    path,
+    area: area(path),
+    kind: kind(path),
+    added,
+    deleted,
+    binary,
+    ...(status.get(path) ?? { change: "modified" }),
+  });
 }
 
 // Test cases added and removed per layer, counted from `it(` / `test(` lines in the diff itself.
 const CASE = /^[+-]\s*(it|test)(\.(each|only|skip|concurrent|todo)\b[^(]*(\([^)]*\))?)?\(\s*["'`]/;
-const tests = { unit: { added: 0, removed: 0 }, ui: { added: 0, removed: 0 }, integration: { added: 0, removed: 0 }, e2e: { added: 0, removed: 0 } };
+const tests = {
+  unit: { added: 0, removed: 0 },
+  ui: { added: 0, removed: 0 },
+  integration: { added: 0, removed: 0 },
+  e2e: { added: 0, removed: 0 },
+};
 for (const file of files) {
   const l = layer(file.path);
   if (!l || file.binary) continue;
@@ -93,9 +132,12 @@ const commits = git("log", "--first-parent", "--format=%h%x09%s", `${base}..${he
     const [sha, subject] = line.split("\t");
     return { sha, subject };
   })
-  .reverse();
+  .toReversed();
 
-const totals = files.reduce((t, f) => ({ files: t.files + 1, added: t.added + f.added, deleted: t.deleted + f.deleted }), { files: 0, added: 0, deleted: 0 });
+const totals = files.reduce(
+  (t, f) => ({ files: t.files + 1, added: t.added + f.added, deleted: t.deleted + f.deleted }),
+  { files: 0, added: 0, deleted: 0 },
+);
 const facts = { base, head: git("rev-parse", head).trim(), totals, ignored, tests, commits, files };
 
 mkdirSync(values.out, { recursive: true });
@@ -115,7 +157,13 @@ const byArea = Map.groupBy(files, (f) => f.area);
 
 // Where the lines went: area → kind of file. Kind labels differ from every area name (an area
 // called `docs` and a kind called `docs` would be one sankey node, a cycle).
-const KIND_LABEL = { source: "source code", tests: "test code", docs: "documentation", config: "configuration", migrations: "migrations" };
+const KIND_LABEL = {
+  source: "source code",
+  tests: "test code",
+  docs: "documentation",
+  config: "configuration",
+  migrations: "migrations",
+};
 // Areas under 1% of the change and 50 lines fold into one node, so a tail of one-line files
 // (symlinks, a gitignore line) stays readable without hiding a small but real area.
 const total = files.reduce((n, f) => n + churn(f), 0);
@@ -147,14 +195,15 @@ const rootLabel = vendoredLines
   : "Lines changed";
 const tree = ["treemap-beta", `"${rootLabel}"`];
 const reviewed = [...folded].filter(([a]) => !vendored(a));
-for (const [a, group] of reviewed.sort((x, y) => areaChurn(y[1]) - areaChurn(x[1]))) {
-  const sorted = group.filter((f) => churn(f) > 0).sort((x, y) => churn(y) - churn(x));
+for (const [a, group] of reviewed.toSorted((x, y) => areaChurn(y[1]) - areaChurn(x[1]))) {
+  const sorted = group.filter((f) => churn(f) > 0).toSorted((x, y) => churn(y) - churn(x));
   if (sorted.length === 0) continue;
   const named = sorted.slice(0, PER_AREA);
   const rest = sorted.slice(PER_AREA);
   tree.push(`  "${q(a)}"`);
   // Parent and name, since a bare `page.tsx` or `index.ts` says nothing.
-  for (const f of named) tree.push(`    "${q(f.path.split("/").slice(-2).join("/"))}": ${churn(f)}`);
+  for (const f of named)
+    tree.push(`    "${q(f.path.split("/").slice(-2).join("/"))}": ${churn(f)}`);
   if (rest.length) tree.push(`    "${rest.length} more files": ${areaChurn(rest)}`);
 }
 if (files.some((f) => !vendored(f.area) && churn(f) > 0)) emit("churn", tree.join("\n"));
@@ -169,7 +218,9 @@ for (const f of files) {
 }
 const view = ["treeView-beta"];
 const walk = (node, depth) => {
-  for (const [name, child] of Object.entries(node).sort(([x], [y]) => Number(!x.endsWith("/")) - Number(!y.endsWith("/")) || x.localeCompare(y))) {
+  for (const [name, child] of Object.entries(node).toSorted(
+    ([x], [y]) => Number(!x.endsWith("/")) - Number(!y.endsWith("/")) || x.localeCompare(y),
+  )) {
     const pad = "  ".repeat(depth);
     if (name.endsWith("/")) {
       // Fold single-child directory chains into one line, as GitHub's file tree does.
@@ -210,7 +261,7 @@ if (layers.length) {
 
 // The branch's commits, when there are enough to tell a story.
 if (commits.length >= 3 && commits.length <= 25) {
-  const lines = ["gitGraph", "  commit id: \"base\""];
+  const lines = ["gitGraph", '  commit id: "base"'];
   lines.push("  branch change");
   for (const c of commits) lines.push(`  commit id: "${c.sha} ${q(c.subject).slice(0, 48)}"`);
   emit("commits", lines.join("\n"));

@@ -1,6 +1,8 @@
 packages:
   - "apps/*"
   - "packages/*"
+  # The agent hooks, so `pnpm test` runs their tests.
+  - ".claude/hooks"
 
 allowBuilds:
   # Its postinstall only re-checks the platform binary that the optional dependency already provides.
