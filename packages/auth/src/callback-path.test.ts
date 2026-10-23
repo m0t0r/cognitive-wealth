@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import { callbackPathOrDefault, sanitizeCallbackPath } from "./callback-path";
 
 describe("sanitizeCallbackPath", () => {

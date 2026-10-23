@@ -1,5 +1,4 @@
 import { createTransport } from "nodemailer";
-import { describe, expect, it, vi } from "vitest";
 import { createNodemailerMailer, createSmtpMailer } from "./smtp";
 
 const FROM = "Cognitive Wealth <no-reply@example.test>";

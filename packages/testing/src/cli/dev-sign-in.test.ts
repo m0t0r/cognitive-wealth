@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { describe, expect, it, onTestFinished } from "vitest";
 import { listen, startFakeMailpit } from "../fake-mailpit";
 
 const run = promisify(execFile);

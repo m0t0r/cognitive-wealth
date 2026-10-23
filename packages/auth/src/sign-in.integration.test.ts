@@ -13,7 +13,6 @@ import {
 } from "@repo/db/schema";
 import { parseSetCookies } from "@repo/testing/sign-in";
 import { eq, sql } from "drizzle-orm";
-import { describe, expect, vi } from "vitest";
 import { getViewer, switchOrganization } from "./tenant";
 import { createTestAuth, TEST_BASE_URL, type TestAuth } from "./testing";
 

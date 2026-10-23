@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
 import {
   EMPTY_STYLE_HASH,
   SONNER_STYLE_HASH,

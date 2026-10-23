@@ -1,4 +1,3 @@
-import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   DEVICE_COOKIE_MAX_AGE,
   parseDeviceCookie,

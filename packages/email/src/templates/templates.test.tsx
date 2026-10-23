@@ -1,7 +1,6 @@
 import { within } from "@repo/testing/react";
 import { render } from "@react-email/render";
 import type { ReactElement } from "react";
-import { describe, expect, it } from "vitest";
 import { InvitationEmail } from "./invitation";
 import { SignInEmail } from "./sign-in";
 

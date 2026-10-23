@@ -4,7 +4,6 @@ import { test as dbTest } from "@repo/db/testing";
 import { auditEvent, invitation, verification } from "@repo/db/schema";
 import { parseSetCookies } from "@repo/testing/sign-in";
 import { eq } from "drizzle-orm";
-import { describe, expect, onTestFinished, vi } from "vitest";
 import { AUTH_BASE_PATH, DEVICE_COOKIE_NAMES } from "./constants";
 import { DEVICE_COOKIE_MAX_AGE } from "./device";
 import { createMemoryStorage } from "./storage/memory";

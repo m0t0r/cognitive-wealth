@@ -64,7 +64,7 @@ Vitest 5 with three projects per package, picked by filename:
 - `*.integration.test.{ts,tsx}`: integration tests against real Postgres via PGlite. Use `const test = createDatabaseTest(migrate)` and take `db` from the test context; for Drizzle code, import `test` from `@repo/db/testing` and take `orm` (the real migrations, applied per worker, cloned per test). Add `// @vitest-environment happy-dom` to a file that also renders.
 - E2E: `apps/web-e2e/tests/*.spec.ts`
 
-Vitest globals are off, so import `describe`/`it`/`expect`/`vi` from `vitest`.
+Vitest globals are on (`globals: true` in `defineVitestConfig()`, `vitest/globals` in each package's tsconfig `types`): use `describe`/`it`/`expect`/`vi` without importing them. Library code in `@repo/testing` still imports from `vitest`.
 
 **Test isolation is a hard requirement at every level.** No test may depend on another test's state or on execution order.
 

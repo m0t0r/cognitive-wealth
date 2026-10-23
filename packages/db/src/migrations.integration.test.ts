@@ -1,5 +1,4 @@
 import { sql } from "drizzle-orm";
-import { describe, expect } from "vitest";
 import journal from "../migrations/meta/_journal.json" with { type: "json" };
 import { test } from "./testing";
 

@@ -1,5 +1,4 @@
 import { deferred, screen, setup } from "@repo/testing/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { saveName } from "@/app/(auth)/welcome/actions";
 import type { FormState } from "@/lib/action-result";
 import { NameForm } from "./name-form";

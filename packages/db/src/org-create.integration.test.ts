@@ -1,5 +1,4 @@
 import { count, eq } from "drizzle-orm";
-import { describe, expect } from "vitest";
 import { CliError, createOrganization } from "./cli/organizations";
 import type { Database } from "./index";
 import { auditEvent, member, organization, user } from "./schema";

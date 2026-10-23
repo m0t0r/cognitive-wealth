@@ -1,4 +1,3 @@
-import { describe, expect, it, vi } from "vitest";
 import { createResendMailer } from "./resend";
 
 const API_KEY = "re_secret_test_key";

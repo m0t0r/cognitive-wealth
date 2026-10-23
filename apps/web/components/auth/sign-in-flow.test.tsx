@@ -1,6 +1,5 @@
 import { requestSignIn, verifyCode } from "@repo/auth/client";
 import { act, render, screen, setup, userEvent } from "@repo/testing/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RESEND_COOLDOWN, SignInFlow } from "./sign-in-flow";
 
 // The real constants (the sign-in email limits the page mirrors), mocked calls.

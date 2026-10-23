@@ -1,5 +1,4 @@
 import { test as dbTest } from "@repo/db/testing";
-import { describe, expect } from "vitest";
 import { createTestAuth, internalIdKeys } from "./testing";
 
 const test = dbTest.extend("t", ({ orm }) => createTestAuth({ orm }));
