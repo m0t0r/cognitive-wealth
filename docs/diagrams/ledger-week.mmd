@@ -1,0 +1,13 @@
+gantt
+  title Dana's week: when each Transaction is agreed, settled and corrected
+  dateFormat YYYY-MM-DD
+  axisFormat %a %d %b
+  section Buy, row 4
+    Agreed, $6,010.00 owed      :b1, 2026-03-02, 1d
+    Settled, cash paid          :milestone, 2026-03-03, 0d
+  section Sell, row 6
+    Agreed, $1,520.00 in transit :s1, 2026-03-04, 1d
+    Settled, cash arrives       :milestone, 2026-03-05, 0d
+  section Dividend, rows 5, 9, 10
+    Ledger says $9.00           :d1, 2026-03-03, 3d
+    Correction posted, $10.50   :milestone, 2026-03-06, 0d
