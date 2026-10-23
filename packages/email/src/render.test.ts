@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import { renderInvitationEmail, renderSignInEmail } from "./render";
 
 const signInUrl = "https://app.example.test/sign-in/confirm#token=abc&next=%2Forgs";

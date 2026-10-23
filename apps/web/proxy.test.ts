@@ -1,5 +1,4 @@
 import { NextRequest } from "next/server";
-import { describe, expect, it } from "vitest";
 import { config, proxy } from "./proxy";
 
 // Next compiles the matcher with path-to-regexp; its custom group behaves like this plain regex.

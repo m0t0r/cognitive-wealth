@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEV_EMAIL_FROM, DEV_SMTP_URL, emailConfigFromEnv, mailerFromEnv } from "./env";
 
 const FROM = "Cognitive Wealth <no-reply@example.test>";

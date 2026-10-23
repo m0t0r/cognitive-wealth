@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import { render } from "./react";
 
 describe("toHaveNoA11yViolations", () => {

@@ -1,7 +1,6 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
 import { authOptionsFromEnv, type AuthEnv } from "./env";
 
 const SECRET = "s".repeat(32);

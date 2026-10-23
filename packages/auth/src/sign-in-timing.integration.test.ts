@@ -4,7 +4,6 @@ import { test as dbTest } from "@repo/db/testing";
 import { auditEvent, verification } from "@repo/db/schema";
 import type { EmailMessage } from "@repo/email";
 import { parseSignInEmail } from "@repo/testing/mailpit";
-import { describe, expect, vi } from "vitest";
 import { createTestAuth, type TestAuth } from "./testing";
 
 const ADA = "ada@example.com";

@@ -1,5 +1,4 @@
 import type { IncomingHttpHeaders } from "node:http";
-import { describe, expect, it, onTestFinished } from "vitest";
 import { listen, readBody, startFakeMailpit } from "./fake-mailpit";
 import { SignInError, parseSetCookies, requestSignInEmail, signIn } from "./sign-in";
 

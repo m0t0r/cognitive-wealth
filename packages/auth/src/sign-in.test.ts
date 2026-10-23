@@ -1,5 +1,4 @@
 import { setImmediate as nextTurn } from "node:timers/promises";
-import { describe, expect, it, vi } from "vitest";
 import { runInBackground } from "./sign-in";
 
 /** Lets `setImmediate` callbacks and the microtasks after them run. */

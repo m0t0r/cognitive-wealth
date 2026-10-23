@@ -2,7 +2,6 @@ import { createDatabaseTest } from "@repo/testing/pglite";
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { describe, expect } from "vitest";
 import { migrationsFolder } from "./migrations-folder";
 import { auditEvent, user } from "./schema";
 

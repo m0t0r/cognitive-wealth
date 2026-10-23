@@ -1,6 +1,5 @@
 import { verifyMagicLink } from "@repo/auth/client";
 import { screen, setup } from "@repo/testing/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfirmSignIn } from "./confirm-sign-in";
 
 // Keep the real sanitizer: the page must never navigate off-site, whatever `#next` says.

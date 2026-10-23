@@ -22,6 +22,8 @@ export function defineVitestConfig(overrides: ViteUserConfig = {}): ViteUserConf
       // Turbo runs packages in parallel, and a process clearing the shared cache after an install
       // fails the others with ENOTEMPTY. It stays under node_modules, so reinstalls still clear it.
       fsModuleCachePath: join(process.cwd(), "node_modules", ".vitest-cache"),
+      // `describe`/`it`/`expect`/`vi` without imports; also turns on RTL's auto-cleanup.
+      globals: true,
       passWithNoTests: true,
       clearMocks: true,
       restoreMocks: true,

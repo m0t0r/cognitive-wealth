@@ -4,6 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true,
+    "types": ["vitest/globals"],
     // The CLI runs under Node's type stripping, which needs `.ts` in relative imports.
     "allowImportingTsExtensions": true
   },

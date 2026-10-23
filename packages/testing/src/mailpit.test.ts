@@ -1,4 +1,3 @@
-import { describe, expect, it, onTestFinished } from "vitest";
 import { startFakeMailpit } from "./fake-mailpit";
 import { createMailpit, parseInvitationEmail, parseSignInEmail } from "./mailpit";
 

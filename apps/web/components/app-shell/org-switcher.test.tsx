@@ -2,7 +2,6 @@ import type { PublicMembership } from "@repo/auth";
 import { SidebarProvider } from "@repo/design-system/components/sidebar";
 import { deferred, screen, setup } from "@repo/testing/react";
 import { toast } from "sonner";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { switchWorkspace } from "@/app/(app)/actions";
 import type { ActionResult } from "@/lib/action-result";
 import { OrgSwitcher } from "./org-switcher";

@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import { assertSeedTarget } from "./seed-data";
 
 describe("assertSeedTarget", () => {

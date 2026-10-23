@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import { isLocalHost, localUrl, portlessCaPath } from "./local";
 
 describe("isLocalHost", () => {

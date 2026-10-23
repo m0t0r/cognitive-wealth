@@ -1,6 +1,5 @@
 import { render, screen } from "@repo/testing/react";
 import { renderToString } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
 import { LocalDate } from "./local-date";
 
 // 23:30 UTC on Oct 22 is already Oct 23 in Auckland.

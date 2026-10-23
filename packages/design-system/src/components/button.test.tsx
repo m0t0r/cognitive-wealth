@@ -1,5 +1,4 @@
 import { render, setup, screen } from "@repo/testing/react";
-import { describe, expect, it, vi } from "vitest";
 import { Button } from "./button";
 
 describe("Button", () => {

@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import { can, isRole, type Permission } from "./access";
 
 const PERMISSIONS: Permission[] = [

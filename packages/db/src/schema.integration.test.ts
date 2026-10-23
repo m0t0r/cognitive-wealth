@@ -1,5 +1,4 @@
 import { eq, sql } from "drizzle-orm";
-import { describe, expect } from "vitest";
 import type { Database } from "./index";
 import { auditEvent, invitation, member, organization, session, user } from "./schema";
 import { test } from "./testing";

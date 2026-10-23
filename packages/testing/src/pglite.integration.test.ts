@@ -1,4 +1,3 @@
-import { describe, expect } from "vitest";
 import { createDatabaseTest } from "./pglite";
 
 const test = createDatabaseTest(async (db) => {

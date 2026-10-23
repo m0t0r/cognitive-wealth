@@ -1,4 +1,3 @@
-import { describe, expect } from "vitest";
 import { ping } from "./index";
 import { test } from "./testing";
 

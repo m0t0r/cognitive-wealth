@@ -1,5 +1,4 @@
 import { asc, count, eq } from "drizzle-orm";
-import { describe, expect } from "vitest";
 import { seedDevData } from "./cli/seed-data";
 import type { Database } from "./index";
 import { member, organization, user } from "./schema";
