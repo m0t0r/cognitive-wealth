@@ -1,6 +1,10 @@
 import { join } from "node:path";
 import type { NextConfig } from "next";
-import { API_CONTENT_SECURITY_POLICY, staticSecurityHeaders } from "./lib/security-headers";
+import {
+  API_CONTENT_SECURITY_POLICY,
+  NO_REFERRER_PATHS,
+  staticSecurityHeaders,
+} from "./lib/security-headers";
 
 const nextConfig: NextConfig = {
   // Self-contained server for the Docker image (`node apps/web/server.js`).
@@ -20,6 +24,12 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         headers: [{ key: "Content-Security-Policy", value: API_CONTENT_SECURITY_POLICY }],
       },
+      // Sign-in and invitation URLs carry tokens or IDs worth keeping out of Referer. Later entries
+      // win for the same key, so this overrides the default policy above.
+      ...NO_REFERRER_PATHS.map((source) => ({
+        source,
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      })),
     ];
   },
 };

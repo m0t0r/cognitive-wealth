@@ -73,6 +73,9 @@ const PERMISSIONS_POLICY = [
   .map((feature) => `${feature}=()`)
   .join(", ");
 
+/** `next.config.ts` sources whose pages send `Referrer-Policy: no-referrer`. */
+export const NO_REFERRER_PATHS = ["/sign-in/:path*", "/invite/:path*"] as const;
+
 export interface StaticHeaderOptions {
   /** Send HSTS. Off in dev so `*.localhost` never gets pinned to HTTPS. */
   hsts?: boolean;

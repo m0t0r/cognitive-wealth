@@ -2,7 +2,7 @@ import { Separator } from "@repo/design-system/components/separator";
 import { AiPreview } from "@/components/preview/ai";
 import { FoundationsPreview } from "@/components/preview/foundations";
 
-export default function Home() {
+export default function DesignSystemPage() {
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 py-12 sm:px-6">
       <header className="flex flex-col gap-2">
