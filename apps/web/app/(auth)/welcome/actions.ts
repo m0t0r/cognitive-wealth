@@ -7,10 +7,8 @@ import * as z from "zod";
 import type { FormState } from "@/lib/action-result";
 import { getAuth } from "@/lib/auth/server";
 
-const schema = z.object({
-  name: z.string().trim().min(1).max(100),
-  next: z.string().nullable(),
-});
+// Only the shape: `updateProfileName` owns the rules for names.
+const schema = z.object({ name: z.string(), next: z.string().nullable() });
 
 export async function saveName(_previous: FormState, formData: FormData): Promise<FormState> {
   const input = schema.safeParse({ name: formData.get("name"), next: formData.get("next") });

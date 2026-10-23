@@ -36,6 +36,8 @@ import { signInErrorMessage, tenantErrorMessage } from "@/lib/auth/messages";
  */
 const STALE_PAGE_ERRORS: ReadonlySet<TenantErrorCode> = new Set([
   "tenant_changed",
+  // The invitation was stored, only its email failed: show it in the list.
+  "email_failed",
   "forbidden",
   "not_found",
   "no_tenant",
@@ -187,8 +189,8 @@ function ReauthBody({ email }: { email: string }) {
       <DialogHeader>
         <DialogTitle>Sign in again to continue</DialogTitle>
         <DialogDescription>
-          Changing roles and removing people needs a sign-in from the last hour. We&apos;ll email a
-          sign-in link to <span className="font-medium wrap-anywhere">{email}</span>.
+          Changes to who has access need a sign-in from the last hour. We&apos;ll email a sign-in
+          link to <span className="font-medium wrap-anywhere">{email}</span>.
         </DialogDescription>
       </DialogHeader>
       <FieldError>{state?.ok === false ? signInErrorMessage(state.error) : null}</FieldError>

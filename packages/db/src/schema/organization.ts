@@ -1,10 +1,16 @@
 // Better Auth's organization plugin models (no teams, no dynamic roles). Property names are
 // Better Auth's field names.
-import { bigint, index, pgTable, text, unique } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { bigint, check, index, pgTable, text, unique } from "drizzle-orm/pg-core";
 import { createdAt, id, publicId, timestamptz } from "./_helpers";
 // Cycles with `auth.ts` (session → organization); safe because references are lazy.
 // oxlint-disable-next-line import/no-cycle
 import { user } from "./auth";
+
+// One role per row, from `@repo/auth/access` (`ROLES`). Better Auth itself would store a
+// comma-separated list ("owner,admin") if asked; `@repo/auth` never asks, and this makes sure no
+// other writer does either.
+const knownRole = (column: unknown) => sql`${column} in ('owner', 'admin', 'member')`;
 
 export const organization = pgTable("organization", {
   id: id(),
@@ -35,6 +41,7 @@ export const member = pgTable(
     // Also serves lookups by organization; user_id needs its own index.
     unique("member_organization_id_user_id_unique").on(t.organizationId, t.userId),
     index("member_user_id_idx").on(t.userId),
+    check("member_role_check", knownRole(t.role)),
   ],
 );
 
@@ -58,5 +65,6 @@ export const invitation = pgTable(
   (t) => [
     index("invitation_organization_id_idx").on(t.organizationId),
     index("invitation_email_idx").on(t.email),
+    check("invitation_role_check", knownRole(t.role)),
   ],
 );

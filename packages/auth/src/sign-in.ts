@@ -24,8 +24,11 @@ export const SIGN_IN_EXPIRES_IN = 300;
  * inbox bombing, and a browser the user signed in from before has its own budget outside both.
  */
 export const SIGN_IN_EMAIL_LIMITS = {
-  /** Per address and client IP. */
-  requester: { window: 600, max: 3 },
+  /**
+   * Per address and client IP. Its hourly total stays below the address backstop, so one
+   * requester can't use up the backstop alone: it takes 4 of them.
+   */
+  requester: { window: 3600, max: 3 },
   /** Per address, across all requesters. */
   address: { window: 3600, max: 10 },
   /** Per address and known device (a valid device cookie for that user), instead of the other two. */
@@ -33,6 +36,15 @@ export const SIGN_IN_EMAIL_LIMITS = {
 } as const satisfies Record<string, RateLimitRule>;
 
 type ThrottleRule = keyof typeof SIGN_IN_EMAIL_LIMITS;
+
+/**
+ * Tries at a sign-in code per address and day, across all of its codes (each code allows 3).
+ * Past it, every code for the address is refused until the window ends; the link still works.
+ */
+export const SIGN_IN_CODE_LIMIT = {
+  window: 24 * 60 * 60,
+  max: 10,
+} as const satisfies RateLimitRule;
 
 const MAGIC_LINK_PREFIX = "magic-link:";
 

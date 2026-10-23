@@ -110,6 +110,23 @@ describe("InvitationResponse", () => {
     },
   );
 
+  it("shows the error of the answer tried last, not an older one", async () => {
+    vi.mocked(acceptInvitationAction).mockResolvedValue({ ok: false, error: "rate_limited" });
+    vi.mocked(declineInvitationAction).mockResolvedValue({ ok: false, error: "not_found" });
+    const { user } = renderResponse();
+    await user.click(screen.getByRole("button", { name: "Accept invitation" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too many requests.");
+
+    await user.click(screen.getByRole("button", { name: "Decline" }));
+    await user.click(await screen.findByRole("button", { name: "Decline invitation" }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "That person or invitation is no longer here.",
+      );
+    });
+  });
+
   it("explains a failed decline and keeps the invitation open", async () => {
     vi.mocked(declineInvitationAction).mockResolvedValue({ ok: false, error: "unknown" });
     const { user } = renderResponse();

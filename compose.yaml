@@ -59,10 +59,13 @@ services:
       - ""
       - --appendonly
       - "no"
-      # Every key has a TTL and every key is safe to lose, so under memory pressure evict the least
-      # recently used one rather than refuse writes (`noeviction` would turn a full cache into
-      # failed sign-ins). LRU keeps hot rate-limit counters, which an attacker's own requests keep
-      # touching; `volatile-ttl` would evict exactly those, as they're closest to expiry.
+      # Every key has a TTL, so under memory pressure evict the least recently used one rather
+      # than refuse writes (`noeviction` would turn a full cache into failed sign-ins). LRU keeps
+      # hot rate-limit counters, which an attacker's own requests keep touching; `volatile-ttl`
+      # would evict exactly those, as they're closest to expiry. A lost session entry falls back
+      # to Postgres. Better Auth's `active-sessions-<user id>` lists can be evicted (or lose a
+      # write to a concurrent sign-in) while the sessions stay cached, so revocation never relies
+      # on them: `revokeUserSessions` reads the tokens from Postgres.
       - --maxmemory
       - 128mb
       - --maxmemory-policy

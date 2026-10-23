@@ -71,6 +71,24 @@ describe("authOptionsFromEnv", () => {
   });
 
   describe("production guards", () => {
+    it.each(["http://app.example", "http://10.0.0.5:3000", "http://localhost.example.com"])(
+      "requires https for %s, which isn't this machine",
+      (url) => {
+        expect(() => authOptionsFromEnv({ ...production, BETTER_AUTH_URL: url })).toThrow(
+          "BETTER_AUTH_URL must use https in production, except on localhost",
+        );
+      },
+    );
+
+    it.each(["http://localhost:3000", "http://127.0.0.1:41234", "http://[::1]:3000"])(
+      "allows http on this machine (%s)",
+      (url) => {
+        expect(authOptionsFromEnv({ ...production, BETTER_AUTH_URL: url }).baseURL).toBe(
+          new URL(url).origin,
+        );
+      },
+    );
+
     it("requires BETTER_AUTH_URL, without the PORTLESS_URL fallback", () => {
       expect(() =>
         authOptionsFromEnv({

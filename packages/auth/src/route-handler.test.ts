@@ -123,13 +123,18 @@ describe("mapAuthResponse", () => {
     }
   });
 
-  it("maps code errors", () => {
-    expect(mapAuthResponse("otp", 400, "INVALID_OTP").body.error).toBe("invalid_or_expired");
-    expect(mapAuthResponse("otp", 400, "OTP_EXPIRED").body.error).toBe("invalid_or_expired");
-    expect(mapAuthResponse("otp", 403, "TOO_MANY_ATTEMPTS")).toEqual({
-      status: 403,
-      body: { ok: false, error: "too_many_attempts" },
-    });
+  it("answers every code error the same way, a used-up code included", () => {
+    // Only an address that was sent a code can use one up: a distinct answer would reveal it.
+    for (const [status, code] of [
+      [400, "INVALID_OTP"],
+      [400, "OTP_EXPIRED"],
+      [403, "TOO_MANY_ATTEMPTS"],
+    ] as const) {
+      expect(mapAuthResponse("otp", status, code)).toEqual({
+        status: 400,
+        body: { ok: false, error: "invalid_or_expired" },
+      });
+    }
   });
 
   it("maps everything else to a fixed code", () => {

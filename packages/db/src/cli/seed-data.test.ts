@@ -20,6 +20,9 @@ describe("assertSeedTarget", () => {
     "postgres://app@127.0.0.2/cognitive_wealth",
     "postgres://app@localhost.example.com/cognitive_wealth",
     "postgres://app@localhost,db.example.com/cognitive_wealth",
+    // URL reads the host after the last `@`, postgres.js after the first.
+    "postgres://app@db.example.com,x@localhost/cognitive_wealth",
+    "postgres://app@db.example.com%2Cx@localhost/cognitive_wealth",
     "postgres://app@[2001:db8::1]/cognitive_wealth",
   ])("refuses the non-local host in %s", (url) => {
     expect(() => assertSeedTarget(url, "development")).toThrow(/isn't local/);

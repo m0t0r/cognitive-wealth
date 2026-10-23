@@ -139,6 +139,26 @@ describe("member", () => {
   });
 });
 
+describe("roles", () => {
+  test("hold exactly one known role, on members and invitations", async ({ orm }) => {
+    const ada = await createUser(orm);
+    const acme = await createOrganization(orm);
+    const invited = await createInvitation(orm, acme.id, ada.id);
+    // Better Auth would store several roles comma-separated; one role per row is the rule.
+    for (const role of ["owner,admin", "superuser", "Owner"]) {
+      // Sequential on purpose: each insert is checked on its own.
+      // oxlint-disable-next-line no-await-in-loop
+      await expect(
+        orm.insert(member).values({ organizationId: acme.id, userId: ada.id, role }),
+      ).rejects.toMatchObject(CHECK_VIOLATION);
+      // oxlint-disable-next-line no-await-in-loop
+      await expect(
+        orm.update(invitation).set({ role }).where(eq(invitation.id, invited.id)),
+      ).rejects.toMatchObject(CHECK_VIOLATION);
+    }
+  });
+});
+
 describe("deleting a user", () => {
   test("removes their sessions, memberships and sent invitations, and keeps audit events", async ({
     orm,

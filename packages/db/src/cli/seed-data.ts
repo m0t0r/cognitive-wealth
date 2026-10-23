@@ -118,19 +118,37 @@ export function assertSeedTarget(databaseUrl: string | undefined, nodeEnv: strin
   }
   if (!databaseUrl) throw refuse("DATABASE_URL is not set.");
   if (!URL.canParse(databaseUrl)) throw refuse("DATABASE_URL is not a valid URL.");
-  // postgres.js percent-decodes the host and connects to every host in a comma-separated list,
-  // so check the decoded name, and only accept plain DNS labels. Postgres URLs aren't a WHATWG
-  // special scheme, so `hostname` also keeps its case and IPv6 brackets.
-  let host: string;
+  // Check the host the way WHATWG URL reads it and the way postgres.js does: postgres.js takes
+  // everything after the *first* `@` (URL takes the last), percent-decodes it, and connects to
+  // every host in a comma-separated list. `postgres://u@db.example.com,x@localhost/db` looks
+  // local to URL but connects to db.example.com. Every host either reads must be local.
+  let hosts: string[];
   try {
-    host = decodeURIComponent(new URL(databaseUrl).hostname).toLowerCase();
+    hosts = [new URL(databaseUrl).hostname, ...postgresJsHosts(databaseUrl)].map((host) =>
+      decodeURIComponent(host)
+        .toLowerCase()
+        .replace(/^\[(.*)\]$/, "$1")
+        .replace(/\.$/, ""),
+    );
   } catch {
     throw refuse("DATABASE_URL has a malformed host.");
   }
-  host = host.replace(/^\[(.*)\]$/, "$1").replace(/\.$/, "");
-  if (!LOOPBACK_HOSTS.has(host) && !LOCALHOST_SUBDOMAIN.test(host)) {
+  // Postgres URLs aren't a WHATWG special scheme, so `hostname` keeps its case and IPv6 brackets.
+  const remote = hosts.find((host) => !LOOPBACK_HOSTS.has(host) && !LOCALHOST_SUBDOMAIN.test(host));
+  if (remote !== undefined) {
     throw refuse(
-      `the DATABASE_URL host "${host || "(none)"}" isn't local. Only localhost, 127.0.0.1, ::1 and *.localhost are allowed.`,
+      `the DATABASE_URL host "${remote || "(none)"}" isn't local. Only localhost, 127.0.0.1, ::1 and *.localhost are allowed.`,
     );
   }
+}
+
+/** The hosts postgres.js (`parseUrl`, then `parseOptions`) connects to for `url`. */
+function postgresJsHosts(url: string): string[] {
+  const authority = url.slice(url.indexOf("://") + 3).split(/[?/]/)[0] ?? "";
+  const hostList = decodeURIComponent(authority.slice(authority.indexOf("@") + 1));
+  return hostList
+    .split(",")
+    .map((entry) =>
+      entry.startsWith("[") ? entry.slice(0, entry.indexOf("]") + 1) : (entry.split(":")[0] ?? ""),
+    );
 }

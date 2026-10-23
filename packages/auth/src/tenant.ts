@@ -13,14 +13,14 @@
 //   tab), so a stale page can never act on a workspace its user isn't looking at.
 // - Results are `{ ok: true, data } | { ok: false, error }` with DTOs that carry no internal ID.
 import type { Database } from "@repo/db";
-import { invitation, member, organization, user } from "@repo/db/schema";
+import { invitation, member, organization, session, user } from "@repo/db/schema";
 import { getIP, isAPIError } from "better-auth/api";
 import { and, asc, desc, eq, gt, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import * as z from "zod";
-import { ROLES, type Role } from "./access";
+import { ROLES, can, type Role } from "./access";
 import { writeAuditEvent, type AuditEventInput } from "./audit";
-import { SESSION_FRESH_AGE, type Auth } from "./auth";
+import { SESSION_FRESH_AGE, inviterMayGrant, type Auth } from "./auth";
 import {
   toPublicInvitation,
   toPublicMember,
@@ -51,6 +51,7 @@ export type TenantErrorCode =
   | "last_owner"
   | "already_member"
   | "wrong_recipient"
+  | "email_failed"
   | "unknown";
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: TenantErrorCode };
@@ -81,14 +82,16 @@ const fail = (error: TenantErrorCode): { ok: false; error: TenantErrorCode } => 
 const publicIdSchema = z.uuid();
 const roleSchema = z.enum(ROLES);
 const emailSchema = z.email().max(254);
-// One line of printable text: names end up in emails and other people's screens.
+// One line of printable text: names end up in emails and other people's screens. No control
+// characters (C0, DEL, C1), line or paragraph separators, or bidi controls, which could make a
+// name in an invitation email read as something else.
 const nameSchema = z
   .string()
   .trim()
   .min(1)
   .max(100)
   // oxlint-disable-next-line no-control-regex
-  .regex(/^[^\u0000-\u001f\u007f]+$/);
+  .regex(/^[^\u0000-\u001f\u007f-\u009f\u200e\u200f\u2028-\u202e\u2066-\u2069]+$/);
 
 const organizationColumns = {
   id: organization.id,
@@ -264,12 +267,32 @@ export async function listInvitations(
  * (`inviteMember`), and so is the user's.
  */
 export async function listMyInvitations(auth: Auth, viewer: Viewer): Promise<PublicInvitation[]> {
-  const rows = await selectInvitations(auth.$deps.db, {
+  const { db } = auth.$deps;
+  const where = {
     email: normalizeEmail(viewer.user.email),
     status: "pending",
     expiresAfter: new Date(),
-  });
-  return rows.map(toPublicInvitation);
+  } as const;
+  const [rows, grants] = await Promise.all([
+    selectInvitations(db, where),
+    db
+      .select({
+        publicId: invitation.publicId,
+        inviterId: invitation.inviterId,
+        organizationId: invitation.organizationId,
+        role: invitation.role,
+      })
+      .from(invitation)
+      .where(invitationFilter(where)),
+  ]);
+  // Only ones that could be accepted: not from an inviter who has since left or lost the role.
+  const usable = new Set<string>();
+  for (const grant of grants) {
+    // Few rows (one per workspace that invited the viewer).
+    // oxlint-disable-next-line no-await-in-loop
+    if (await inviterMayGrant(db, grant)) usable.add(grant.publicId);
+  }
+  return rows.filter((row) => usable.has(row.publicId)).map(toPublicInvitation);
 }
 
 /**
@@ -288,22 +311,46 @@ export function inviteMember(
     headers,
     { fresh: false, organizationPublicId: input.organizationPublicId },
     async ({ db, viewer, callApi, recordAudit }) => {
-      const email = emailSchema.safeParse(normalizeEmail(input.email));
+      const email = emailSchema.safeParse(
+        typeof input.email === "string" ? normalizeEmail(input.email) : input.email,
+      );
       const role = roleSchema.safeParse(input.role);
       if (!email.success || !role.success) return fail("invalid_input");
       const { userId, organizationId } = viewer.internal;
+
+      // Better Auth's own checks, made first so that an invite it would refuse doesn't spend the
+      // inviter's hourly budget.
+      const actorRole = viewer.tenant.role;
+      if (
+        !can(actorRole, "invitation:create") ||
+        (role.data === "owner" && actorRole !== "owner")
+      ) {
+        return fail("forbidden");
+      }
+      // Inviting someone as owner or admin grants as much as a role change does, so it needs the
+      // same fresh session: otherwise a stolen old session could invite a new owner, accept from
+      // a fresh sign-in, and remove the real owners from there.
+      if (role.data !== "member" && !viewer.session.isFresh) return fail("reauth_required");
+      if (await isMember(db, organizationId, email.data)) return fail("already_member");
 
       const limit = await consumeRateLimit(auth.$deps.storage, `invite:${userId}`, INVITE_LIMIT);
       if (!limit.ok) return fail("rate_limited");
 
       const replaced = await pendingInvitationsFor(db, organizationId, email.data);
-      const created = await callApi(() =>
-        auth.api.createInvitation({
-          headers,
-          body: { email: email.data, role: role.data, organizationId: String(organizationId) },
-        }),
-      );
+      let emailSent = true;
+      const created = await callApi(async () => {
+        const tracked = await auth.$deps.trackInvitationEmail(() =>
+          auth.api.createInvitation({
+            headers,
+            body: { email: email.data, role: role.data, organizationId: String(organizationId) },
+          }),
+        );
+        emailSent = tracked.emailSent;
+        return tracked.result;
+      });
       if (!created.ok) return created;
+      // A failed email still leaves the invitation stored (and the one it replaces cancelled):
+      // record both, then say the email didn't go out. Inviting again replaces it.
       const createdId = Number(created.data.id);
 
       const [row] = await selectInvitations(db, { organizationId, id: createdId });
@@ -311,7 +358,7 @@ export function inviteMember(
       await recordAudit({
         action: "org.invitation.created",
         target: { type: "invitation", publicId: row.publicId },
-        metadata: { role: role.data },
+        metadata: emailSent ? { role: role.data } : { role: role.data, emailSent },
       });
 
       // Better Auth has cancelled the unexpired one already; cancel what it skipped.
@@ -334,7 +381,7 @@ export function inviteMember(
           metadata: { replacedBy: row.publicId },
         });
       }
-      return ok(toPublicInvitation(row));
+      return emailSent ? ok(toPublicInvitation(row)) : fail("email_failed");
     },
   );
 }
@@ -373,6 +420,16 @@ export function changeMemberRole(
         target: { type: "member", publicId: target.publicId },
         metadata: { from: target.role, to: role.data },
       });
+      await cancelUngrantableInvitations({
+        db,
+        organizationId,
+        inviterId: target.userId,
+        callApi,
+        recordAudit,
+        cancel: (invitationId) =>
+          auth.api.cancelInvitation({ headers, body: { invitationId: String(invitationId) } }),
+        reason: "inviter_role_changed",
+      });
       const [row] = await selectMembers(db, organizationId, target.id);
       return row === undefined ? fail("not_found") : ok(toPublicMember(row));
     },
@@ -405,6 +462,16 @@ export function removeMember(
         action: "org.member.removed",
         target: { type: "member", publicId: target.publicId },
         metadata: { role: target.role },
+      });
+      await cancelUngrantableInvitations({
+        db,
+        organizationId,
+        inviterId: target.userId,
+        callApi,
+        recordAudit,
+        cancel: (invitationId) =>
+          auth.api.cancelInvitation({ headers, body: { invitationId: String(invitationId) } }),
+        reason: "inviter_removed",
       });
       return ok(null);
     },
@@ -465,6 +532,9 @@ export async function getInvitation(
     auth.api.getInvitation({ headers, query: { id: String(found.data.invitationId) } }),
   );
   if (!checked.ok) return checked;
+  // Better Auth checks that the inviter is still a member, not that they may still grant the
+  // role; accepting checks both (`beforeAcceptInvitation`), so showing one must too.
+  if (!(await inviterMayGrant(auth.$deps.db, found.data))) return fail("not_found");
   const [row] = await selectInvitations(auth.$deps.db, { id: found.data.invitationId });
   return row === undefined ? fail("not_found") : ok(toPublicInvitation(row));
 }
@@ -564,8 +634,22 @@ export async function revokeUserSessions(auth: Auth, userPublicId: string): Prom
     .limit(1);
   if (row === undefined) return fail("not_found");
 
+  // The tokens come from Postgres, the source of truth. Better Auth finds the cached sessions to
+  // delete through an `active-sessions-<id>` list in Redis, which concurrent sign-ins can each
+  // overwrite and which LRU eviction can drop while the sessions themselves stay cached: a
+  // session missing from it would keep working from the cache for up to 7 days.
+  const tokens = await db
+    .select({ token: session.token })
+    .from(session)
+    .where(eq(session.userId, row.id));
   const context = await auth.$context;
   await context.internalAdapter.deleteUserSessions(String(row.id));
+  // Not caught: if the cache can't be cleared, the caller must know the user isn't signed out.
+  await Promise.all(
+    tokens.map(async ({ token }) => {
+      await auth.$deps.storage.delete(token);
+    }),
+  );
   await writeAuditEvent(db, {
     action: "auth.sessions_revoked",
     actorUserId: null,
@@ -631,7 +715,7 @@ async function publicUserRow(db: Database, userId: number) {
 async function findMember(db: Database, organizationId: number, memberPublicId: string) {
   if (!publicIdSchema.safeParse(memberPublicId).success) return undefined;
   const [row] = await db
-    .select({ id: member.id, publicId: member.publicId, role: member.role })
+    .select({ id: member.id, publicId: member.publicId, role: member.role, userId: member.userId })
     .from(member)
     .where(and(eq(member.organizationId, organizationId), eq(member.publicId, memberPublicId)))
     .limit(1);
@@ -679,17 +763,7 @@ function pendingInvitationsFor(
 
 const inviter = alias(user, "inviter");
 
-function selectInvitations(
-  db: Database,
-  where: {
-    organizationId?: number;
-    id?: number;
-    email?: string;
-    status?: InvitationStatus;
-    /** Only invitations that expire after this moment. */
-    expiresAfter?: Date;
-  },
-) {
+function selectInvitations(db: Database, where: InvitationWhere) {
   return db
     .select({
       publicId: invitation.publicId,
@@ -708,18 +782,86 @@ function selectInvitations(
     .from(invitation)
     .innerJoin(organization, eq(invitation.organizationId, organization.id))
     .innerJoin(inviter, eq(invitation.inviterId, inviter.id))
+    .where(invitationFilter(where))
+    .orderBy(desc(invitation.createdAt), desc(invitation.id));
+}
+
+interface InvitationWhere {
+  organizationId?: number;
+  id?: number;
+  email?: string;
+  status?: InvitationStatus;
+  /** Only invitations that expire after this moment. */
+  expiresAfter?: Date;
+}
+
+function invitationFilter(where: InvitationWhere) {
+  return and(
+    where.organizationId === undefined
+      ? undefined
+      : eq(invitation.organizationId, where.organizationId),
+    where.id === undefined ? undefined : eq(invitation.id, where.id),
+    where.email === undefined ? undefined : eq(invitation.email, where.email),
+    where.status === undefined ? undefined : eq(invitation.status, where.status),
+    where.expiresAfter === undefined ? undefined : gt(invitation.expiresAt, where.expiresAfter),
+  );
+}
+
+/** Whether `email` (normalized) belongs to a member of the organization. */
+async function isMember(db: Database, organizationId: number, email: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: member.id })
+    .from(member)
+    .innerJoin(user, eq(member.userId, user.id))
+    .where(and(eq(member.organizationId, organizationId), eq(user.email, email)))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * After someone is removed or their role changes, cancels the pending invitations they sent that
+ * they could no longer send (all of them, once they're gone). Accepting one is refused anyway
+ * (`beforeAcceptInvitation`); this keeps the members page from listing dead invitations.
+ */
+async function cancelUngrantableInvitations({
+  db,
+  organizationId,
+  inviterId,
+  callApi,
+  recordAudit,
+  cancel,
+  reason,
+}: Pick<TenantMutation, "db" | "callApi" | "recordAudit"> & {
+  organizationId: number;
+  inviterId: number;
+  /** Cancels one invitation through Better Auth, as the viewer. */
+  cancel: (invitationId: number) => Promise<unknown>;
+  reason: "inviter_removed" | "inviter_role_changed";
+}): Promise<void> {
+  const sent = await db
+    .select({ id: invitation.id, publicId: invitation.publicId, role: invitation.role })
+    .from(invitation)
     .where(
       and(
-        where.organizationId === undefined
-          ? undefined
-          : eq(invitation.organizationId, where.organizationId),
-        where.id === undefined ? undefined : eq(invitation.id, where.id),
-        where.email === undefined ? undefined : eq(invitation.email, where.email),
-        where.status === undefined ? undefined : eq(invitation.status, where.status),
-        where.expiresAfter === undefined ? undefined : gt(invitation.expiresAt, where.expiresAfter),
+        eq(invitation.organizationId, organizationId),
+        eq(invitation.inviterId, inviterId),
+        eq(invitation.status, "pending"),
       ),
-    )
-    .orderBy(desc(invitation.createdAt), desc(invitation.id));
+    );
+  for (const pending of sent) {
+    // Sequential on purpose: few rows, and each is its own Better Auth call.
+    // oxlint-disable-next-line no-await-in-loop
+    if (await inviterMayGrant(db, { inviterId, organizationId, role: pending.role })) continue;
+    // oxlint-disable-next-line no-await-in-loop
+    const cancelled = await callApi(() => cancel(pending.id));
+    if (!cancelled.ok) continue;
+    // oxlint-disable-next-line no-await-in-loop
+    await recordAudit({
+      action: "org.invitation.cancelled",
+      target: { type: "invitation", publicId: pending.publicId },
+      metadata: { reason },
+    });
+  }
 }
 
 /** Resolves an invitation publicId for the signed-in viewer (authorization is Better Auth's). */
@@ -727,17 +869,30 @@ async function invitationForViewer(
   auth: Auth,
   headers: Headers,
   invitationPublicId: string,
-): Promise<Result<{ viewer: Viewer; invitationId: number; organizationId: number }>> {
+): Promise<
+  Result<{
+    viewer: Viewer;
+    invitationId: number;
+    organizationId: number;
+    inviterId: number;
+    role: string | null;
+  }>
+> {
   const viewer = await getViewer(auth, headers);
   if (viewer === null) return fail("unauthenticated");
   if (!publicIdSchema.safeParse(invitationPublicId).success) return fail("not_found");
   const [row] = await auth.$deps.db
-    .select({ id: invitation.id, organizationId: invitation.organizationId })
+    .select({
+      id: invitation.id,
+      organizationId: invitation.organizationId,
+      inviterId: invitation.inviterId,
+      role: invitation.role,
+    })
     .from(invitation)
     .where(eq(invitation.publicId, invitationPublicId))
     .limit(1);
   if (row === undefined) return fail("not_found");
-  return ok({ viewer, invitationId: row.id, organizationId: row.organizationId });
+  return ok({ viewer, invitationId: row.id, ...row });
 }
 
 /** Runs a Better Auth call and maps its errors to our codes; never leaks its messages. */

@@ -2,10 +2,18 @@
 // Sec-Fetch and Origin checks, body validation, response stripping, callback sanitizing) are owned
 // by route-handler.test.ts and callback-path.test.ts; each gets one wiring case here.
 import { test as dbTest } from "@repo/db/testing";
-import { auditEvent, invitation, member, organization, user, verification } from "@repo/db/schema";
+import {
+  auditEvent,
+  invitation,
+  member,
+  organization,
+  session as sessionTable,
+  user,
+  verification,
+} from "@repo/db/schema";
 import { parseSetCookies } from "@repo/testing/sign-in";
 import { eq, sql } from "drizzle-orm";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 import { getViewer, switchOrganization } from "./tenant";
 import { createTestAuth, TEST_BASE_URL, type TestAuth } from "./testing";
 
@@ -186,10 +194,52 @@ describe("sign-in by code", () => {
     }
 
     expect(await verifyCode(t, "ada@example.com", code)).toMatchObject({
-      status: 403,
-      body: { ok: false, error: "too_many_attempts" },
+      status: 400,
+      body: { ok: false, error: "invalid_or_expired" },
     });
-    expect(await verifyCode(t, "ada@example.com", code)).toMatchObject({ status: 400 });
+    expect(await t.auth.$deps.db.select().from(auditEvent)).toEqual([]);
+  });
+
+  test("answers wrong codes for a user and for an unknown address identically", async ({ t }) => {
+    // A used-up code once answered differently, which told anyone guessing 4 times whether an
+    // address had been sent a code (a user or an invitee).
+    await t.seedUser({ email: "ada@example.com" });
+    const { code } = await t.requestSignIn("ada@example.com");
+    await t.fetchAuth("/sign-in/magic-link", { body: { email: "nobody@example.com" } });
+    await t.settle();
+    const answers = async (email: string, otp: string) => {
+      const seen = [];
+      for (let i = 0; i < 5; i++) {
+        // Sequential on purpose: each attempt counts against the code.
+        // oxlint-disable-next-line no-await-in-loop
+        const { status, body } = await verifyCode(t, email, otp);
+        seen.push({ status, body });
+      }
+      return seen;
+    };
+
+    expect(await answers("ada@example.com", wrongCode(code))).toEqual(
+      await answers("nobody@example.com", "123456"),
+    );
+  });
+
+  test("refuses every code for an address after 10 tries in a day, even a right one", async ({
+    t,
+  }) => {
+    await t.seedUser({ email: "ada@example.com" });
+    for (let i = 0; i < 10; i++) {
+      // Sequential on purpose: each attempt counts against the address's budget.
+      // oxlint-disable-next-line no-await-in-loop
+      await verifyCode(t, "ada@example.com", "000000");
+    }
+    const { code, token } = await t.requestSignIn("ada@example.com");
+
+    expect(await verifyCode(t, "ADA@example.com", code)).toMatchObject({
+      status: 400,
+      body: { ok: false, error: "invalid_or_expired" },
+    });
+    // The link in the same email still signs in.
+    expect((await verifyLink(t, token)).status).toBe(200);
   });
 
   test("refuses a malformed code without spending an attempt", async ({ t }) => {
@@ -239,6 +289,28 @@ describe("sibling credentials", () => {
     });
     expect(await t.auth.$deps.db.$count(verification)).toBe(0);
     expect(t.storage.keys().filter((key) => key.startsWith("verification:"))).toEqual([]);
+  });
+
+  test("a sign-in whose cleanup fails leaves no session behind", async ({ t }) => {
+    await t.seedUser({ email: "ada@example.com" });
+    const { token } = await t.requestSignIn("ada@example.com");
+    const sessions = () => t.auth.$deps.db.$count(sessionTable);
+    // Fails the sibling cleanup that runs once the session exists.
+    let failedAfterSession = false;
+    const remove = t.storage.delete.bind(t.storage);
+    vi.spyOn(t.storage, "delete").mockImplementation(async (key) => {
+      if (key.startsWith("verification:") && (await sessions()) > 0) {
+        failedAfterSession = true;
+        throw new Error("Redis is down");
+      }
+      return remove(key);
+    });
+
+    const { status, body } = await verifyLink(t, token);
+
+    expect(failedAfterSession).toBe(true);
+    expect({ status, body }).toEqual({ status: 500, body: { ok: false, error: "unknown" } });
+    expect(await sessions()).toBe(0);
   });
 
   test("leaves other addresses' credentials alone", async ({ t }) => {

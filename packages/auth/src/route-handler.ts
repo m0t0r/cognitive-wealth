@@ -5,11 +5,12 @@ import * as z from "zod";
 import type { Auth } from "./auth";
 import { sanitizeCallbackPath } from "./callback-path";
 import { AUTH_BASE_PATH, SIGN_IN_TOKEN_PATTERN } from "./constants";
+import { consumeRateLimit } from "./rate-limit";
+import { SIGN_IN_CODE_LIMIT, normalizeEmail } from "./sign-in";
 
 /** The only error codes the browser ever sees. */
 export type AuthErrorCode =
   | "invalid_or_expired"
-  | "too_many_attempts"
   | "rate_limited"
   | "invalid_request"
   | "forbidden"
@@ -17,7 +18,6 @@ export type AuthErrorCode =
 
 const ERROR_STATUS: Record<AuthErrorCode, number> = {
   invalid_or_expired: 400,
-  too_many_attempts: 403,
   rate_limited: 429,
   invalid_request: 400,
   forbidden: 403,
@@ -96,8 +96,11 @@ export function mapAuthResponse(
     if (status >= 300 && status < 400) return failure("invalid_or_expired");
   }
   if (route === "otp") {
-    if (code === "INVALID_OTP" || code === "OTP_EXPIRED") return failure("invalid_or_expired");
-    if (code === "TOO_MANY_ATTEMPTS") return failure("too_many_attempts");
+    // `TOO_MANY_ATTEMPTS` too: only an address that was sent a code can run out of attempts, so
+    // a distinct answer would tell anyone who guesses 4 times which addresses can sign in.
+    if (code === "INVALID_OTP" || code === "OTP_EXPIRED" || code === "TOO_MANY_ATTEMPTS") {
+      return failure("invalid_or_expired");
+    }
   }
   if (status === 403) return failure("forbidden");
   if (status >= 400 && status < 500) return failure("invalid_request");
@@ -138,6 +141,10 @@ export function createAuthRouteHandler(auth: Auth | (() => Auth)) {
     const rebuilt = await rebuild(route, request, url, origin);
     if (typeof rebuilt === "string")
       return json(ERROR_STATUS[rebuilt], { ok: false, error: rebuilt });
+    if (route === "otp" && !(await withinCodeBudget(instance, rebuilt.body))) {
+      // The same answer as a wrong code, for every address: the link in the email still works.
+      return json(ERROR_STATUS.invalid_or_expired, { ok: false, error: "invalid_or_expired" });
+    }
 
     // Ask Better Auth with a request built from checked parts only, against our own origin (the
     // incoming host may be an internal address behind the proxy).
@@ -174,6 +181,19 @@ export function createAuthRouteHandler(auth: Auth | (() => Auth)) {
   }
 
   return { GET: handle, POST: handle };
+}
+
+/**
+ * Counts a code attempt against its address's daily budget ({@link SIGN_IN_CODE_LIMIT}). Each code
+ * allows 3 tries and an address gets at most 10 codes an hour, so without it someone could keep
+ * guessing an address's codes all day; with it, they get a handful. Every address is counted the
+ * same way, whether or not it can sign in.
+ */
+async function withinCodeBudget(auth: Auth, body: Record<string, unknown> | undefined) {
+  const email = body?.email;
+  if (typeof email !== "string") return false;
+  const key = `sign-in-code:${normalizeEmail(email)}`;
+  return (await consumeRateLimit(auth.$deps.storage, key, SIGN_IN_CODE_LIMIT)).ok;
 }
 
 async function rebuild(

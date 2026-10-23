@@ -40,8 +40,11 @@ interface ConfirmState {
  * The magic link lands here with `#token=…&next=…`. The fragment never reaches a server, and is
  * removed from the address bar (and history) as soon as it's read. Only a click spends the
  * token: mail scanners and prefetchers that open the link never sign anyone in.
+ *
+ * A link signs in whoever it was sent to, in any browser. Someone already signed in is told so
+ * before the click, so a link someone else sent them can't quietly swap their account.
  */
-export function ConfirmSignIn() {
+export function ConfirmSignIn({ signedInAs = null }: { signedInAs?: string | null }) {
   const [link, setLink] = useState<FragmentLink>(undefined);
 
   // The fragment only exists in the browser, so it's read after hydration, once.
@@ -140,6 +143,14 @@ export function ConfirmSignIn() {
         {error === null ? null : (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {expired || signedInAs === null ? null : (
+          <Alert>
+            <AlertDescription className="wrap-anywhere">
+              You&apos;re signed in as <span className="font-medium">{signedInAs}</span>. Continuing
+              signs you in with the account this link was sent to instead.
+            </AlertDescription>
           </Alert>
         )}
         {expired ? (

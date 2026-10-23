@@ -7,7 +7,7 @@
       "inputs": ["$TURBO_DEFAULT$", ".env*", "!**/*.test.{ts,tsx}", "!vitest.config.ts"],
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"],
       "env": ["NODE_ENV"],
-      "passThroughEnv": ["NEXT_TELEMETRY_DISABLED"]
+      "passThroughEnv": ["NEXT_TELEMETRY_DISABLED", "NEXT_RUNTIME", "NEXT_PHASE"]
     },
     "check-types": {
       "dependsOn": ["^check-types"]
