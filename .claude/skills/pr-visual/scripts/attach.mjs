@@ -33,9 +33,13 @@ for (let i = 0; i < files.length; i += 50) {
   const batch = files.slice(i, i + 50);
   writeFileSync(placeholder, "Uploading images…\n");
   gh("pr", "edit", pr, "--body-file", placeholder, ...batch.flatMap((f) => ["--attach", f]));
-  const uploaded = [...gh("pr", "view", pr, "--json", "body", "--jq", ".body").matchAll(ATTACHMENT)].map((m) => m[1]);
+  const uploaded = [
+    ...gh("pr", "view", pr, "--json", "body", "--jq", ".body").matchAll(ATTACHMENT),
+  ].map((m) => m[1]);
   if (uploaded.length !== batch.length) {
-    throw new Error(`Uploaded ${uploaded.length} of ${batch.length} files; the PR body holds what did upload`);
+    throw new Error(
+      `Uploaded ${uploaded.length} of ${batch.length} files; the PR body holds what did upload`,
+    );
   }
   batch.forEach((f, j) => urls.set(f, uploaded[j]));
 }

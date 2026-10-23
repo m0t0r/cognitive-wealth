@@ -48,7 +48,9 @@ function tokens(selector) {
   const css = readFileSync(join(root, "packages/design-system/src/styles/globals.css"), "utf8");
   const block = css.match(new RegExp(`${selector.replace(".", "\\.")}\\s*\\{([^}]*)\\}`))?.[1];
   if (!block) throw new Error(`No ${selector} block in globals.css`);
-  return Object.fromEntries([...block.matchAll(/--([\w-]+):\s*(oklch\([^)]*\))/g)].map(([, k, v]) => [k, oklchToHex(v)]));
+  return Object.fromEntries(
+    [...block.matchAll(/--([\w-]+):\s*(oklch\([^)]*\))/g)].map(([, k, v]) => [k, oklchToHex(v)]),
+  );
 }
 
 function theme(t) {
@@ -78,20 +80,31 @@ const THEMES = { light: theme(tokens(":root")), dark: theme(tokens(".dark")) };
 // Pele's root <svg> carries a style attribute whose --_x vars read --pele-* with fallbacks, so
 // declaring --pele-* first on that same attribute themes the whole diagram.
 function themed(svg, vars) {
-  const decls = Object.entries(vars).map(([k, v]) => `${k}:${v}`).join(";");
+  const decls = Object.entries(vars)
+    .map(([k, v]) => `${k}:${v}`)
+    .join(";");
   const out = svg.replace(/(<svg\b[^>]*?\bstyle=")/, `$1${decls};`);
   if (out === svg) throw new Error("No style attribute on the root <svg>");
   // An <img> shows the SVG on its own, so paint the background the vars describe.
-  return out.replace(/(<svg\b[^>]*>)/, `$1<rect width="100%" height="100%" rx="10" fill="${vars["--pele-bg"]}"/>`);
+  return out.replace(
+    /(<svg\b[^>]*>)/,
+    `$1<rect width="100%" height="100%" rx="10" fill="${vars["--pele-bg"]}"/>`,
+  );
 }
 
 // ---- Render --------------------------------------------------------------------------------
 
-const names = (only.length ? only : readdirSync(dir).filter((f) => f.endsWith(".mmd")).map((f) => basename(f, ".mmd")));
+const names = only.length
+  ? only
+  : readdirSync(dir)
+      .filter((f) => f.endsWith(".mmd"))
+      .map((f) => basename(f, ".mmd"));
 const receipts = [];
 for (const name of names) {
   const base = join(dir, `${name}.base.svg`);
-  const run = spawnSync(process.execPath, [peleRender, join(dir, `${name}.mmd`), base], { encoding: "utf8" });
+  const run = spawnSync(process.execPath, [peleRender, join(dir, `${name}.mmd`), base], {
+    encoding: "utf8",
+  });
   const receipt = JSON.parse(run.stderr.trim().split("\n").at(-1));
   if (!receipt.ok) {
     console.error(JSON.stringify({ name, ...receipt }));
@@ -99,7 +112,8 @@ for (const name of names) {
     continue;
   }
   const svg = readFileSync(base, "utf8");
-  for (const [mode, vars] of Object.entries(THEMES)) writeFileSync(join(dir, `${name}.${mode}.svg`), themed(svg, vars));
+  for (const [mode, vars] of Object.entries(THEMES))
+    writeFileSync(join(dir, `${name}.${mode}.svg`), themed(svg, vars));
   if (svgOnly) rmSync(base);
   receipts.push({ name, type: receipt.type, width: receipt.width, height: receipt.height });
 }
@@ -113,7 +127,11 @@ if (svgOnly) {
 // One throwaway agent-browser session; each SVG is opened as its own page at 2x and clipped to
 // the SVG element, so the PNG is exactly the diagram.
 const session = `pr-visual-${process.pid}`;
-const ab = (...args) => execFileSync("agent-browser", ["--session", session, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+const ab = (...abArgs) =>
+  execFileSync("agent-browser", ["--session", session, ...abArgs], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 try {
   for (const { name, width, height } of receipts) {
     for (const mode of Object.keys(THEMES)) {

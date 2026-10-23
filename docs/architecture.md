@@ -24,7 +24,7 @@ Today the platform is the foundation for the product, with no domain features ye
   <img alt="Runtime dependencies: web depends on @repo/auth, @repo/design-system and @repo/db; @repo/auth depends on @repo/db and @repo/email. Dev-only, dashed: web-e2e uses @repo/auth, @repo/db, @repo/email and @repo/testing." src="diagrams/packages.light.svg">
 </picture>
 
-Solid arrows are runtime dependencies and dashed ones are dev-only. Every workspace also has `@repo/testing` and `@repo/typescript-config` as dev dependencies, left out of the diagram. Packages aren't built: consumers import their TypeScript source, and Next transpiles it. What each package exports is in [CLAUDE.md](../CLAUDE.md#architecture).
+Solid arrows are runtime dependencies and dashed ones are dev-only. Every workspace also has `@repo/testing` and `@repo/typescript-config` as dev dependencies, left out of the diagram. So is `@repo/agent-hooks` (`.claude/hooks`), a workspace only so that `pnpm test` runs the agent hooks' tests. Packages aren't built: consumers import their TypeScript source, and Next transpiles it. What each package exports is in [CLAUDE.md](../CLAUDE.md#architecture).
 
 ## A signed-in request
 
