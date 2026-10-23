@@ -80,7 +80,7 @@ Map each item in the inventory to the smallest visual that carries it, and pick 
 node .claude/skills/pr-visual/scripts/render.mjs .dev/pr-visual/<branch>
 ```
 
-Every `.mmd` becomes `<name>.light.svg` and `<name>.dark.svg` in the design system's colours, plus PNGs for you to look at. Read the PNGs and check for overlapping or truncated labels, an empty chart, or the wrong diagram type. Fix and re-render once; if it's still wrong, drop that chart.
+Every `.mmd` becomes `<name>.light.png` and `<name>.dark.png` (2x, from SVGs in the design system's colours). The PNGs are what the PR attaches, since GitHub's attachments don't take SVG. Read them and check for overlapping or truncated labels, an empty chart, or the wrong diagram type. Fix and re-render once; if it's still wrong, drop that chart. A chart wider than about 1600 px (`width` in the receipt) is unreadable at GitHub's column width: switch a flowchart to `TB` or cut labels.
 
 ## 6. Assemble the body
 
@@ -130,25 +130,29 @@ Use this order, and budgets that keep it reviewable. The title is at most 70 cha
 **Blast Radius:** <one word>
 ~~~
 
-Embed every chart and diagram so it follows GitHub's theme:
+Embed every chart and diagram as both of its PNGs, by local path, so `gh --attach` can swap in the uploaded asset. GitHub shows the one that matches the reader's theme:
 
-```html
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="<base>/churn.dark.svg">
-  <img alt="<what the chart shows, in words>" src="<base>/churn.light.svg" width="640">
-</picture>
+```markdown
+![<what the chart shows, in words>](./churn.light.png#gh-light-mode-only)
+![<what the chart shows, in words>](./churn.dark.png#gh-dark-mode-only)
 ```
 
-Pair small charts side by side with a two-cell HTML `<table>`, and give wide ones (sankey, gitGraph) the full width. Write alt text that states the finding ("packages/auth carries 40% of the change, half of it tests") rather than "chart".
+Give each chart its own line and the full width. Write alt text that states the finding ("packages/auth carries 40% of the change, half of it tests") rather than "chart".
 
 ## 7. Publish
 
 Creating or editing a PR publishes to GitHub, so confirm with the user first unless they asked for it.
 
+Everything goes through `gh`; there's no asset branch.
+
 1. `gh pr create --draft` (or `gh pr view <n>`) to get the number.
-2. `scripts/publish-assets.sh <n> .dev/pr-visual/<branch>` pushes the SVGs and `.mmd` sources to the orphan `pr-assets` branch and prints `<base>`, a URL pinned to that commit. Put it into the body.
-3. `gh pr edit <n> --body-file <body>`.
-4. Attach the screenshots with the `before-and-after` skill's publish steps. They fill the marked block in Evidence and upload through `gh --attach`.
+2. Fill the Evidence block with the `before-and-after` skill's formatter, then publish the body, charts and screenshots in one call from `.dev/pr-visual/<branch>/`, where the body's `./<name>.png` paths resolve:
+
+   ```sh
+   gh pr edit <n> --body-file body.md $(for f in *.light.png *.dark.png <screenshots>; do printf -- '--attach %s ' "$f"; done)
+   ```
+
+   `gh` uploads each file to GitHub's attachment storage and rewrites the matching `./<file>` references to the uploaded URLs. Up to 50 files per call; split a larger set over several `gh pr edit --attach` calls without `--body-file`.
 
 Never transcribe secrets into excerpts, captions or screenshots. Don't capture `.dev/auth/*` or other state files, Mailpit links or codes, or anything in `.secrets/`.
 
@@ -156,4 +160,4 @@ Never transcribe secrets into excerpts, captions or screenshots. Don't capture `
 
 Open the PR with agent-browser in light mode and in dark mode (`set media dark`). Check that every image loaded (`eval "[...document.images].filter(i => !i.naturalWidth).map(i => i.src)"` returns `[]`). Check that the visuals come before the implementation detail, and that each chart's numbers match `facts.json`. Allow one fix-and-republish pass.
 
-On later pushes, rerun steps 2–6 for the whole branch and republish. The assets get a new commit URL, and the screenshots replace the marked block.
+On later pushes, rerun steps 2–6 for the whole branch and republish with step 7: every chart and screenshot uploads again, and the new body replaces the old one.
