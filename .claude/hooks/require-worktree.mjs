@@ -6,8 +6,8 @@
 //   - Edit / Write / NotebookEdit of a file inside the main checkout
 //   - Bash in the main checkout that moves branches or the index, or rewrites files in place
 //
-// Reads (cat, grep, git log, gh), files outside the repo (scratchpad, memory) and a fast-forward of
-// the checked-out branch (`git pull --ff-only`) stay allowed.
+// Reads (cat, grep, git log, gh), Edit / Write of files outside the repo (scratchpad, memory) and a
+// fast-forward of the checked-out branch (`git pull --ff-only`) stay allowed.
 // Once a session is in a worktree, Claude Code's own isolation keeps it there. This is a guardrail,
 // not a sandbox: a shell redirect still gets through. Start Claude with CLAUDE_MAIN_CHECKOUT=1 for
 // work that has to happen in the main checkout (e.g. merging a release).
@@ -37,10 +37,12 @@ function mainCheckout(dir) {
   return top && gitDir === common ? top : null;
 }
 
-// Commands that change what's checked out, committed or staged, or edit files in place.
+// Commands that change what's checked out, committed or staged, or edit files in place. An in-place
+// rewrite counts whatever its target: scratch files live in a worktree's `.dev/scratch/` instead.
+// GNU sed takes `-i` after the script too, so it counts anywhere in the command.
 const MUTATING = [
   /\bgit\s+(commit|add|rm|mv|checkout|switch|restore|reset|merge|rebase|cherry-pick|revert|am|apply|stash|pull|branch\s+-[mMdD])\b/,
-  /\b(sed|perl)\s+(-\w*\s+)*-\w*i/,
+  /\b(sed|perl)\s(.*\s)?(-[a-zA-Z]*i|--in-place)/,
   /\bpnpm\s+(add|remove|rm|up|update|dlx\s+shadcn)\b/,
 ];
 
