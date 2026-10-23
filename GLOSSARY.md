@@ -118,8 +118,31 @@ _Avoid_: Activity, trade (a trade is only a buy or a sell)
 **Trade date**:
 The day a Transaction happened.
 
+**Ledger**:
+The Custodian's append-only list of an Account's Transactions. Rows are added, never changed or deleted.
+_Avoid_: Journal, history
+
 **Settlement date**:
 The day a Transaction became final, when cash and Securities actually changed hands.
+
+**Settlement cycle**:
+The number of Business days from Trade date to Settlement date. For most US securities trades it is one, written T+1.
+
+**Posting date**:
+The day the Custodian wrote a Transaction to the Ledger. The same as the Trade date, except for a Correction, which is posted when the mistake is found.
+_Avoid_: Booking date, process date
+
+**Correction**:
+The fix for a wrong Transaction: a Reversal of it plus a new, right Transaction, both on the original Trade date.
+_Avoid_: Edit, amendment, cancel/rebill
+
+**Reversal**:
+A Transaction that exactly undoes an earlier one, with every amount negated, and points back at it.
+_Avoid_: Cancel, void
+
+**Settled cash**:
+The cash in an Account whose Transactions have reached their Settlement date: what can actually be withdrawn.
+_Avoid_: Available cash, buying power
 
 **Position**:
 The shares of one Security held in one Account on a given date, rebuilt from the Account's Transactions.
@@ -136,6 +159,14 @@ _Avoid_: Book value
 **Market value**:
 The shares of a Position multiplied by the Security's price on a given date.
 _Avoid_: Balance (for a Position)
+
+**Cash sweep**:
+Where the Custodian keeps an Account's uninvested cash overnight, such as a bank deposit or a money market fund, earning interest. Treated as a Security priced at exactly $1.00, so cash is a Position like any other.
+_Avoid_: Cash balance, money market (when the sweep is meant)
+
+**Business day**:
+A weekday on which US markets are open.
+_Avoid_: Trading day, working day
 
 **Close**:
 The end of a business day at the Custodian, which produces that day's prices, Transactions and Positions.
