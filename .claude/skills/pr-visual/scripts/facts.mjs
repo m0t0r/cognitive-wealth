@@ -26,7 +26,12 @@ const base = values.base ?? git("merge-base", "origin/dev", head).trim();
 const range = `${base}...${head}`;
 
 // Churn that says nothing about the change: lockfiles and drizzle's generated snapshots.
-const IGNORED = [/^pnpm-lock\.yaml$/, /^skills-lock\.json$/, /^packages\/db\/migrations\/meta\//];
+const IGNORED = [
+  /^pnpm-lock\.yaml$/,
+  /(^|\/)uv\.lock$/,
+  /^skills-lock\.json$/,
+  /^packages\/db\/migrations\/meta\//,
+];
 
 function area(path) {
   const [top, name, third] = path.split("/");
@@ -37,13 +42,18 @@ function area(path) {
   return path.includes("/") ? top : "(root)";
 }
 
+// pytest's default discovery: test_*.py or *_test.py.
+const PYTEST = /(^|\/)(test_[^/]*|[^/]*_test)\.py$/;
+
 function kind(path) {
   if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(path)) return "tests";
+  // Python test packages also hold conftest.py fixtures and an empty __init__.py.
+  if (PYTEST.test(path) || /(^|\/)tests\/(.*\/)?[^/]+\.py$/.test(path)) return "tests";
   if (path.startsWith("packages/db/migrations/")) return "migrations";
   // docs/ includes its diagrams' .mmd sources and rendered SVGs.
   if (/\.mdx?$/.test(path) || path.startsWith("docs/")) return "docs";
   if (
-    /(^|\/)(Dockerfile|compose[^/]*\.ya?ml|[^/]*\.config\.[cm]?[jt]s|tsconfig[^/]*\.json|package\.json|turbo\.json|\.[^/]+rc(\.json)?)$/.test(
+    /(^|\/)(Dockerfile|compose[^/]*\.ya?ml|[^/]*\.config\.[cm]?[jt]s|tsconfig[^/]*\.json|package\.json|turbo\.json|[^/]*\.toml|\.python-version|\.gitignore|\.[^/]+rc(\.json)?)$/.test(
       path,
     ) ||
     path.startsWith(".github/")
@@ -57,6 +67,7 @@ function layer(path) {
   if (path.startsWith("apps/web-e2e/") && path.endsWith(".spec.ts")) return "e2e";
   if (path.endsWith(".test.tsx")) return "ui";
   if (/\.test\.[jt]s$/.test(path)) return "unit";
+  if (PYTEST.test(path)) return "pytest";
   return null;
 }
 
@@ -107,19 +118,23 @@ for (const line of git("diff", "--numstat", "-M", range).trim().split("\n").filt
   });
 }
 
-// Test cases added and removed per layer, counted from `it(` / `test(` lines in the diff itself.
+// Test cases added and removed per layer, counted from `it(` / `test(` lines (pytest: `def test_`
+// functions) in the diff itself.
 const CASE = /^[+-]\s*(it|test)(\.(each|only|skip|concurrent|todo)\b[^(]*(\([^)]*\))?)?\(\s*["'`]/;
+const PYTEST_CASE = /^[+-]\s*(async\s+)?def\s+test_\w*\s*\(/;
 const tests = {
   unit: { added: 0, removed: 0 },
   ui: { added: 0, removed: 0 },
   integration: { added: 0, removed: 0 },
   e2e: { added: 0, removed: 0 },
+  pytest: { added: 0, removed: 0 },
 };
 for (const file of files) {
   const l = layer(file.path);
   if (!l || file.binary) continue;
+  const isCase = l === "pytest" ? PYTEST_CASE : CASE;
   for (const line of git("diff", "-M", range, "--", file.path).split("\n")) {
-    if (line.startsWith("+++") || line.startsWith("---") || !CASE.test(line)) continue;
+    if (line.startsWith("+++") || line.startsWith("---") || !isCase.test(line)) continue;
     tests[l][line[0] === "+" ? "added" : "removed"] += 1;
   }
 }

@@ -6,6 +6,7 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 
 - `src/custodian/` is the package (src layout); `main.py` holds the FastAPI `app`. Tests are in `tests/`, named `test_*.py`.
 - Python is pinned in `.python-version` and `requires-python`; dependencies are in `pyproject.toml` and locked in `uv.lock` (commit both). Add one with `uv add <pkg>` (`--dev` for tooling), never by hand-editing the lock.
+- **Version policy**: Python is the newest minor release that every compiled dependency (pydantic-core, and later SQLAlchemy, greenlet, psycopg, numpy) ships wheels for: 3.15 today, with security fixes to October 2031. Python has no LTS line; each minor release gets five years of support. Bump it when a new minor release has those wheels, updating `.python-version`, `requires-python`, Ruff's `target-version` and pyright's `pythonVersion` together. Every dependency is on its latest stable release, as a `>=` floor in `pyproject.toml` (with a `<` cap only across a known breaking major, like Pydantic 3), and `uv.lock` pins the exact versions.
 - Run through the package scripts, which call `uv run` (it syncs `.venv` first): `pnpm --filter custodian dev | lint | format | check-types | test`. The root `pnpm lint`, `format:check`, `check-types` and `test` include them. Oxfmt formats `pyproject.toml`; Ruff formats the Python.
 - `pnpm dev` serves it through portless at `https://custodian.cognitive-wealth.localhost` (a worktree gets `https://<branch>.custodian.cognitive-wealth.localhost`).
 
