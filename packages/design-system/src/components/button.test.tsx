@@ -39,4 +39,23 @@ describe("Button", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(onClick).not.toHaveBeenCalled();
   });
+
+  // The disabled look keys off `aria-disabled` here: the native `disabled` attribute isn't set.
+  it("stays focusable but inert when disabled with focusableWhenDisabled", async () => {
+    const onClick = vi.fn();
+    const { user } = setup(
+      <Button disabled focusableWhenDisabled onClick={onClick}>
+        Save
+      </Button>,
+    );
+    const button = screen.getByRole("button", { name: "Save" });
+
+    await user.tab();
+    await user.keyboard("{Enter}");
+
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).not.toHaveAttribute("disabled");
+    expect(onClick).not.toHaveBeenCalled();
+  });
 });

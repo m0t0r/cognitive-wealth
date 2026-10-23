@@ -3,6 +3,7 @@
 import { UnfoldMoreIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { PublicMembership } from "@repo/auth";
+import { Avatar, AvatarFallback } from "@repo/design-system/components/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,12 +59,13 @@ export function OrgSwitcher({ memberships }: { memberships: PublicMembership[] }
             className="data-popup-open:bg-sidebar-accent"
             title={active.organization.name}
           >
-            <span
-              aria-hidden
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground"
-            >
-              {active.organization.name.slice(0, 1).toUpperCase()}
-            </span>
+            {/* Decorative: the name below already labels the button. Square, so a workspace
+                doesn't read as a person (the account menu's avatar is round). */}
+            <Avatar aria-hidden className="rounded-sm after:rounded-sm">
+              <AvatarFallback className="rounded-sm">
+                {active.organization.name.slice(0, 1).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
             <span className="grid min-w-0 flex-1 text-left leading-tight">
               <span className="sr-only">Switch workspace. Current: </span>
               <span className="truncate font-medium">{active.organization.name}</span>

@@ -329,7 +329,7 @@ export function SignInFlow({ next, arrivalError, purpose = null }: SignInFlowPro
         <Button
           type="button"
           variant="link"
-          className="px-0 data-disabled:cursor-not-allowed data-disabled:no-underline data-disabled:opacity-50"
+          className="px-0"
           disabled={busy || cooldown > 0}
           focusableWhenDisabled
           onClick={() => startTransition(() => request({ email: sentTo, resend: true }))}
