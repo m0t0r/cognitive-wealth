@@ -1,0 +1,19 @@
+flowchart TB
+  hh["Household<br/>Dana: owns the money"]
+  subgraph firm["The Firm: gives advice, never holds the money"]
+    adv["Advisor"]
+    cw["Cognitive Wealth<br/>the Advisor's software"]
+    adv --- cw
+  end
+  subgraph custodian["The Custodian: holds the money"]
+    acct["Dana's Account<br/>cash and shares"]
+    ledger["Ledger<br/>every Transaction"]
+    acct --- ledger
+  end
+  mkt["The market<br/>other buyers and sellers"]
+
+  hh -->|"hires"| adv
+  hh -->|"puts money in, takes it out"| acct
+  adv -->|"asks to buy or sell"| acct
+  acct <-->|"trades"| mkt
+  ledger -->|"a copy of every Transaction, each day"| cw
