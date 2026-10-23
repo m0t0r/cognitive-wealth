@@ -1,6 +1,8 @@
-import type { Page } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 import { expect, test } from "../fixtures";
-import { ROUTES } from "../support/routes";
+import { recordCspViolations } from "../support/csp";
+import { PUBLIC_ROUTES, type Route, SIGNED_IN_ROUTES } from "../support/routes";
+import { uniqueEmail } from "../support/seed";
 
 // What securityheaders.com grades; any one missing costs the A+.
 const GRADED_HEADERS = [
@@ -12,57 +14,64 @@ const GRADED_HEADERS = [
   "permissions-policy",
 ];
 
-declare global {
-  interface Window {
-    reportCspViolation?: (violation: string) => Promise<void>;
-  }
+function cspNonce(headers: Record<string, string>): string | undefined {
+  return /'nonce-([^']+)'/.exec(headers["content-security-policy"] ?? "")?.[1];
 }
 
-/** Collects every CSP violation the page reports, from before its first script runs. */
-async function recordViolations(page: Page): Promise<string[]> {
-  const violations: string[] = [];
-  await page.exposeFunction("reportCspViolation", (violation: string) => {
-    violations.push(violation);
-  });
-  await page.addInitScript(() => {
-    document.addEventListener("securitypolicyviolation", (event) => {
-      void window.reportCspViolation?.(
-        `${event.effectiveDirective} blocked ${event.blockedURI || "inline"}`,
-      );
-    });
-  });
-  return violations;
+/** `url` sends every graded header, and a new CSP nonce on each request. */
+async function expectGradedHeaders(request: APIRequestContext, url: string) {
+  const fetchHeaders = async () => {
+    const response = await request.get(url, { maxRedirects: 0 });
+    expect(response.status(), `${url} should render, not redirect`).toBe(200);
+    return response.headers();
+  };
+  const [first, second] = [await fetchHeaders(), await fetchHeaders()];
+
+  for (const name of GRADED_HEADERS) expect(first[name], name).toBeTruthy();
+  expect(first["content-security-policy"]).not.toMatch(/script-src[^;]*'unsafe-(inline|eval)'/);
+  expect(cspNonce(first)).toBeTruthy();
+  expect(cspNonce(first)).not.toBe(cspNonce(second));
 }
 
-for (const route of ROUTES) {
-  test(`${route} sends every graded security header`, async ({ request }) => {
-    const headers = (await request.get(route)).headers();
+async function expectRendersWithinCsp(page: Page, route: Route, url: string) {
+  const violations = await recordCspViolations(page);
+  await page.goto(url);
+  if (route.ready) await expect(route.ready(page)).toBeVisible();
+  expect(violations).toEqual([]);
+}
 
-    for (const name of GRADED_HEADERS) expect(headers[name], name).toBeTruthy();
-    expect(headers["content-security-policy"]).not.toMatch(/script-src[^;]*'unsafe-(inline|eval)'/);
+for (const route of PUBLIC_ROUTES) {
+  test(`${route.name} sends every graded security header and a fresh CSP nonce`, async ({
+    request,
+  }) => {
+    await expectGradedHeaders(request, route.url);
   });
 
-  test(`${route} gets a fresh CSP nonce on every request`, async ({ request }) => {
-    const fetchNonce = async () =>
-      /'nonce-([^']+)'/.exec(
-        (await request.get(route)).headers()["content-security-policy"] ?? "",
-      )?.[1];
-
-    const [first, second] = [await fetchNonce(), await fetchNonce()];
-    expect(first).toBeTruthy();
-    expect(first).not.toBe(second);
+  test(`${route.name} renders without CSP violations`, async ({ page }) => {
+    await expectRendersWithinCsp(page, route, route.url);
   });
+}
 
-  test(`${route} renders without CSP violations`, async ({ page }) => {
-    const violations = await recordViolations(page);
-    await page.goto(route);
+for (const route of SIGNED_IN_ROUTES) {
+  // One test per route: each needs its own seed and sign-in.
+  test(`${route.name} (signed in) sends the graded headers and renders within the CSP`, async ({
+    page,
+    db,
+    signIn,
+  }, testInfo) => {
+    const email = uniqueEmail(testInfo, "viewer");
+    const url = await route.setUp(db, email);
+    await signIn(email);
 
-    expect(violations).toEqual([]);
+    // `page.request` shares the page's cookies, so it gets the signed-in page.
+    await expectGradedHeaders(page.request, url);
+    await expectRendersWithinCsp(page, route, url);
+    await expect(page).toHaveURL(url);
   });
 }
 
 test("interactive components stay within the CSP", async ({ page }) => {
-  const violations = await recordViolations(page);
+  const violations = await recordCspViolations(page);
   await page.goto("/design-system");
 
   // Toasts inject sonner's stylesheet; the theme toggle re-runs next-themes.

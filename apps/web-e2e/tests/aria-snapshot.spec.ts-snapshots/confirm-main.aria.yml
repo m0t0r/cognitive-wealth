@@ -1,0 +1,5 @@
+- main:
+    - paragraph: Cognitive Wealth
+    - heading "Finish signing in" [level=1]
+    - text: Continue to sign in on this device.
+    - button "Continue to Cognitive Wealth"

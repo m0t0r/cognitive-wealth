@@ -1,0 +1,9 @@
+- main:
+    - paragraph: Cognitive Wealth
+    - heading "Sign in to Cognitive Wealth" [level=1]
+    - text: Enter your email to get a sign-in link and code.
+    - group:
+        - text: Email
+        - textbox "Email":
+            - /placeholder: name@example.com
+    - button "Continue"
