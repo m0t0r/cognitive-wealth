@@ -145,7 +145,7 @@ Creating or editing a PR publishes to GitHub, so confirm with the user first unl
 
 Everything goes through `gh`; there's no asset branch.
 
-1. `gh pr create --draft` (or `gh pr view <n>`) to get the number.
+1. `gh pr create --draft` (or `gh pr view <n>`) to get the number. It stays a draft only until step 8 passes, so nobody reviews a body whose images haven't uploaded yet.
 2. Put the screenshots in the body by local path too, both themes like the charts (the `before-and-after` skill's formatter lays out pairs). Then publish from `.dev/pr-visual/<branch>/`, where the body's `./<file>` paths resolve:
 
    ```sh
@@ -159,5 +159,7 @@ Never transcribe secrets into excerpts, captions or screenshots. Don't capture `
 ## 8. Inspect the published PR
 
 Open the PR with agent-browser in light mode and in dark mode (`set media dark`). Check that every image loaded (`eval "[...document.images].filter(i => !i.naturalWidth).map(i => i.src)"` returns `[]`). Check that the visuals come before the implementation detail, and that each chart's numbers match `facts.json`. Allow one fix-and-republish pass.
+
+Then mark it ready: `gh pr ready <n>`. A PR is never left as a draft once its body is published.
 
 On later pushes, rerun steps 2–6 for the whole branch and republish with step 7: every chart and screenshot uploads again, and the new body replaces the old one.
