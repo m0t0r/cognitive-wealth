@@ -14,9 +14,10 @@ import { Spinner } from "@repo/design-system/components/spinner";
 import { type ComponentProps, type ReactNode, useTransition } from "react";
 
 /**
- * Confirms a destructive action. `onConfirm` runs in a transition, with the confirm button
- * disabled and showing a spinner until it settles; it should close the dialog (`onOpenChange`)
- * whatever the outcome. Focus returns to `trigger`, or wherever `finalFocus` says.
+ * Confirms a destructive or high-stakes action. `onConfirm` runs in a transition, with the confirm
+ * button disabled (but still focused) and showing a spinner until it settles; it should close the
+ * dialog (`onOpenChange`) whatever the outcome. Focus returns to `trigger`, or wherever
+ * `finalFocus` says. Titles and descriptions wrap anywhere, since they quote names people chose.
  */
 export function ConfirmActionDialog({
   open,
@@ -27,6 +28,7 @@ export function ConfirmActionDialog({
   description,
   cancelLabel,
   confirmLabel,
+  confirmVariant = "destructive",
   onConfirm,
 }: {
   open: boolean;
@@ -38,6 +40,8 @@ export function ConfirmActionDialog({
   description: ReactNode;
   cancelLabel: string;
   confirmLabel: string;
+  /** `destructive` for what can't be undone; `default` for a change that can be. */
+  confirmVariant?: "default" | "destructive";
   onConfirm: () => Promise<void>;
 }) {
   const [pending, startTransition] = useTransition();
@@ -47,14 +51,15 @@ export function ConfirmActionDialog({
       {trigger}
       <AlertDialogContent finalFocus={finalFocus}>
         <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+          <AlertDialogTitle className="wrap-anywhere">{title}</AlertDialogTitle>
+          <AlertDialogDescription className="wrap-anywhere">{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
-            variant="destructive"
+            variant={confirmVariant}
             disabled={pending}
+            focusableWhenDisabled
             onClick={() => startTransition(onConfirm)}
           >
             {pending ? <Spinner data-icon="inline-start" /> : null}

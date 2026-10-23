@@ -1,8 +1,7 @@
 import { getInvitation, type PublicInvitation } from "@repo/auth";
-import { Badge } from "@repo/design-system/components/badge";
+import { buttonVariants } from "@repo/design-system/components/button";
 import {
   Card,
-  CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
@@ -10,9 +9,9 @@ import {
 } from "@repo/design-system/components/card";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { InvitationResponse } from "@/components/auth/invitation-response";
 import { SignOutButton } from "@/components/auth/sign-out-button";
-import { ROLE_LABELS } from "@/lib/roles";
 import { getAuth } from "@/lib/auth/server";
 import { requireViewer } from "@/lib/auth/viewer";
 
@@ -23,6 +22,7 @@ export default async function InvitationPage({ params }: PageProps<"/invite/[pub
   const viewer = await requireViewer();
   const result = await getInvitation(getAuth(), await headers(), { invitationPublicId: publicId });
   const invitation = result.ok && isOpen(result.data) ? result.data : null;
+  const hasWorkspace = viewer.tenant !== null;
 
   if (!result.ok && result.error === "wrong_recipient") {
     return (
@@ -38,12 +38,20 @@ export default async function InvitationPage({ params }: PageProps<"/invite/[pub
             to.
           </CardDescription>
         </CardHeader>
-        <CardFooter>
+        <CardFooter className="flex flex-col gap-3">
           <SignOutButton
             size="lg"
             className="w-full"
             redirectTo={`/sign-in?${new URLSearchParams({ next: `/invite/${publicId}` }).toString()}`}
           />
+          {hasWorkspace ? (
+            <Link
+              href="/"
+              className={buttonVariants({ variant: "ghost", size: "lg", className: "w-full" })}
+            >
+              Go to your workspace
+            </Link>
+          ) : null}
         </CardFooter>
       </Card>
     );
@@ -61,35 +69,27 @@ export default async function InvitationPage({ params }: PageProps<"/invite/[pub
             you to send a new invitation.
           </CardDescription>
         </CardHeader>
+        <CardFooter>
+          {/* Without a workspace, `/` leads to the page that lists any other invitations. */}
+          <Link href="/" className={buttonVariants({ size: "lg", className: "w-full" })}>
+            {hasWorkspace ? "Go to your workspace" : "See your invitations"}
+          </Link>
+        </CardFooter>
       </Card>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          <h1 className="font-heading text-xl">Join {invitation.organization.name}</h1>
-        </CardTitle>
-        <CardDescription>
-          {invitation.inviter.name || "A workspace admin"} invited you to join{" "}
-          {invitation.organization.name} on Cognitive Wealth.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-6 gap-y-3 text-sm">
-          <dt className="text-muted-foreground">Your role</dt>
-          <dd>
-            <Badge variant="secondary">{ROLE_LABELS[invitation.role]}</Badge>
-          </dd>
-          <dt className="text-muted-foreground">Sent to</dt>
-          <dd className="wrap-anywhere">{invitation.email}</dd>
-        </dl>
-      </CardContent>
-      <CardFooter>
-        <InvitationResponse invitationPublicId={invitation.publicId} />
-      </CardFooter>
-    </Card>
+    <InvitationResponse
+      hasWorkspace={hasWorkspace}
+      invitation={{
+        publicId: invitation.publicId,
+        organizationName: invitation.organization.name,
+        inviterName: invitation.inviter.name,
+        role: invitation.role,
+        email: invitation.email,
+      }}
+    />
   );
 }
 

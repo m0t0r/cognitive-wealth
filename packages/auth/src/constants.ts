@@ -22,3 +22,9 @@ export const DEVICE_COOKIE_NAMES = [
   `${COOKIE_PREFIX}.${DEVICE_COOKIE}`,
   `__Secure-${COOKIE_PREFIX}.${DEVICE_COOKIE}`,
 ] as const;
+
+/**
+ * What a sign-in link token may look like: the verify route refuses anything else as
+ * `invalid_request`, and the confirm page treats anything else as a dead link without calling it.
+ */
+export const SIGN_IN_TOKEN_PATTERN = /^[A-Za-z0-9_-]{1,256}$/;

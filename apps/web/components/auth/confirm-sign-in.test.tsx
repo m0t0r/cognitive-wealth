@@ -73,6 +73,31 @@ describe("ConfirmSignIn", () => {
     await expect(container).toHaveNoA11yViolations();
   });
 
+  it.for([
+    ["a token no link of ours carries", "%3Cscript%3E", false],
+    ["a token the server refuses as malformed", "t0k3n", true],
+  ] as const)("treats %s as a dead link, keeping next", async ([, token, callsServer]) => {
+    vi.mocked(verifyMagicLink).mockResolvedValue({ ok: false, error: "invalid_request" });
+    arriveAt(`/sign-in/confirm#token=${token}&next=%2Finvite%2Fabc`);
+    const { user, container } = setup(<ConfirmSignIn />);
+    if (callsServer) {
+      await user.click(await screen.findByRole("button", { name: "Continue to Cognitive Wealth" }));
+    }
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This sign-in link has expired or was already used.",
+    );
+    expect(screen.getByRole("link", { name: "Get a new sign-in link" })).toHaveAttribute(
+      "href",
+      "/sign-in?next=%2Finvite%2Fabc",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Continue to Cognitive Wealth" }),
+    ).not.toBeInTheDocument();
+    expect(verifyMagicLink).toHaveBeenCalledTimes(callsServer ? 1 : 0);
+    await expect(container).toHaveNoA11yViolations();
+  });
+
   it("lets people retry after a rate limit", async () => {
     vi.mocked(verifyMagicLink).mockResolvedValueOnce({ ok: false, error: "rate_limited" });
     arriveAt("/sign-in/confirm#token=t0k3n");

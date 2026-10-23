@@ -56,6 +56,7 @@ function isSignInErrorCode(code: string): code is AuthErrorCode {
 const TENANT_ERRORS: Record<TenantErrorCode, string> = {
   unauthenticated: "Your session has ended. Reload the page and sign in again.",
   no_tenant: "You're no longer a member of this workspace. Reload the page.",
+  tenant_changed: "You switched workspace in another tab. This page now shows your current one.",
   not_found: "That person or invitation is no longer here. Reload the page to see the latest.",
   forbidden: "Your role doesn't allow this. Ask a workspace owner for help.",
   reauth_required: "Sign in again to continue.",
@@ -67,6 +68,10 @@ const TENANT_ERRORS: Record<TenantErrorCode, string> = {
   unknown: "Unable to finish that. Try again.",
 };
 
-export function tenantErrorMessage(code: TenantErrorCode): string {
+/** `workspace`: with `tenant_changed`, the workspace the session switched to, to name it. */
+export function tenantErrorMessage(code: TenantErrorCode, workspace?: string): string {
+  if (code === "tenant_changed" && workspace) {
+    return `You switched workspace in another tab. This page now shows ${workspace}.`;
+  }
   return TENANT_ERRORS[code];
 }

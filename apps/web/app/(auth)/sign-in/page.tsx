@@ -15,5 +15,9 @@ export default async function SignInPage({ searchParams }: PageProps<"/sign-in">
   // Already signed in: go where the link was headed. With an error, stay and explain it.
   if (errorCode === null && (await currentViewer()) !== null) redirect(nextPath ?? "/");
 
-  return <SignInFlow next={nextPath} arrivalError={arrivalErrorMessage(errorCode)} />;
+  // Coming from an invitation link: say so, without naming the workspace to a signed-out visitor.
+  const purpose = nextPath?.startsWith("/invite/") ? "invitation" : null;
+  return (
+    <SignInFlow next={nextPath} arrivalError={arrivalErrorMessage(errorCode)} purpose={purpose} />
+  );
 }

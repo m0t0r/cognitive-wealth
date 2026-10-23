@@ -4,7 +4,7 @@
 import * as z from "zod";
 import type { Auth } from "./auth";
 import { sanitizeCallbackPath } from "./callback-path";
-import { AUTH_BASE_PATH } from "./constants";
+import { AUTH_BASE_PATH, SIGN_IN_TOKEN_PATTERN } from "./constants";
 
 /** The only error codes the browser ever sees. */
 export type AuthErrorCode =
@@ -118,7 +118,6 @@ const otpBody = z.strictObject({
   email: z.string().max(254),
   otp: z.string().regex(/^\d{6}$/),
 });
-const TOKEN = /^[A-Za-z0-9_-]{1,256}$/;
 
 type Rebuilt = { search?: URLSearchParams; body?: Record<string, unknown> } | AuthErrorCode;
 
@@ -188,7 +187,12 @@ async function rebuild(
     // `errorCallbackURL` is an open redirect waiting to happen.
     const keys = [...url.searchParams.keys()];
     const token = url.searchParams.get("token");
-    if (keys.length !== 1 || keys[0] !== "token" || token === null || !TOKEN.test(token)) {
+    if (
+      keys.length !== 1 ||
+      keys[0] !== "token" ||
+      token === null ||
+      !SIGN_IN_TOKEN_PATTERN.test(token)
+    ) {
       return "invalid_request";
     }
     if (!isSameOriginFetch(request.headers)) return "forbidden";

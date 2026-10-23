@@ -8,11 +8,14 @@
 // - Mutations go through `auth.api.*`, so Better Auth's permission checks apply; input publicIds
 //   are resolved to internal IDs only within the viewer's tenant (or, for invitations addressed
 //   to the viewer, after Better Auth's recipient check).
+// - Tenant mutations also take the `organizationPublicId` of the workspace the page showed, and
+//   refuse with `tenant_changed` when the session has since switched to another one (a second
+//   tab), so a stale page can never act on a workspace its user isn't looking at.
 // - Results are `{ ok: true, data } | { ok: false, error }` with DTOs that carry no internal ID.
 import type { Database } from "@repo/db";
 import { invitation, member, organization, user } from "@repo/db/schema";
 import { getIP, isAPIError } from "better-auth/api";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import * as z from "zod";
 import { ROLES, type Role } from "./access";
@@ -39,6 +42,7 @@ import { normalizeEmail } from "./sign-in";
 export type TenantErrorCode =
   | "unauthenticated"
   | "no_tenant"
+  | "tenant_changed"
   | "not_found"
   | "forbidden"
   | "reauth_required"
@@ -239,7 +243,10 @@ export async function listMembers(auth: Auth, viewer: TenantViewer): Promise<Pub
   return rows.map(toPublicMember);
 }
 
-/** Pending invitations of the viewer's tenant, newest first. */
+/**
+ * Pending invitations of the viewer's tenant, newest first, including expired ones (still
+ * `pending` to Better Auth) so the page can mark them and offer to send them again.
+ */
 export async function listInvitations(
   auth: Auth,
   viewer: TenantViewer,
@@ -251,15 +258,35 @@ export async function listInvitations(
   return rows.map(toPublicInvitation);
 }
 
+/**
+ * Invitations addressed to the viewer's own email that they can still answer (pending and not
+ * expired), newest first, for `/no-workspace`. Invitations are stored with the normalized email
+ * (`inviteMember`), and so is the user's.
+ */
+export async function listMyInvitations(auth: Auth, viewer: Viewer): Promise<PublicInvitation[]> {
+  const rows = await selectInvitations(auth.$deps.db, {
+    email: normalizeEmail(viewer.user.email),
+    status: "pending",
+    expiresAfter: new Date(),
+  });
+  return rows.map(toPublicInvitation);
+}
+
+/**
+ * Invites `email` to the viewer's tenant (rate limited per inviter). Inviting an address again
+ * replaces its pending invitations, expired ones included: Better Auth's
+ * `cancelPendingInvitationsOnReInvite` only sees unexpired ones, so the rest are cancelled here,
+ * through Better Auth, once the new invitation exists. Each replaced one is audited as cancelled.
+ */
 export function inviteMember(
   auth: Auth,
   headers: Headers,
-  input: { email: string; role: Role },
+  input: { organizationPublicId: string; email: string; role: Role },
 ): Promise<Result<PublicInvitation>> {
   return mutateTenant(
     auth,
     headers,
-    { fresh: false },
+    { fresh: false, organizationPublicId: input.organizationPublicId },
     async ({ db, viewer, callApi, recordAudit }) => {
       const email = emailSchema.safeParse(normalizeEmail(input.email));
       const role = roleSchema.safeParse(input.role);
@@ -269,6 +296,7 @@ export function inviteMember(
       const limit = await consumeRateLimit(auth.$deps.storage, `invite:${userId}`, INVITE_LIMIT);
       if (!limit.ok) return fail("rate_limited");
 
+      const replaced = await pendingInvitationsFor(db, organizationId, email.data);
       const created = await callApi(() =>
         auth.api.createInvitation({
           headers,
@@ -276,14 +304,36 @@ export function inviteMember(
         }),
       );
       if (!created.ok) return created;
+      const createdId = Number(created.data.id);
 
-      const [row] = await selectInvitations(db, { organizationId, id: Number(created.data.id) });
+      const [row] = await selectInvitations(db, { organizationId, id: createdId });
       if (row === undefined) return fail("unknown");
       await recordAudit({
         action: "org.invitation.created",
         target: { type: "invitation", publicId: row.publicId },
         metadata: { role: role.data },
       });
+
+      // Better Auth has cancelled the unexpired one already; cancel what it skipped.
+      const stillPending = new Set(
+        (await pendingInvitationsFor(db, organizationId, email.data, createdId)).map((i) => i.id),
+      );
+      for (const old of replaced) {
+        if (stillPending.has(old.id)) {
+          // Sequential on purpose: few rows, and each is its own Better Auth call.
+          // oxlint-disable-next-line no-await-in-loop
+          const cancelled = await callApi(() =>
+            auth.api.cancelInvitation({ headers, body: { invitationId: String(old.id) } }),
+          );
+          if (!cancelled.ok) continue;
+        }
+        // oxlint-disable-next-line no-await-in-loop
+        await recordAudit({
+          action: "org.invitation.cancelled",
+          target: { type: "invitation", publicId: old.publicId },
+          metadata: { replacedBy: row.publicId },
+        });
+      }
       return ok(toPublicInvitation(row));
     },
   );
@@ -292,12 +342,12 @@ export function inviteMember(
 export function changeMemberRole(
   auth: Auth,
   headers: Headers,
-  input: { memberPublicId: string; role: Role },
+  input: { organizationPublicId: string; memberPublicId: string; role: Role },
 ): Promise<Result<PublicMember>> {
   return mutateTenant(
     auth,
     headers,
-    { fresh: true },
+    { fresh: true, organizationPublicId: input.organizationPublicId },
     async ({ db, viewer, callApi, recordAudit }) => {
       const role = roleSchema.safeParse(input.role);
       if (!role.success) return fail("invalid_input");
@@ -332,12 +382,12 @@ export function changeMemberRole(
 export function removeMember(
   auth: Auth,
   headers: Headers,
-  input: { memberPublicId: string },
+  input: { organizationPublicId: string; memberPublicId: string },
 ): Promise<Result<null>> {
   return mutateTenant(
     auth,
     headers,
-    { fresh: true },
+    { fresh: true, organizationPublicId: input.organizationPublicId },
     async ({ db, viewer, callApi, recordAudit }) => {
       const { organizationId } = viewer.internal;
       const target = await findMember(db, organizationId, input.memberPublicId);
@@ -364,12 +414,12 @@ export function removeMember(
 export function cancelInvitation(
   auth: Auth,
   headers: Headers,
-  input: { invitationPublicId: string },
+  input: { organizationPublicId: string; invitationPublicId: string },
 ): Promise<Result<null>> {
   return mutateTenant(
     auth,
     headers,
-    { fresh: true },
+    { fresh: true, organizationPublicId: input.organizationPublicId },
     async ({ db, viewer, callApi, recordAudit }) => {
       if (!publicIdSchema.safeParse(input.invitationPublicId).success) return fail("not_found");
       const [target] = await db
@@ -541,18 +591,23 @@ interface TenantMutation {
 }
 
 /**
- * The shape every tenant mutation shares: resolve the viewer's tenant, require a fresh session
- * when `fresh`, then run `fn`, which resolves its target within the tenant, calls Better Auth and
- * audits.
+ * The shape every tenant mutation shares: resolve the viewer's tenant, refuse with
+ * `tenant_changed` unless it is the workspace the caller's page showed (`organizationPublicId`),
+ * require a fresh session when `fresh`, then run `fn`, which resolves its target within the
+ * tenant, calls Better Auth and audits. The tenant check comes before every other check and side
+ * effect (input validation, rate limits, emails, audit rows).
  */
 async function mutateTenant<T>(
   auth: Auth,
   headers: Headers,
-  options: { fresh: boolean },
+  options: { fresh: boolean; organizationPublicId: string },
   fn: (mutation: TenantMutation) => Promise<Result<T>>,
 ): Promise<Result<T>> {
   const viewer = await requireTenant(auth, headers);
   if (!viewer.ok) return viewer;
+  if (viewer.data.tenant.organization.publicId !== options.organizationPublicId) {
+    return fail("tenant_changed");
+  }
   if (options.fresh && !viewer.data.session.isFresh) return fail("reauth_required");
   const { userId, organizationId } = viewer.data.internal;
   return fn({
@@ -602,11 +657,38 @@ function selectMembers(db: Database, organizationId: number, memberId?: number) 
     .orderBy(asc(member.createdAt), asc(member.id));
 }
 
+/** Pending invitations (expired ones included) for `email` in an organization. */
+function pendingInvitationsFor(
+  db: Database,
+  organizationId: number,
+  email: string,
+  exceptId?: number,
+) {
+  return db
+    .select({ id: invitation.id, publicId: invitation.publicId })
+    .from(invitation)
+    .where(
+      and(
+        eq(invitation.organizationId, organizationId),
+        eq(invitation.email, email),
+        eq(invitation.status, "pending"),
+        exceptId === undefined ? undefined : ne(invitation.id, exceptId),
+      ),
+    );
+}
+
 const inviter = alias(user, "inviter");
 
 function selectInvitations(
   db: Database,
-  where: { organizationId?: number; id?: number; status?: InvitationStatus },
+  where: {
+    organizationId?: number;
+    id?: number;
+    email?: string;
+    status?: InvitationStatus;
+    /** Only invitations that expire after this moment. */
+    expiresAfter?: Date;
+  },
 ) {
   return db
     .select({
@@ -632,7 +714,9 @@ function selectInvitations(
           ? undefined
           : eq(invitation.organizationId, where.organizationId),
         where.id === undefined ? undefined : eq(invitation.id, where.id),
+        where.email === undefined ? undefined : eq(invitation.email, where.email),
         where.status === undefined ? undefined : eq(invitation.status, where.status),
+        where.expiresAfter === undefined ? undefined : gt(invitation.expiresAt, where.expiresAfter),
       ),
     )
     .orderBy(desc(invitation.createdAt), desc(invitation.id));

@@ -32,6 +32,7 @@ export function AccountMenu({ user }: { user: Pick<PublicUser, "name" | "email" 
           <DropdownMenuTrigger
             render={<SidebarMenuButton size="lg" />}
             className="data-popup-open:bg-sidebar-accent"
+            title={`${user.name}\n${user.email}`}
           >
             {/* Decorative: the name and email below already label the button. */}
             <Avatar aria-hidden>
@@ -45,11 +46,16 @@ export function AccountMenu({ user }: { user: Pick<PublicUser, "name" | "email" 
             </span>
             <HugeiconsIcon icon={UnfoldMoreIcon} strokeWidth={2} className="ms-auto" aria-hidden />
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" className="min-w-56">
+          {/* At most the viewport's width; the label wraps, so it shows a long name in full. */}
+          <DropdownMenuContent
+            side="top"
+            align="start"
+            className="min-w-56 max-w-[min(20rem,var(--available-width))]"
+          >
             <DropdownMenuGroup>
               <DropdownMenuLabel className="flex flex-col">
-                <span className="truncate font-medium text-foreground">{user.name}</span>
-                <span className="truncate">{user.email}</span>
+                <span className="font-medium wrap-anywhere text-foreground">{user.name}</span>
+                <span className="wrap-anywhere">{user.email}</span>
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

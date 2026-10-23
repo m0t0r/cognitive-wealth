@@ -9,6 +9,8 @@ import { OrgSwitcher } from "./org-switcher";
 
 vi.mock("@/app/(app)/actions", () => ({ switchWorkspace: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+const router = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
 function membership(name: string, role: PublicMembership["role"], isActive: boolean) {
   const publicId = `0192f0c4-0000-7000-8000-${String(name.length).padStart(12, "0")}`;
@@ -99,7 +101,7 @@ describe("OrgSwitcher", () => {
     });
   });
 
-  it("explains a refused switch", async () => {
+  it("explains a refused switch and reloads the list of workspaces", async () => {
     vi.mocked(switchWorkspace).mockResolvedValue({ ok: false, error: "not_found" });
     const { user } = renderSwitcher([ACME, GLOBEX]);
     await openMenu(user);
@@ -111,6 +113,7 @@ describe("OrgSwitcher", () => {
       );
     });
     expect(toast.success).not.toHaveBeenCalled();
+    expect(router.refresh).toHaveBeenCalledOnce();
   });
 
   it("falls back to the first membership when none is active", () => {

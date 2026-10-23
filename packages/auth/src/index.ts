@@ -61,6 +61,7 @@ export {
   listInvitations,
   listMembers,
   listMemberships,
+  listMyInvitations,
   removeMember,
   requireTenant,
   revokeUserSessions,

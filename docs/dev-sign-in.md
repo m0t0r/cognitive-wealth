@@ -57,6 +57,19 @@ agent-browser --state .dev/auth/owner@cognitive-wealth.test.json open https://co
 
 `dev:sign-in` runs the real flow (request the email, read it from Mailpit, verify the token as the confirm page does) and saves the session cookies to `.dev/auth/<email>.json` (gitignored, mode 0600). The same file works as a Playwright `storageState`. `--state <file>` saves elsewhere, `--app <url>` targets another local app (such as a worktree's `https://<branch>.cognitive-wealth.localhost`), and `--help` lists the rest. It only talks to local hosts.
 
+### One client IP per session
+
+Sign-in is rate limited per client IP, and everything you run locally comes from the same address, so a few sign-ins in a row (several users, or one user again and again) can trip the limit and quietly get no email. The Compose stack's `web` service (`http://localhost:3000`) trusts a client-set `x-forwarded-for` (ADR 0001, "Infrastructure"), so there you can give each session an address of its own with `--ip`, and send the same header from the browser:
+
+```sh
+pnpm dev:sign-in owner@cognitive-wealth.test --app http://localhost:3000 --ip 10.77.0.1
+agent-browser --state .dev/auth/owner@cognitive-wealth.test.json \
+  --headers '{"x-forwarded-for":"10.77.0.1"}' open http://localhost:3000
+pnpm dev:sign-in admin@cognitive-wealth.test --app http://localhost:3000 --ip 10.77.0.2
+```
+
+`--ip` takes one IPv4 or IPv6 address and sends it as `x-forwarded-for` on the sign-in request and the verify call (with `--link`, on the request only). Behind portless (`pnpm dev`) it doesn't help: the proxy appends its own hop, and a header holding more than one address doesn't count as a client IP unless `AUTH_TRUSTED_PROXIES` names the proxy.
+
 ## 3. Sign in by hand
 
 Either:

@@ -1,69 +1,122 @@
 import { deferred, screen, setup } from "@repo/testing/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { respondToInvitation } from "@/app/(auth)/invite/[publicId]/actions";
+import {
+  acceptInvitationAction,
+  declineInvitationAction,
+} from "@/app/(auth)/invite/[publicId]/actions";
 import type { FormState } from "@/lib/action-result";
-import { InvitationResponse } from "./invitation-response";
+import { type InvitationDetails, InvitationResponse } from "./invitation-response";
 
-vi.mock("@/app/(auth)/invite/[publicId]/actions", () => ({ respondToInvitation: vi.fn() }));
+vi.mock("@/app/(auth)/invite/[publicId]/actions", () => ({
+  acceptInvitationAction: vi.fn(),
+  declineInvitationAction: vi.fn(),
+}));
 
-const INVITATION = "0192f0c4-0000-7000-8000-00000000000a";
+const INVITATION: InvitationDetails = {
+  publicId: "0192f0c4-0000-7000-8000-00000000000a",
+  organizationName: "Acme",
+  inviterName: "Olivia Owner",
+  role: "admin",
+  email: "ivy@example.com",
+};
 
 beforeEach(() => {
-  // The real action redirects on success; a failure is the only state the form ever shows.
-  vi.mocked(respondToInvitation).mockResolvedValue(null);
+  // The real accept action redirects on success; a failure is the only state the form shows.
+  vi.mocked(acceptInvitationAction).mockResolvedValue(null);
+  vi.mocked(declineInvitationAction).mockResolvedValue({ ok: true });
 });
 
-/** The form fields the last call to the action received. */
-function submitted() {
-  const [, formData] = vi.mocked(respondToInvitation).mock.lastCall ?? [];
-  return {
-    invitationPublicId: formData?.get("invitationPublicId"),
-    response: formData?.get("response"),
-  };
+function renderResponse(hasWorkspace = false) {
+  return setup(<InvitationResponse invitation={INVITATION} hasWorkspace={hasWorkspace} />);
 }
 
 describe("InvitationResponse", () => {
-  it.for([
-    ["Accept invitation", "accept"],
-    ["Decline", "decline"],
-  ] as const)("sends “%s” as response=%s for this invitation", async ([name, response]) => {
-    const { user, container } = setup(<InvitationResponse invitationPublicId={INVITATION} />);
+  it("shows who invited whom, and accepts this invitation", async () => {
+    const { user, container } = renderResponse();
+    expect(screen.getByRole("heading", { name: "Join Acme" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Olivia Owner invited you to join Acme on Cognitive Wealth."),
+    ).toBeVisible();
     await expect(container).toHaveNoA11yViolations();
-
-    await user.click(screen.getByRole("button", { name }));
-
-    expect(respondToInvitation).toHaveBeenCalledOnce();
-    expect(submitted()).toEqual({ invitationPublicId: INVITATION, response });
-  });
-
-  it("disables both buttons and shows progress on the chosen one while it runs", async () => {
-    const pending = deferred<FormState>();
-    vi.mocked(respondToInvitation).mockReturnValue(pending.promise);
-    const { user } = setup(<InvitationResponse invitationPublicId={INVITATION} />);
-
-    await user.click(screen.getByRole("button", { name: "Decline" }));
-
-    const decline = await screen.findByRole("button", { name: /Decline/ });
-    expect(decline).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Accept invitation" })).toBeDisabled();
-    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
-    expect(decline).toContainElement(screen.getByRole("status", { name: "Loading" }));
-
-    pending.resolve({ ok: false, error: "unknown" });
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Decline" })).toBeEnabled();
-  });
-
-  it("explains a refusal and lets the person try again", async () => {
-    vi.mocked(respondToInvitation).mockResolvedValue({ ok: false, error: "wrong_recipient" });
-    const { user, container } = setup(<InvitationResponse invitationPublicId={INVITATION} />);
 
     await user.click(screen.getByRole("button", { name: "Accept invitation" }));
 
+    expect(acceptInvitationAction).toHaveBeenCalledOnce();
+    const [, formData] = vi.mocked(acceptInvitationAction).mock.lastCall ?? [];
+    expect(formData?.get("invitationPublicId")).toBe(INVITATION.publicId);
+  });
+
+  it("disables both buttons and shows progress while accepting", async () => {
+    const pending = deferred<FormState>();
+    vi.mocked(acceptInvitationAction).mockReturnValue(pending.promise);
+    const { user } = renderResponse();
+
+    await user.click(screen.getByRole("button", { name: "Accept invitation" }));
+
+    const accept = await screen.findByRole("button", { name: /Accept invitation/ });
+    expect(accept).toHaveAttribute("aria-disabled", "true");
+    expect(accept).toContainElement(screen.getByRole("status", { name: "Loading" }));
+    expect(screen.getByRole("button", { name: "Decline" })).toBeDisabled();
+
+    pending.resolve({ ok: false, error: "wrong_recipient" });
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "This invitation was sent to a different email address.",
     );
     expect(screen.getByRole("button", { name: "Accept invitation" })).toBeEnabled();
-    await expect(container).toHaveNoA11yViolations();
+  });
+
+  it("confirms before declining, and declines nothing when kept", async () => {
+    const { user } = renderResponse();
+    await user.click(screen.getByRole("button", { name: "Decline" }));
+
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Decline the invitation to Acme?",
+    });
+    expect(dialog).toHaveAccessibleDescription(
+      "You won't join Acme. To join later, you'll need a new invitation.",
+    );
+    await expect(dialog).toHaveNoA11yViolations();
+    await user.click(screen.getByRole("button", { name: "Keep invitation" }));
+
+    expect(declineInvitationAction).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Join Acme" })).toBeInTheDocument();
+  });
+
+  it.for([
+    [false, "Continue"],
+    [true, "Go to your workspace"],
+  ] as const)(
+    "after declining (has a workspace: %s), says so and offers “%s”",
+    async ([hasWorkspace, next]) => {
+      const { user, container } = renderResponse(hasWorkspace);
+      await user.click(screen.getByRole("button", { name: "Decline" }));
+      await user.click(await screen.findByRole("button", { name: "Decline invitation" }));
+
+      expect(declineInvitationAction).toHaveBeenCalledExactlyOnceWith({
+        invitationPublicId: INVITATION.publicId,
+      });
+      const heading = await screen.findByRole("heading", { name: "Invitation declined" });
+      await vi.waitFor(() => {
+        expect(heading).toHaveFocus();
+      });
+      expect(
+        screen.getByText(
+          "You won't join Acme. If you change your mind, ask Olivia Owner to invite you again.",
+        ),
+      ).toBeVisible();
+      // Not a page that says to open the invitation link they just declined.
+      expect(screen.getByRole("link", { name: next })).toHaveAttribute("href", "/");
+      await expect(container).toHaveNoA11yViolations();
+    },
+  );
+
+  it("explains a failed decline and keeps the invitation open", async () => {
+    vi.mocked(declineInvitationAction).mockResolvedValue({ ok: false, error: "unknown" });
+    const { user } = renderResponse();
+    await user.click(screen.getByRole("button", { name: "Decline" }));
+    await user.click(await screen.findByRole("button", { name: "Decline invitation" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to finish that. Try again.");
+    expect(screen.getByRole("heading", { name: "Join Acme" })).toBeInTheDocument();
   });
 });

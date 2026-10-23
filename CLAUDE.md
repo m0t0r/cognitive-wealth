@@ -22,7 +22,7 @@ Run from the repo root (tasks fan out via Turborepo):
 - `pnpm --filter @repo/db db:generate`: drizzle-kit migration from `src/schema/`; `db:migrate` applies them (`DATABASE_URL`, optional `DATABASE_PASSWORD_FILE`)
 - `pnpm db:seed`: idempotent dev users and orgs (`owner@`, `admin@`, `member@cognitive-wealth.test`; Acme, Globex); refuses `NODE_ENV=production` and non-local hosts
 - `pnpm org:create --name <name> [--slug <slug>] --owner <email>`: the invite-only way to create an org, in any environment (production via `DATABASE_URL` + `DATABASE_PASSWORD_FILE`). Without `DATABASE_URL`, both CLIs read it from `apps/web/.env.local`
-- `pnpm dev:sign-in <email> [--link]`: signs a seeded or invited user in to `pnpm dev` through the real flow; saves `.dev/auth/<email>.json` for `agent-browser --state`
+- `pnpm dev:sign-in <email> [--link] [--ip <addr>]`: signs a seeded or invited user in to `pnpm dev` through the real flow; saves `.dev/auth/<email>.json` for `agent-browser --state`. `--ip` sends that client IP as `x-forwarded-for`, so each session gets its own rate-limit bucket on a stack that trusts it (Compose)
 - `pnpm --filter @repo/email dev`: email template previews at `https://emails.cognitive-wealth.localhost`
 - Single workspace: `pnpm exec turbo <task> --filter=<name>` (e.g. `--filter=web`); single file: `pnpm --filter <name> exec vitest run <path>`
 

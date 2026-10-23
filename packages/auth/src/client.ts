@@ -1,7 +1,7 @@
 // Browser side of the allowlisted endpoints. Verify, code and sign-out responses are replaced by
 // `{ ok }` on the server, which Better Auth's client doesn't expect, so these helpers call them
 // with `fetch` and return a typed result instead of using Better Auth's client.
-import { AUTH_BASE_PATH } from "./constants";
+import { AUTH_BASE_PATH, SIGN_IN_TOKEN_PATTERN } from "./constants";
 import type { AuthErrorCode } from "./route-handler";
 
 export {
@@ -19,6 +19,11 @@ export function requestSignIn(email: string, callbackPath?: string): Promise<Aut
     "/sign-in/magic-link",
     callbackPath === undefined ? { email } : { email, callbackURL: callbackPath },
   );
+}
+
+/** Whether `token` has the shape of a sign-in link token; the verify route refuses any other. */
+export function isWellFormedSignInToken(token: string): boolean {
+  return SIGN_IN_TOKEN_PATTERN.test(token);
 }
 
 /** Spends the token from the confirm link; sets the session cookie on success. */
