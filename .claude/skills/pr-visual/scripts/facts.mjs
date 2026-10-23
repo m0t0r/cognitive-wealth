@@ -133,11 +133,20 @@ for (const [a, group] of folded) {
 if (flows.length > 1) emit("mix", ["sankey", ...flows].join("\n"));
 
 // Churn by area and file: each area's largest files by name, the rest folded into one tile, so a
-// long tail doesn't drown the files a reviewer should open first.
+// long tail doesn't drown the files a reviewer should open first. Vendored areas stay out (#11): a
+// skill install can be 95% of the lines and shrink every reviewed file to an unlabelled sliver. The
+// root label counts what was left out, so the chart doesn't read as the whole change. Small areas
+// fold as in the sankey, so a row of one-line symlinks doesn't become a row of empty tiles.
 const PER_AREA = 4;
-const tree = ["treemap-beta", `"Lines changed"`];
+const vendored = (a) => a.endsWith("(vendored)");
 const areaChurn = (group) => group.reduce((n, f) => n + churn(f), 0);
-for (const [a, group] of [...byArea].sort((x, y) => areaChurn(y[1]) - areaChurn(x[1]))) {
+const vendoredLines = files.filter((f) => vendored(f.area)).reduce((n, f) => n + churn(f), 0);
+const rootLabel = vendoredLines
+  ? `Lines changed, excluding ${vendoredLines.toLocaleString("en-US")} vendored`
+  : "Lines changed";
+const tree = ["treemap-beta", `"${rootLabel}"`];
+const reviewed = [...folded].filter(([a]) => !vendored(a));
+for (const [a, group] of reviewed.sort((x, y) => areaChurn(y[1]) - areaChurn(x[1]))) {
   const sorted = group.filter((f) => churn(f) > 0).sort((x, y) => churn(y) - churn(x));
   if (sorted.length === 0) continue;
   const named = sorted.slice(0, PER_AREA);
@@ -147,7 +156,7 @@ for (const [a, group] of [...byArea].sort((x, y) => areaChurn(y[1]) - areaChurn(
   for (const f of named) tree.push(`    "${q(f.path.split("/").slice(-2).join("/"))}": ${churn(f)}`);
   if (rest.length) tree.push(`    "${rest.length} more files": ${areaChurn(rest)}`);
 }
-if (files.some((f) => churn(f) > 0)) emit("churn", tree.join("\n"));
+if (files.some((f) => !vendored(f.area) && churn(f) > 0)) emit("churn", tree.join("\n"));
 
 // The changed files as a tree, each leaf carrying its change and line counts.
 const root = {};

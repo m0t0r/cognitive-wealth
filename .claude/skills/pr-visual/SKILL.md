@@ -30,7 +30,7 @@ This writes `facts.json` (totals, per-file change and lines, test cases added an
 | Chart | Shows | Use when |
 | --- | --- | --- |
 | `mix` (sankey) | lines by area → source code, test code, docs, config, migrations | more than one area changed |
-| `churn` (treemap) | lines by area and file, largest first | always; it's the change's footprint |
+| `churn` (treemap) | lines by area and file, largest first; vendored `.agents/skills` left out, its line count in the root label | always, unless only vendored files changed; it's the change's footprint |
 | `files` (treeView) | every changed file with change kind and `+/−` | up to 60 files |
 | `tests` (xychart) | test cases added and removed per layer | tests changed |
 | `commits` (gitGraph) | the branch's commits | 3–25 commits, when their order tells a story |
