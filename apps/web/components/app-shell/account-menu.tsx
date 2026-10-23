@@ -33,7 +33,8 @@ export function AccountMenu({ user }: { user: Pick<PublicUser, "name" | "email" 
             render={<SidebarMenuButton size="lg" />}
             className="data-popup-open:bg-sidebar-accent"
           >
-            <Avatar>
+            {/* Decorative: the name and email below already label the button. */}
+            <Avatar aria-hidden>
               {user.image ? <AvatarImage src={user.image} alt="" /> : null}
               <AvatarFallback>{initials(user.name, user.email)}</AvatarFallback>
             </Avatar>
