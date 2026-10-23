@@ -5,6 +5,11 @@
 
 The app has no test-only sign-in route, bypass flag or seeded session. Development, agents and e2e tests sign in through the real flow: a harness requests the email, reads it from Mailpit's API, and verifies the token the way the confirm page does ([docs/dev-sign-in.md](../dev-sign-in.md)).
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/dev-sign-in.dark.svg">
+  <img alt="Sequence: the harness notes the address's existing Mailpit messages, posts the sign-in request as the sign-in page does, waits for the new email in Mailpit, reads the link and code from its plain text, calls verify with the confirm page's same-origin fetch headers, and saves the session cookies." src="../diagrams/dev-sign-in.light.svg">
+</picture>
+
 ## Why
 
 A backdoor is one misconfiguration away from production, and tests that skip the real flow don't cover it. For the same reason, Better Auth's origin and CSRF checks are pinned on (`disableOriginCheck: false`, `disableCSRFCheck: false`): Better Auth turns its origin check off when `NODE_ENV=test`, and tests must run what production runs.

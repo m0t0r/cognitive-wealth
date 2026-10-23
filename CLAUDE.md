@@ -35,11 +35,14 @@ Run from the repo root (tasks fan out via Turborepo):
 - `pnpm org:create --name <name> [--slug <slug>] --owner <email>`: the invite-only way to create an org, in any environment (production via `DATABASE_URL` + `DATABASE_PASSWORD_FILE`). Without `DATABASE_URL`, both CLIs read it from `apps/web/.env.local`
 - `pnpm dev:sign-in <email> [--link] [--ip <addr>]`: signs a seeded or invited user in to `pnpm dev` through the real flow; saves `.dev/auth/<email>.json` for `agent-browser --state`. `--ip` sends that client IP as `x-forwarded-for`, so each session gets its own rate-limit bucket on a stack that trusts it (Compose)
 - `pnpm --filter @repo/email dev`: email template previews at `https://emails.cognitive-wealth.localhost`
+- `pnpm docs:diagrams`: renders `docs/diagrams/*.mmd` with Pele into `<name>.light.svg` and `<name>.dark.svg` (deterministic, so an unchanged source gives no diff)
 - Single workspace: `pnpm exec turbo <task> --filter=<name>` (e.g. `--filter=web`); single file: `pnpm --filter <name> exec vitest run <path>`
 
 Lint config lives in the root `.oxlintrc.json`: `denyWarnings` makes warnings fail, `typeAware` runs type-aware rules through `oxlint-tsgolint` (version-locked to TypeScript 7), and the `nextjs` plugin is enabled only for `apps/web/**`. `eslint-plugin-turbo` is loaded as an Oxlint JS plugin, so env vars not declared in `turbo.json` are lint errors. `check-types` in the Next apps runs `next typegen` before `tsc --noEmit`.
 
 ## Architecture
+
+The platform overview, with diagrams of the system, packages, request flow, data model and decisions, is [docs/architecture.md](docs/architecture.md). A change that alters something a diagram shows updates its `.mmd` and re-renders it in the same commit.
 
 - `apps/web`: Next.js App Router app (`app/` directory, CSS modules).
 - `packages/design-system` (`@repo/design-system`): shadcn/ui (preset `bjbigatl2`: `base-luma` on Base UI, Hugeicons, Inter + Noto Sans headings) incl. the AI chat primitives (MessageScroller, Message, Bubble, Trace, Attachment, Marker, CodeBlock, Questionnaire). **Not built**: consumers import source (`@repo/design-system/components/button`, `/globals.css`, `/lib/utils`, `/hooks/*`) and Next transpiles it via `transpilePackages`. Run shadcn commands from `apps/web` (e.g. `pnpm dlx shadcn@latest add <name>`); its `components.json` routes components, hooks and lib into the package. Generated `components/` and `hooks/` are excluded from Oxlint; don't hand-edit them unless intended. An intended edit carries a comment saying what changed and why (e.g. `button.tsx`'s `aria-disabled:` styles), and updating a component goes through `add <name> --dry-run` / `--diff` and a merge, never `--overwrite`, which drops local edits.

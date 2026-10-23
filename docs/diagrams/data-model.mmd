@@ -1,0 +1,68 @@
+erDiagram
+  user ||--o{ session : "signs in with"
+  user ||--o{ account : "has"
+  user ||--o{ member : "belongs through"
+  organization ||--o{ member : "has"
+  organization ||--o{ invitation : "sends"
+  user ||--o{ invitation : "invites (inviter)"
+  organization |o--o{ session : "is active in"
+  user |o--o{ audit_event : "acts in"
+  organization |o--o{ audit_event : "scopes"
+
+  user {
+    bigint id PK
+    uuid public_id UK
+    text email UK "lowercase"
+    text name
+    bool email_verified
+  }
+  session {
+    bigint id PK
+    text token UK
+    bigint user_id FK
+    bigint active_organization_id FK "the tenant"
+    timestamptz expires_at
+  }
+  account {
+    bigint id PK
+    bigint user_id FK
+    text provider_id
+  }
+  verification {
+    bigint id PK
+    text identifier "link or code key"
+    text value
+    timestamptz expires_at
+  }
+  organization {
+    bigint id PK
+    uuid public_id UK
+    text name
+    text slug UK
+  }
+  member {
+    bigint id PK
+    uuid public_id UK
+    bigint organization_id FK
+    bigint user_id FK
+    text role "owner, admin or member"
+  }
+  invitation {
+    bigint id PK
+    uuid public_id UK
+    bigint organization_id FK
+    bigint inviter_id FK
+    text email
+    text role
+    text status
+    timestamptz expires_at
+  }
+  audit_event {
+    bigint id PK
+    text action
+    bigint actor_user_id FK
+    bigint organization_id FK
+    text target_type
+    text target_id
+    jsonb metadata
+  }

@@ -1,0 +1,13 @@
+flowchart TB
+  call(["Server Action, e.g. changeMemberRole<br/>(headers, organizationPublicId, publicIds)"]) --> auth{signed in?}
+  auth -->|no| unauth[unauthenticated]
+  auth -->|yes| tenant{active organization?}
+  tenant -->|no| none[no_tenant]
+  tenant -->|yes| same{"organizationPublicId is<br/>the active organization?"}
+  same -->|no| changed["tenant_changed<br/>before any other check or side effect"]
+  same -->|yes| fresh{"sensitive action?<br/>session older than 1 hour?"}
+  fresh -->|yes| reauth[reauth_required]
+  fresh -->|no| resolve["resolve publicIds<br/>within the tenant"]
+  resolve --> perm{"Better Auth permission<br/>and per-action limits"}
+  perm -->|refused| err["forbidden, not_found,<br/>rate_limited, …"]
+  perm -->|allowed| act["auth.api.* call"] --> audit["audit event<br/>(never blocks the action)"] --> dto([DTO with publicIds only])

@@ -1,0 +1,15 @@
+sequenceDiagram
+  autonumber
+  participant H as Harness: pnpm dev:sign-in or e2e signIn
+  participant A as App, local host only
+  participant M as Mailpit API
+
+  H->>M: note the address's existing message IDs
+  H->>A: POST /api/auth/sign-in/magic-link, as the sign-in page does
+  A-->>H: { status: true }
+  A->>M: sign-in email, after the response
+  H->>M: wait for a new message to the address
+  M-->>H: plain text: "Sign-in link: …", "Sign-in code: …"
+  H->>A: GET /api/auth/magic-link/verify?token=…<br/>same-origin fetch headers, as the confirm page does
+  A-->>H: { ok: true } and the session cookies
+  H->>H: save .dev/auth/email.json or add cookies to the test context

@@ -2,6 +2,11 @@
 
 Sessions live in Postgres and are cached in Redis ([ADR 0005](adr/0005-sessions-cached-in-redis.md)). Better Auth serves a cached session without checking Postgres, so SQL alone leaves people signed in for up to 7 days. Every procedure below reaches the cache too.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/session-cache.dark.svg">
+  <img alt="Signing someone out through revokeUserSessions or Better Auth's APIs deletes the Postgres rows and each cached entry, so they are signed out on the next request; a raw SQL delete or update leaves Redis holding the session, so they stay signed in for up to 7 days." src="diagrams/session-cache.light.svg">
+</picture>
+
 Redis keys are under `REDIS_KEY_PREFIX` (default `cw:`). The app's Redis user can't `SCAN`, so key-pattern deletes need an admin connection.
 
 ## Sign out one user (immediate)

@@ -1,0 +1,25 @@
+flowchart LR
+  a1["0001 Better Auth,<br/>passwordless, invite-only"]
+  a2["0002 Tenant is the session's<br/>active organization"]
+  a3["0003 Internal bigint IDs,<br/>public UUIDs"]
+  a4["0004 Browser reaches Better Auth<br/>through an allowlist"]
+  a5["0005 Sessions in Postgres,<br/>cached in Redis"]
+  a6["0006 Sign-in email sent<br/>after the response"]
+  a7["0007 No auth backdoor"]
+  a8["0008 Production mode<br/>everywhere"]
+
+  ir["incident-response.md"]
+  host["Hosting must keep<br/>after() work alive"]
+  rls["RLS deferred until<br/>domain tables exist"]
+  harness["dev-sign-in.md harness"]
+
+  a1 -->|"its ID defaults"| a3
+  a1 -->|"its HTTP surface"| a4
+  a1 -->|"we own sessions"| a5
+  a1 -->|"no enumeration"| a6
+  a3 -->|"no IDs in responses"| a4
+  a5 -->|"SQL can't sign out"| ir
+  a6 --> host
+  a2 --> rls
+  a7 --> harness
+  a8 -->|"e2e runs prod guards"| a7

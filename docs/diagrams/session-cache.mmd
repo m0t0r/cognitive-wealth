@@ -1,0 +1,15 @@
+flowchart LR
+  subgraph read["Every request: getViewer"]
+    direction TB
+    r1["session token from the cookie"] --> r2{"in Redis?"}
+    r2 -->|hit| r3["cached session and user<br/>Postgres not checked"]
+    r2 -->|"miss, flush or eviction"| r4["Postgres, then re-cache"]
+  end
+
+  subgraph revoke["Signing someone out"]
+    direction TB
+    v1["revokeUserSessions or<br/>Better Auth's revoke and delete APIs"] --> v2["Postgres rows deleted<br/>and each cached entry deleted"]
+    v2 --> v3(["signed out on the next request"])
+    s1["raw SQL delete or update"] --> s2["Postgres rows gone,<br/>Redis still holds the session"]
+    s2 --> s3(["still signed in for up to 7 days"])
+  end

@@ -1,0 +1,20 @@
+sequenceDiagram
+  autonumber
+  actor U as Person
+  participant C as /sign-in/confirm
+  participant H as Route handler
+  participant BA as Better Auth
+  participant D as Postgres
+
+  U->>C: opens the link from the email
+  Note over U,C: the fragment (token, next) stays in the browser:<br/>no server, log or Referer sees it
+  C->>C: read the fragment, clear it with history.replaceState
+  C-->>U: "Continue" (never auto-submits)
+  U->>C: clicks Continue
+  C->>H: fetch GET /magic-link/verify?token=…<br/>Sec-Fetch-Site same-origin, Mode cors
+  H->>BA: rebuilt request
+  BA->>D: spend the token, create the session
+  BA->>D: delete every other pending link and code for the address
+  BA-->>H: Set-Cookie session and device cookie
+  H-->>C: { ok: true } with the cookies
+  C-->>U: navigate to next

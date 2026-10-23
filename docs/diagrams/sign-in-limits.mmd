@@ -1,0 +1,13 @@
+flowchart TB
+  start([Eligible sign-in email request]) --> device{"valid device cookie for<br/>the user who owns the address?"}
+  device -->|yes| dev{"dev: email + device id<br/>3 per 10 min"}
+  dev -->|over| stop["no email, link deleted,<br/>auth.sign_in_throttled audited"]
+  dev -->|within| send([Issue the code and send the email])
+
+  device -->|"no, or an invitee"| req{"req: email + client IP<br/>3 per 10 min"}
+  req -->|over| stop
+  req -->|within| hour{"req-hour: email + client IP<br/>6 per hour"}
+  hour -->|over| stop
+  hour -->|within| addr{"addr: email<br/>10 per hour, the backstop"}
+  addr -->|over| stop
+  addr -->|within| send

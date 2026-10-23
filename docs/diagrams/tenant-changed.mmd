@@ -1,0 +1,15 @@
+sequenceDiagram
+  autonumber
+  participant T1 as Tab 1
+  participant T2 as Tab 2
+  participant S as Server
+  participant D as Postgres
+
+  T1->>S: GET /settings/members
+  S-->>T1: Acme members, rendered with Acme's organizationPublicId
+  T2->>S: switch workspace to Globex
+  S->>D: session.active_organization_id = Globex
+  T1->>S: removeMember(Acme's organizationPublicId, memberPublicId)
+  S->>D: active organization is Globex
+  S-->>T1: tenant_changed, nothing checked or changed
+  T1-->>T1: "You switched workspace in another tab", re-render as Globex

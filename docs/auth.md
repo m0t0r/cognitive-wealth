@@ -1,6 +1,6 @@
 # Auth reference
 
-How sign-in, sessions and tenancy work today. The decisions behind them, and why, are ADRs [0001](adr/0001-better-auth-passwordless-invite-only.md) to [0008](adr/0008-production-mode-everywhere.md). This file describes current behaviour: update it in the same change as the code. Values the code states plainly (column lists, plugin options, DTO fields) live only in the code (`packages/auth/src/auth.ts`, `packages/db/src/schema/`).
+How sign-in, sessions and tenancy work today. The decisions behind them, and why, are ADRs [0001](adr/0001-better-auth-passwordless-invite-only.md) to [0008](adr/0008-production-mode-everywhere.md), and where auth sits in the platform is in [docs/architecture.md](architecture.md). This file describes current behaviour: update it, and its diagrams in `docs/diagrams/`, in the same change as the code. Values the code states plainly (column lists, plugin options, DTO fields) live only in the code (`packages/auth/src/auth.ts`, `packages/db/src/schema/`).
 
 Packages: `@repo/auth` is framework-agnostic (takes `Headers`, returns DTOs or typed `Result`s); `apps/web/lib/auth/*` adapts it to `next/headers` and `redirect()`. `createAuth(deps)` is a factory, so tests inject PGlite, a memory mailer and memory storage.
 
@@ -39,6 +39,11 @@ What the schema files don't make obvious:
 
 One email carries a magic link and a 6-digit code. `sendMagicLink` runs inside `POST /sign-in/magic-link` and does only same-cost work in the request; the rest runs after the response ([ADR 0006](adr/0006-sign-in-email-sent-after-the-response.md)):
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/sign-in-request.dark.svg">
+  <img alt="Sequence: the browser posts the email; the route handler forwards a rebuilt request to Better Auth, whose sendMagicLink does same-cost work and schedules an after() task, and the browser gets status true for every address. The task checks eligibility in Postgres, stops if not eligible, checks the sign-in email limits in Redis, and either deletes the stored link and audits the throttle, or issues the code and sends one email with the link and the code." src="diagrams/sign-in-request.light.svg">
+</picture>
+
 1. **Eligibility:** an existing user, or a pending, unexpired invitation for the address. Otherwise return without sending.
 2. **Limits:** see "Sign-in email limits". When a rule trips: no email, the stored link is deleted, and `auth.sign_in_throttled` is audited with `metadata: { rule }`, the IP and the user's `publicId` as target (never the email).
 3. **Issue the code:** `auth.api.sendVerificationOTP({ body: { email, type: "sign-in" } })` inside an `AsyncLocalStorage` slot. The emailOTP callback writes the code into the slot and throws if there's no slot, so a code is only ever issued alongside a link.
@@ -50,9 +55,21 @@ Also:
 - **Defense in depth:** `databaseHooks.user.create.before` refuses to create a user unless the email has a pending, unexpired invitation. The seed and CLIs insert users with Drizzle directly, so they never reach the hook.
 - **One email, one session:** after a successful sign-in (`hooks.after` on `/magic-link/verify` and `/sign-in/email-otp`), every other pending credential for that address is deleted (the `sign-in-otp-<email>` verification row and magic-link rows for that email). If that cleanup or setting the device cookie fails, the hook deletes the session it just created and sign-in fails with `unknown`.
 
+Confirming with the link (the code path is the same from step 5, through `POST /sign-in/email-otp`):
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/sign-in-confirm.dark.svg">
+  <img alt="Sequence: the person opens the link; the token and next stay in the fragment, which no server sees. The confirm page reads and clears the fragment and shows Continue without auto-submitting. On click it fetches the verify route same-origin; the route handler forwards a rebuilt request; Better Auth spends the token, creates the session, deletes the address's other pending links and codes, and sets the session and device cookies; the page gets ok true and navigates to next." src="diagrams/sign-in-confirm.light.svg">
+</picture>
+
 ### Sign-in email limits
 
 Requests count no matter who makes them, and there's no password fallback, so a plain per-address limit would let anyone who knows an address block that user's sign-in. Instead (counters in Redis, all checked before a code is issued):
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/sign-in-limits.dark.svg">
+  <img alt="Decision flow: with a valid device cookie for the address's user, only the dev rule applies, 3 per 10 minutes per device. Otherwise, or for an invitee, the req rule (3 per 10 minutes per email and IP), then req-hour (6 per hour per email and IP), then the addr backstop (10 per hour per email). Any rule over its limit means no email, the link deleted and auth.sign_in_throttled audited; passing all of them issues the code and sends the email." src="diagrams/sign-in-limits.light.svg">
+</picture>
 
 - **Known device:** if the request carries a valid device cookie for the user who owns the address, only `sign-in-email:dev:<email>:<device id>` applies (3 per 10 minutes) and the next two rules are skipped. A browser the user signed in from before can always get an email, even while the address is flooded or an attacker shares their NAT.
 - **Per requester:** otherwise, `sign-in-email:req:<email>:<client IP>` (3 per 10 minutes) and then `sign-in-email:req-hour:<email>:<client IP>` (6 per hour), from `SIGN_IN_REQUESTER_LIMITS` in `constants.ts` (client-safe, so the sign-in page mirrors them). Someone who resends quickly waits at most 10 minutes, and one requester's hourly total stays below the address backstop, so it takes at least two requesters to use it up.
@@ -71,6 +88,11 @@ A code allows 3 tries (`allowedAttempts`), and the route handler counts every co
 ## Browser-facing HTTP surface
 
 `app/api/auth/[...all]/route.ts` exports `createAuthRouteHandler(auth)` ([ADR 0004](adr/0004-browser-reaches-better-auth-through-an-allowlist.md)). Anything not listed returns `404` without reaching Better Auth's router.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/auth-route-handler.dark.svg">
+  <img alt="Decision flow for a request to /api/auth: not in the allowlist gives 404. The verify GET must be a same-origin fetch, else 403. A POST must have no query string and our Origin, then a strict JSON body of at most 4 KiB with listed fields, else 400 or 403; a code attempt also needs the address under 10 attempts a day, else the same 400 as a wrong code. Accepted requests go to Better Auth's router with its per-IP rate limit, and the body is replaced with ok or one of five error codes, keeping Set-Cookie." src="diagrams/auth-route-handler.light.svg">
+</picture>
 
 | Method and path            | Extra rule                                                                                                                | Response the browser sees                                                        | Rate limit (per IP) |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------- |
@@ -101,6 +123,13 @@ The browser calls these through `@repo/auth/client` (`requestSignIn`, `verifyMag
   - **Re-inviting** an address replaces its pending invitations in that organization, expired ones included. Better Auth's `cancelPendingInvitationsOnReInvite` only sees unexpired ones, so `inviteMember` cancels the rest itself and audits each as `org.invitation.cancelled` with `metadata: { replacedBy }`. A resend is an ordinary invite: same permission, same limit.
 - `revokeUserSessions(auth, userPublicId)` signs a user out everywhere at once, in Postgres and the Redis cache ([ADR 0005](adr/0005-sessions-cached-in-redis.md)), and audits `auth.sessions_revoked`. It checks no permissions: call it only from trusted server code. A storage error is thrown, never reported as success.
 - `consumeRateLimit(storage, key, { window, max })` is the Server Action limiter, for the invite action and anything else costly.
+
+The order every tenant mutation checks in:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/tenant-mutation.dark.svg">
+  <img alt="Decision flow for a tenant mutation: not signed in gives unauthenticated; no active organization gives no_tenant; an organizationPublicId other than the active organization gives tenant_changed before any other check or side effect; a sensitive action on a session older than an hour gives reauth_required. Then public IDs resolve within the tenant, Better Auth's permissions and per-action limits can refuse, and an allowed call runs auth.api, writes an audit event that never blocks the action, and returns a DTO with public IDs only." src="diagrams/tenant-mutation.light.svg">
+</picture>
 
 **Audit events:** `auth.sign_in` (method), `auth.sign_in_throttled`, `auth.sign_out`, `auth.sessions_revoked`, `org.created` (written by `pnpm org:create`), `org.invitation.created|accepted|declined|cancelled`, `org.member.role_changed|removed`, `org.switched`, `user.profile_updated`. Writing an audit event never blocks the user's action: on failure, log and continue. The user agent is cut to 512 characters.
 

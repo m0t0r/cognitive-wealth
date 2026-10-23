@@ -57,6 +57,11 @@ agent-browser --state .dev/auth/owner@cognitive-wealth.test.json open https://co
 
 `dev:sign-in` runs the real flow (request the email, read it from Mailpit, verify the token as the confirm page does) and saves the session cookies to `.dev/auth/<email>.json` (gitignored, mode 0600). The same file works as a Playwright `storageState`. `--state <file>` saves elsewhere, `--app <url>` targets another local app (such as a worktree's `https://<branch>.cognitive-wealth.localhost`), and `--help` lists the rest. It only talks to local hosts.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/dev-sign-in.dark.svg">
+  <img alt="Sequence: the harness notes the address's existing Mailpit messages, posts the sign-in request as the sign-in page does, waits for the new email in Mailpit, reads the link and code from its plain text, calls verify with the confirm page's same-origin fetch headers, and saves the session cookies." src="diagrams/dev-sign-in.light.svg">
+</picture>
+
 ### One client IP per session
 
 Sign-in is rate limited per client IP, and everything you run locally comes from the same address, so a few sign-ins in a row (several users, or one user again and again) can trip the limit and quietly get no email. The Compose stack's `web` service (`http://localhost:3000`) trusts a client-set `x-forwarded-for` ([docs/auth.md](auth.md), "Client IP"), so there you can give each session an address of its own with `--ip`, and send the same header from the browser:
