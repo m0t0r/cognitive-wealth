@@ -1,6 +1,6 @@
-// The server-side tenant and session API (ADR 0001, "Tenant and session API"). Framework-agnostic:
-// `getViewer`/`requireTenant` and every mutation take the request `Headers`; `apps/web` adapts it
-// to `next/headers`.
+// The server-side tenant and session API (docs/auth.md, "Tenant and session API").
+// Framework-agnostic: `getViewer`/`requireTenant` and every mutation take the request `Headers`;
+// `apps/web` adapts it to `next/headers`.
 //
 // Rules:
 // - Reads take a viewer from `getViewer`/`requireTenant` (one session lookup per request) and use
@@ -619,7 +619,7 @@ export async function updateProfileName(
  * Signs a user out everywhere, immediately: deletes their sessions in Postgres and in the Redis
  * session cache (Better Auth's `deleteUserSessions`), and audits `auth.sessions_revoked`. Use it
  * (or Better Auth's own revoke calls) instead of deleting session rows with SQL, which leaves the
- * cached sessions valid until they expire (ADR 0001, "Session cache trade-off").
+ * cached sessions valid until they expire (ADR 0005).
  *
  * It checks no permissions: call it only from trusted server code (incident tooling, an account
  * deactivation the caller has already authorized), never straight from a Server Action's input.

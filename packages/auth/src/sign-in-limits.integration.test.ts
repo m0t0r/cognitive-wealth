@@ -1,4 +1,4 @@
-// Sign-in email limits and the device cookie (ADR 0001, "Sign-in request", step 2). Parsing the
+// Sign-in email limits and the device cookie (docs/auth.md, "Sign-in email limits"). Parsing the
 // cookie and its value layout are owned by device.test.ts; here, what needs Better Auth.
 import { test as dbTest } from "@repo/db/testing";
 import { auditEvent, invitation, verification } from "@repo/db/schema";

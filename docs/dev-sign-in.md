@@ -1,6 +1,6 @@
 # Signing in during development
 
-Sign-in is passwordless and invite-only ([ADR 0001](adr/0001-auth-and-tenancy.md)): the app emails a link and a 6-digit code, and only to an existing user or a pending invitation. There is no backdoor. In development the email lands in Mailpit, and a harness reads it from Mailpit's API to finish sign-in from outside the app. Run every command from the repo root.
+Sign-in is passwordless and invite-only ([ADR 0001](adr/0001-better-auth-passwordless-invite-only.md)): the app emails a link and a 6-digit code, and only to an existing user or a pending invitation. There is no backdoor. In development the email lands in Mailpit, and a harness reads it from Mailpit's API to finish sign-in from outside the app. Run every command from the repo root.
 
 ## 1. Start the dev stack
 
@@ -59,7 +59,7 @@ agent-browser --state .dev/auth/owner@cognitive-wealth.test.json open https://co
 
 ### One client IP per session
 
-Sign-in is rate limited per client IP, and everything you run locally comes from the same address, so a few sign-ins in a row (several users, or one user again and again) can trip the limit and quietly get no email. The Compose stack's `web` service (`http://localhost:3000`) trusts a client-set `x-forwarded-for` (ADR 0001, "Infrastructure"), so there you can give each session an address of its own with `--ip`, and send the same header from the browser:
+Sign-in is rate limited per client IP, and everything you run locally comes from the same address, so a few sign-ins in a row (several users, or one user again and again) can trip the limit and quietly get no email. The Compose stack's `web` service (`http://localhost:3000`) trusts a client-set `x-forwarded-for` ([docs/auth.md](auth.md), "Client IP"), so there you can give each session an address of its own with `--ip`, and send the same header from the browser:
 
 ```sh
 pnpm dev:sign-in owner@cognitive-wealth.test --app http://localhost:3000 --ip 10.77.0.1

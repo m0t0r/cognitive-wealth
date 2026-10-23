@@ -1,5 +1,5 @@
 // A sign-in request's response must not wait on anything whose cost depends on the address
-// (ADR 0001, "Sign-in request"): timing would reveal which addresses can sign in.
+// (ADR 0006): timing would reveal which addresses can sign in.
 import { test as dbTest } from "@repo/db/testing";
 import { auditEvent, verification } from "@repo/db/schema";
 import type { EmailMessage } from "@repo/email";

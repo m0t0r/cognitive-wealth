@@ -44,18 +44,25 @@ Internal packages are linked with `workspace:*`. In `turbo.json`, `build` and `c
 
 ## Auth
 
-[ADR 0001](docs/adr/0001-auth-and-tenancy.md) is the spec: code that disagrees with it is a bug in one or the other, so change both in the same commit.
+Decisions and their reasons are in `docs/adr/` (0001 to 0008); how the system works today is in [docs/auth.md](docs/auth.md). Change the code and `docs/auth.md` in the same commit; reversing a decision means a new ADR that supersedes the old one.
 
-- Internal IDs never reach the browser. Server Components and Server Actions take `publicId`s and return DTOs (`PublicUser`, `PublicOrganization`, …); `viewer.internal` stays on the server.
-- The browser talks to Better Auth only through the ADR's allowlist (`createAuthRouteHandler`); everything else 404s. A new browser-facing endpoint is an ADR change.
-- On the server, authorize with `getViewer`/`requireTenant` from `@repo/auth` (adapted in `apps/web/lib/auth/`) and scope every query to the tenant they return. `proxy.ts` only does an optimistic cookie check.
-- Revoke sessions and delete or deactivate users through Better Auth (or `revokeUserSessions`), never raw SQL: sessions are cached in Redis, so SQL alone leaves people signed in for up to 7 days. See the ADR's "Session cache trade-off" and "Incident response".
-- Dev and test sign-in run the real email flow through the harness ([docs/dev-sign-in.md](docs/dev-sign-in.md)); the app has no backdoor, test-only route or bypass flag.
-- Sign-in emails are sent after the response, through Next's `after()` (`apps/web/lib/auth/server.ts`), so timing can't reveal who is a client. Hosting must support `after()`: `next start` and Docker do, with a stop grace period so pending sends drain on SIGTERM; serverless needs `waitUntil` wired in, or sign-in emails silently never send.
+- Internal IDs never reach the browser ([ADR 0003](docs/adr/0003-internal-bigint-ids-public-uuids.md)). Server Components and Server Actions take `publicId`s and return DTOs (`PublicUser`, `PublicOrganization`, …); `viewer.internal` stays on the server.
+- The browser talks to Better Auth only through the allowlist in `createAuthRouteHandler`; everything else 404s. A new browser-facing endpoint changes [ADR 0004](docs/adr/0004-browser-reaches-better-auth-through-an-allowlist.md).
+- On the server, authorize with `getViewer`/`requireTenant` from `@repo/auth` (adapted in `apps/web/lib/auth/`) and scope every query to the tenant they return ([ADR 0002](docs/adr/0002-tenant-is-the-sessions-active-organization.md): no RLS, so a missed filter leaks). `proxy.ts` only does an optimistic cookie check.
+- Revoke sessions and delete or deactivate users through Better Auth (or `revokeUserSessions`), never raw SQL: sessions are cached in Redis, so SQL alone leaves people signed in for up to 7 days ([ADR 0005](docs/adr/0005-sessions-cached-in-redis.md), [docs/incident-response.md](docs/incident-response.md)).
+- Dev and test sign-in run the real email flow through the harness ([docs/dev-sign-in.md](docs/dev-sign-in.md)); the app has no backdoor, test-only route or bypass flag ([ADR 0007](docs/adr/0007-no-auth-backdoor.md)).
+- Sign-in emails are sent after the response, through Next's `after()` (`apps/web/lib/auth/server.ts`), so timing can't reveal who is a client. Hosting must support `after()` ([ADR 0006](docs/adr/0006-sign-in-email-sent-after-the-response.md)), or sign-in emails silently never send.
 
 ## Testing
 
-Each behaviour has one owning layer (unit, integration, UI or E2E; the table is in ADR 0001, Testing): test it there, and give other layers at most one representative case.
+Each behaviour has one owning layer: test it there, and give other layers at most one representative case.
+
+| Level                                         | Owns                                                                                                                                                                                                                      | Shouldn't repeat                                                       |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Unit                                          | Pure logic with many edge cases: callback-path sanitizer, allowlist path matcher, Sec-Fetch and origin rules, env parsing, device-cookie parsing, DTO mappers                                                             | Anything needing Better Auth or a database                             |
+| Integration (PGlite + real Better Auth)       | The main home for auth and security rules: replay and expiry, sibling cleanup, eligibility gate, throttle rules, roles and permissions, tenant scoping (incl. `tenant_changed`), fresh-session gating, audit rows, timing | Browser behaviour                                                      |
+| UI (RTL + happy-dom)                          | Component state machines: sign-in steps, resend cooldown, the confirm page not calling verify before a click, dialog confirms, focus after a row goes, refresh on stale-page errors                                       | The full journey, or server rules                                      |
+| E2E (real Chromium, Redis, Mailpit, Postgres) | Only what needs the real stack (cookie flags, security headers and CSP, the scanner simulation, axe, keyboard journeys, aria snapshots); one representative case per category already covered by integration tests        | The full permission matrix, every error variant, every rate-limit rule |
 
 Vitest 5 with three projects per package, picked by filename:
 

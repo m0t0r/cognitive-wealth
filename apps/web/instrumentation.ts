@@ -1,7 +1,7 @@
 /**
  * Runs once when the server starts. Checks the auth and email settings then, so a misconfigured
- * deployment refuses to start instead of answering every sign-in with an error (ADR 0001,
- * "Environments"). `getAuth()` still builds the instance lazily, on the first request.
+ * deployment refuses to start instead of answering every sign-in with an error (ADR 0008).
+ * `getAuth()` still builds the instance lazily, on the first request.
  */
 export async function register() {
   // Not in the edge runtime (nothing there uses auth), and not while `next build` runs, which

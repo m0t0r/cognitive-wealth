@@ -6,7 +6,7 @@ import { member, organization, user } from "../schema/index.ts";
 // can't import it.
 type Role = "owner" | "admin" | "member";
 
-/** The dev organizations (ADR 0001, "Dev and test sign-in harness"). */
+/** The dev organizations (docs/dev-sign-in.md). */
 export const SEED_ORGANIZATIONS = [
   { name: "Acme", slug: "acme" },
   { name: "Globex", slug: "globex" },

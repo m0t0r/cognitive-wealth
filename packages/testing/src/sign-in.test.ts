@@ -15,8 +15,8 @@ interface Recorded {
 }
 
 /**
- * A fake app speaking the ADR's browser-facing surface: the sign-in request emails a link and
- * code to the fake Mailpit (after a delay, so the harness has to poll), and verify accepts only
+ * A fake app speaking the browser-facing surface (docs/auth.md): the sign-in request emails a link
+ * and code to the fake Mailpit (after a delay, so the harness has to poll), and verify accepts only
  * the newest token, with the headers a browser `fetch` sends.
  */
 async function startFakes(options: { signInStatus?: number } = {}) {
