@@ -39,7 +39,7 @@ export function OrgSwitcher({ memberships }: { memberships: PublicMembership[] }
         organizationPublicId: membership.organization.publicId,
       });
       if (result.ok) {
-        toast.success(`Switched to ${membership.organization.name}`);
+        toast.success(`Switched to ${membership.organization.name}.`);
         return;
       }
       toast.error(tenantErrorMessage(result.error));

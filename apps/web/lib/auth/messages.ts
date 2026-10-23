@@ -5,7 +5,7 @@ import type { TenantErrorCode } from "@repo/auth";
 
 const SIGN_IN_ERRORS: Record<AuthErrorCode, string> = {
   invalid_or_expired:
-    "That sign-in link or code has expired or was already used. Send a new email.",
+    "That sign-in link or code has expired or was already used. Ask for a new sign-in email.",
   rate_limited: "Too many sign-in attempts. Wait a minute, then try again.",
   invalid_request: "Check the email address and try again.",
   forbidden: "Unable to sign in from this page. Reload it and try again.",
@@ -14,7 +14,7 @@ const SIGN_IN_ERRORS: Record<AuthErrorCode, string> = {
 
 /** After a code's last try: the server forgets it, so nothing typed can work any more. */
 export const CODE_LOCKED_MESSAGE =
-  "Too many tries with this code. Send a new email to get a new code.";
+  "Too many tries with this code. Select Resend email to get a new code.";
 
 /**
  * Where a sign-in error shows up, for codes whose advice depends on it:
@@ -28,7 +28,7 @@ export type SignInErrorContext = "request" | "code" | "link" | "arrival";
 const SIGN_IN_ERRORS_IN: Record<SignInErrorContext, Partial<Record<AuthErrorCode, string>>> = {
   request: {},
   code: {
-    invalid_or_expired: "That code didn't work. Check it and try again, or send a new email.",
+    invalid_or_expired: "That code didn't work. Check it and try again, or select Resend email.",
   },
   link: { invalid_or_expired: "This sign-in link has expired or was already used." },
   arrival: {
@@ -63,10 +63,10 @@ const TENANT_ERRORS: Record<TenantErrorCode, string> = {
   not_found: "That person or invitation is no longer here. Reload the page to see the latest.",
   forbidden: "Your role doesn't allow this. Ask a workspace owner for help.",
   reauth_required: "Sign in again to continue.",
-  rate_limited: "Too many requests. Wait a while, then try again.",
+  rate_limited: "You've reached the hourly limit for this. Try again later.",
   invalid_input: "Check the details and try again.",
   last_owner: "A workspace needs at least one owner. Make someone else an owner first.",
-  already_member: "That person is already a member of this workspace.",
+  already_member: "This person is already a member of this workspace.",
   wrong_recipient: "This invitation was sent to a different email address.",
   email_failed:
     "The invitation is saved, but its email couldn't be sent. Send it again in a moment.",

@@ -129,6 +129,8 @@ describe("InviteForm", () => {
     const { user } = renderForm("owner");
     await user.type(screen.getByLabelText("Email"), "new@example.com");
     await user.click(screen.getByRole("button", { name: "Send invitation" }));
-    expect(toast.error).toHaveBeenCalledWith("Too many requests. Wait a while, then try again.");
+    expect(toast.error).toHaveBeenCalledWith(
+      "You've reached the hourly limit for this. Try again later.",
+    );
   });
 });

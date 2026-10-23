@@ -9,8 +9,11 @@ export function singleLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+const PLURAL = new Intl.PluralRules("en");
+
+/** "1 minute", "5 minutes": the locale's plural rule picks the whole phrase. */
 export function minutes(count: number): string {
-  return count === 1 ? "1 minute" : `${count} minutes`;
+  return PLURAL.select(count) === "one" ? `${count} minute` : `${count} minutes`;
 }
 
 export function signInExpiryNotice(expiresInMinutes: number): string {

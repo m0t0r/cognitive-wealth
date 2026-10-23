@@ -16,13 +16,14 @@ import { Spinner } from "@repo/design-system/components/spinner";
 import { startTransition, useActionState, useRef, useState } from "react";
 import { inviteMemberAction } from "@/app/(app)/settings/members/actions";
 import type { FormState } from "@/lib/action-result";
+import { tenantErrorMessage } from "@/lib/auth/messages";
 import { formString } from "@/lib/form-data";
 import { assignableRoles, ROLE_LABELS } from "@/lib/roles";
 import { useMembersFeedback } from "./members-feedback";
 
 const FIELD_ERRORS: Partial<Record<string, string>> = {
   invalid_input: "Enter an email address, like name@example.com.",
-  already_member: "This person is already a member of this workspace.",
+  already_member: tenantErrorMessage("already_member"),
 };
 
 /**
