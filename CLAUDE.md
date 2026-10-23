@@ -79,3 +79,21 @@ The bar is WCAG 2.2 AA, enforced at three levels:
 - **Lint:** all Oxlint `jsx-a11y` rules are errors, except `control-has-associated-label`, which can't see labels passed through Base UI's `render` prop (axe covers it at runtime). `settings.jsx-a11y.components` maps `Button`/`Input`/`Label`/`Textarea` to native elements; extend that map when adding thin wrappers.
 - **Component tests:** every design-system component test includes `await expect(container).toHaveNoA11yViolations()` (axe-core via `@repo/testing/react`). Colour contrast and landmarks are skipped (happy-dom has no layout). With a popup open (menu, select, popover), scan the popup element, not `document.body`: without layout axe can't tell the popup is modal and flags Base UI's `aria-hidden` focus guards (`aria-hidden-focus`), which a real browser doesn't.
 - **E2E:** `tests/a11y.spec.ts` runs an axe scan of every route in `PUBLIC_ROUTES` and `SIGNED_IN_ROUTES` (`support/routes.ts`) in light and dark themes, and fails on any violation. Add new routes there; `security-headers.spec.ts` covers the same list. Use `makeAxeBuilder` from `fixtures.ts` to scan interactive states (open dialogs, menus), cover keyboard journeys (focus moves in, Escape closes, focus returns) in `keyboard.spec.ts`, and keep `aria-snapshot.spec.ts` in sync (`--update-snapshots`, then review the YAML diff).
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on `m0t0r/cognitive-wealth`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.
+
+### Friction reports
+
+Report every friction you hit (blockers, slow fixes, stale, missing or duplicated context) as a GitHub issue labelled `friction`, filed at the end of the task. See `docs/agents/friction.md`.
