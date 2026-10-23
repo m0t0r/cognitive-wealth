@@ -1,6 +1,6 @@
-// The browser-facing HTTP surface (ADR 0001, "Browser-facing HTTP surface"). Only four Better Auth
-// endpoints are reachable; their requests are rebuilt from validated parts and their responses
-// replaced, so no Better Auth body, header or redirect reaches the browser.
+// The browser-facing HTTP surface (ADR 0004; docs/auth.md, "Browser-facing HTTP surface"). Only
+// four Better Auth endpoints are reachable; their requests are rebuilt from validated parts and
+// their responses replaced, so no Better Auth body, header or redirect reaches the browser.
 import * as z from "zod";
 import type { Auth } from "./auth";
 import { sanitizeCallbackPath } from "./callback-path";

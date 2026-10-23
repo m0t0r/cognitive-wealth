@@ -1,4 +1,4 @@
-// The device cookie (ADR 0001, "Sign-in request"): marks a browser that has signed in as a user
+// The device cookie (docs/auth.md, "Device cookie"): marks a browser that has signed in as a user
 // before, so it can still get a sign-in email while someone floods that address. It never
 // authenticates anything, so it outlives sign-out.
 import { randomBytes } from "node:crypto";

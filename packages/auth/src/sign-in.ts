@@ -1,5 +1,5 @@
 // The sign-in request: one email with a magic link and a 6-digit code, sent only to addresses that
-// may sign in (ADR 0001, "Sign-in request").
+// may sign in (docs/auth.md, "Sign-in request").
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import type { Database } from "@repo/db";

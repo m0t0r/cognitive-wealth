@@ -41,7 +41,7 @@ const schema = z.object({
 });
 
 /**
- * Reads the auth settings (see ADR 0001 for each variable). Throws with a message naming the
+ * Reads the auth settings (see docs/auth.md, "Configuration"). Throws with a message naming the
  * variable, never its value. In production (`NODE_ENV=production`) it requires `BETTER_AUTH_URL`
  * (no `PORTLESS_URL` fallback), a secret of at least 32 characters, `AUTH_TRUSTED_IP_HEADER`
  * (otherwise every client shares one rate-limit bucket) and `REDIS_URL`.

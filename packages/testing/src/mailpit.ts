@@ -200,7 +200,7 @@ function line(text: string, label: string, kind: string): string {
   return value;
 }
 
-/** Reads the link and code from a sign-in email's plain text (the contract in ADR 0001). */
+/** Reads the link and code from a sign-in email's plain text (docs/auth.md, "Email"). */
 export function parseSignInEmail(text: string): SignInEmail {
   const url = line(text, "Sign-in link", "Sign-in");
   const code = line(text, "Sign-in code", "Sign-in");

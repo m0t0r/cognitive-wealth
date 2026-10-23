@@ -27,7 +27,7 @@ describe("seedDevData", () => {
     expect(first).toEqual({ users: 3, organizations: 2, memberships: 4 });
   });
 
-  test("creates the ADR's users, organizations and roles", async ({ orm }) => {
+  test("creates the documented users, organizations and roles", async ({ orm }) => {
     await seedDevData(orm);
 
     const rows = await orm

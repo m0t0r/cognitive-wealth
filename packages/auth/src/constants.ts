@@ -14,7 +14,7 @@ export const SESSION_COOKIE_NAMES = [
   `__Secure-${COOKIE_PREFIX}.session_token`,
 ] as const;
 
-/** The device cookie's name before Better Auth adds `cw.` (ADR 0001, "Sign-in request"). */
+/** The device cookie's name before Better Auth adds `cw.` (docs/auth.md, "Device cookie"). */
 export const DEVICE_COOKIE = "device";
 
 /** The device cookie's full name, without and with secure cookies. */
@@ -30,10 +30,10 @@ export const DEVICE_COOKIE_NAMES = [
 export const SIGN_IN_TOKEN_PATTERN = /^[A-Za-z0-9_-]{1,256}$/;
 
 /**
- * Sign-in emails per address and client IP (ADR 0001, "Sign-in request"). Both windows apply,
- * each fixed from its first request: someone who resends quickly waits at most 10 minutes, and
- * one requester's hourly total stays below the per-address backstop. The sign-in page counts its
- * own requests against the same rules to say when another email can go out.
+ * Sign-in emails per address and client IP (docs/auth.md, "Sign-in email limits"). Both windows
+ * apply, each fixed from its first request: someone who resends quickly waits at most 10 minutes,
+ * and one requester's hourly total stays below the per-address backstop. The sign-in page counts
+ * its own requests against the same rules to say when another email can go out.
  */
 export const SIGN_IN_REQUESTER_LIMITS = {
   burst: { window: 10 * 60, max: 3 },

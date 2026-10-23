@@ -1,6 +1,6 @@
-// `pnpm db:seed`: adds the dev users and organizations from ADR 0001 to a local database. Node runs
-// this file directly (type stripping), so relative imports keep their `.ts` extension, and modules
-// that import the schema load after `registerTsResolution()` (see there).
+// `pnpm db:seed`: adds the dev users and organizations in docs/dev-sign-in.md to a local database.
+// Node runs this file directly (type stripping), so relative imports keep their `.ts` extension,
+// and modules that import the schema load after `registerTsResolution()` (see there).
 import { connectionConfig } from "./config.ts";
 import { connect } from "./connect.ts";
 import { describeDatabaseUrl, loadWebEnvFallback } from "./cli/env.ts";
