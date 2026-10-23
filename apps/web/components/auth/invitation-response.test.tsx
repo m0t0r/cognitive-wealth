@@ -115,7 +115,9 @@ describe("InvitationResponse", () => {
     vi.mocked(declineInvitationAction).mockResolvedValue({ ok: false, error: "not_found" });
     const { user } = renderResponse();
     await user.click(screen.getByRole("button", { name: "Accept invitation" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Too many requests.");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "You've reached the hourly limit for this.",
+    );
 
     await user.click(screen.getByRole("button", { name: "Decline" }));
     await user.click(await screen.findByRole("button", { name: "Decline invitation" }));

@@ -73,7 +73,7 @@ describe("OrgSwitcher", () => {
       organizationPublicId: GLOBEX.organization.publicId,
     });
     await vi.waitFor(() => {
-      expect(toast.success).toHaveBeenCalledWith("Switched to Globex");
+      expect(toast.success).toHaveBeenCalledWith("Switched to Globex.");
     });
   });
 
