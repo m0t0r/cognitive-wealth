@@ -1,6 +1,6 @@
 import type { Database } from "@repo/db";
 import * as schema from "@repo/db/schema";
-import { member } from "@repo/db/schema";
+import { member, session as sessionTable } from "@repo/db/schema";
 import { renderInvitationEmail, type Mailer } from "@repo/email";
 import { betterAuth, type BetterAuthPlugin } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -8,7 +8,7 @@ import { createAuthMiddleware, getIP, getSessionFromCtx } from "better-auth/api"
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { magicLink } from "better-auth/plugins/magic-link";
 import { organization } from "better-auth/plugins/organization";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { ac, roles } from "./access";
 import { writeAuditEvent } from "./audit";
 import { AUTH_BASE_PATH, COOKIE_PREFIX } from "./constants";
@@ -236,7 +236,7 @@ export function createAuth(deps: AuthDeps) {
         create: {
           async before(data) {
             return {
-              data: { activeOrganizationId: await latestMembershipOrganizationId(db, data.userId) },
+              data: { activeOrganizationId: await initialOrganizationId(db, data.userId) },
             };
           },
         },
@@ -257,15 +257,36 @@ function notInitialized(): Promise<never> {
   return Promise.reject(new Error("Auth is not initialized"));
 }
 
-/** The organization of the user's most recently created membership, as Better Auth's string ID. */
-async function latestMembershipOrganizationId(
+/**
+ * Where a new session starts, as Better Auth's string ID: the organization the user's latest
+ * session was in, if they still belong to it, so signing in again (e.g. to confirm a sensitive
+ * action) doesn't switch workspaces. Otherwise their most recently created membership.
+ */
+async function initialOrganizationId(
   db: Database,
   userId: string | number,
 ): Promise<string | null> {
+  const id = Number(userId);
+  const [continued] = await db
+    .select({ organizationId: member.organizationId })
+    .from(sessionTable)
+    .innerJoin(
+      member,
+      and(
+        eq(member.userId, id),
+        // `activeOrganizationId` is read as a string; compare the bigint columns in SQL.
+        sql`${member.organizationId} = ${sessionTable.activeOrganizationId}`,
+      ),
+    )
+    .where(eq(sessionTable.userId, id))
+    .orderBy(desc(sessionTable.updatedAt), desc(sessionTable.id))
+    .limit(1);
+  if (continued !== undefined) return String(continued.organizationId);
+
   const [latest] = await db
     .select({ organizationId: member.organizationId })
     .from(member)
-    .where(eq(member.userId, Number(userId)))
+    .where(eq(member.userId, id))
     .orderBy(desc(member.createdAt), desc(member.id))
     .limit(1);
   return latest === undefined ? null : String(latest.organizationId);
