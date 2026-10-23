@@ -131,13 +131,14 @@ test("repeated sign-in requests from one address get the rate-limited message", 
   page,
 }, testInfo) => {
   // Nobody is seeded: the per-IP limit counts every request, eligible or not, and no email goes out.
-  const email = uniqueEmail(testInfo, "nobody");
+  // A new address each time: the page itself stops asking for one address after 3 emails.
+  const email = (request: number) => uniqueEmail(testInfo, `nobody-${request}`);
   const emailField = page.getByRole("textbox", { name: "Email" });
   const submit = page.getByRole("button", { name: "Continue" });
   await page.goto("/sign-in");
 
-  const requestAndGoBack = async () => {
-    await emailField.fill(email);
+  const requestAndGoBack = async (request: number) => {
+    await emailField.fill(email(request));
     await submit.click();
     await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
     await page.getByRole("button", { name: "Use a different email" }).click();
@@ -146,9 +147,9 @@ test("repeated sign-in requests from one address get the rate-limited message", 
   for (let request = 1; request <= 5; request++) {
     // Sequential on purpose: each request goes through the form in turn.
     // oxlint-disable-next-line no-await-in-loop
-    await requestAndGoBack();
+    await requestAndGoBack(request);
   }
-  await emailField.fill(email);
+  await emailField.fill(email(6));
   await submit.click();
 
   await expect(

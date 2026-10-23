@@ -24,6 +24,13 @@ import { Spinner } from "@repo/design-system/components/spinner";
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import * as z from "zod";
 import { CODE_LOCKED_MESSAGE, signInErrorMessage } from "@/lib/auth/messages";
+import {
+  loadSendHistory,
+  nextSendAt,
+  recordSend,
+  saveSendHistory,
+  type SendHistory,
+} from "@/lib/auth/sign-in-sends";
 import { formString } from "@/lib/form-data";
 
 /** Seconds before "Resend email" works again. */
@@ -83,9 +90,16 @@ const INITIAL_REQUEST: RequestState = { error: null, notice: null };
 export function SignInFlow({ next, arrivalError, purpose = null }: SignInFlowProps) {
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [lastEmail, setLastEmail] = useState("");
-  const [cooldown, setCooldown] = useState(0);
   const [code, setCode] = useState("");
   const [attempt, setAttempt] = useState(0);
+  // "Resend" works again at `readyAt` (epoch ms): the resend cooldown, or later when this
+  // browser's own requests have reached the server's limits (`limitedUntil`). Counted down from
+  // the clock, so a throttled background tab still shows the right wait.
+  const [readyAt, setReadyAt] = useState(0);
+  const [limitedUntil, setLimitedUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+  // This page's requests by address; storage only adds memory across reloads.
+  const sends = useRef(new Map<string, SendHistory>());
 
   const [requestState, request, requesting] = useActionState(
     async (_previous: RequestState, input: { email: string; resend: boolean }) => {
@@ -93,16 +107,31 @@ export function SignInFlow({ next, arrivalError, purpose = null }: SignInFlowPro
       if (!emailSchema.safeParse(email).success) {
         return { error: "Enter an email address, like name@example.com.", notice: null };
       }
-      const result = await requestSignIn(email, next ?? undefined);
-      if (!result.ok) return { error: signInErrorMessage(result.error), notice: null };
+      const key = email.toLowerCase();
+      let history = sends.current.get(key) ?? (await loadSendHistory(email));
+      // Past the limits the server would send nothing while answering as usual: don't ask, and
+      // say when another email can go out instead.
+      const sending = nextSendAt(history, Date.now()) === null;
+      if (sending) {
+        const result = await requestSignIn(email, next ?? undefined);
+        if (!result.ok) return { error: signInErrorMessage(result.error), notice: null };
+        history = recordSend(history, Date.now());
+        sends.current.set(key, history);
+        await saveSendHistory(email, history);
+        setCode("");
+        setAttempt((count) => count + 1);
+      }
+      const at = Date.now();
+      const limited = nextSendAt(history, at);
       setSentTo(email);
       setLastEmail(email);
-      setCooldown(RESEND_COOLDOWN);
-      setCode("");
-      setAttempt((count) => count + 1);
+      setLimitedUntil(limited);
+      setReadyAt(Math.max(sending ? at + RESEND_COOLDOWN * 1000 : 0, limited ?? 0));
+      setNow(at);
       return {
         error: null,
-        notice: input.resend ? `If ${email} has access, a new email is on its way.` : null,
+        notice:
+          sending && input.resend ? `If ${email} has access, a new email is on its way.` : null,
       };
     },
     INITIAL_REQUEST,
@@ -136,10 +165,12 @@ export function SignInFlow({ next, arrivalError, purpose = null }: SignInFlowPro
   );
 
   useEffect(() => {
-    if (cooldown <= 0) return undefined;
-    const timer = setTimeout(() => setCooldown((seconds) => seconds - 1), 1000);
+    if (readyAt <= now) return undefined;
+    const timer = setTimeout(() => setNow(Date.now()), 1000);
     return () => clearTimeout(timer);
-  }, [cooldown]);
+  }, [readyAt, now]);
+  const cooldown = Math.max(0, Math.ceil((readyAt - now) / 1000));
+  const limited = limitedUntil !== null && limitedUntil > now;
 
   // Move focus with the step, so keyboard and screen reader users land on the new content.
   const step = sentTo === null ? "email" : "check";
@@ -255,14 +286,21 @@ export function SignInFlow({ next, arrivalError, purpose = null }: SignInFlowPro
                 value={code}
                 onChange={setCode}
                 disabled={verifyState.done}
+                containerClassName="w-full"
                 aria-invalid={codeError !== null || undefined}
                 aria-describedby={
                   codeError === null ? "sign-in-code-hint" : "sign-in-code-hint sign-in-code-error"
                 }
               >
-                <InputOTPGroup>
+                {/* Six equal slots across the card: big enough to read and tap. */}
+                <InputOTPGroup className="w-full">
                   {Array.from({ length: CODE_LENGTH }, (_, index) => (
-                    <InputOTPSlot key={index} index={index} aria-invalid={codeError !== null} />
+                    <InputOTPSlot
+                      key={index}
+                      index={index}
+                      aria-invalid={codeError !== null}
+                      className="h-14 w-auto flex-1 text-2xl font-medium tabular-nums"
+                    />
                   ))}
                 </InputOTPGroup>
               </InputOTP>
@@ -296,12 +334,25 @@ export function SignInFlow({ next, arrivalError, purpose = null }: SignInFlowPro
           focusableWhenDisabled
           onClick={() => startTransition(() => request({ email: sentTo, resend: true }))}
         >
-          {cooldown > 0 ? `Resend email in ${cooldown}s` : "Resend email"}
+          {cooldown > 0 ? `Resend email in ${formatWait(cooldown)}` : "Resend email"}
         </Button>
       </CardFooter>
-      <output className="-mt-2 block px-6 text-sm text-muted-foreground empty:hidden">
-        {requestState.notice}
+      <output className="-mt-2 block px-6 text-sm text-pretty text-muted-foreground empty:hidden">
+        {limited
+          ? `You've asked for several emails recently, so the next one can be sent at ${formatTime(limitedUntil)}. Until then, check your spam or junk folder for the ones already sent${purpose === "invitation" ? ", and make sure this is the address your invitation went to" : ""}.`
+          : requestState.notice}
       </output>
     </Card>
   );
+}
+
+/** `45s`, or `9:58` from a minute up. */
+function formatWait(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/** A time of day in the viewer's locale, e.g. `2:05 PM`. */
+function formatTime(epochMs: number): string {
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(epochMs);
 }

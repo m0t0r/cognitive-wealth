@@ -3,7 +3,12 @@ import { act, render, screen, setup, userEvent } from "@repo/testing/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RESEND_COOLDOWN, SignInFlow } from "./sign-in-flow";
 
-vi.mock("@repo/auth/client", () => ({ requestSignIn: vi.fn(), verifyCode: vi.fn() }));
+// The real constants (the sign-in email limits the page mirrors), mocked calls.
+vi.mock("@repo/auth/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@repo/auth/client")>()),
+  requestSignIn: vi.fn(),
+  verifyCode: vi.fn(),
+}));
 
 const EMAIL = "ana@example.com";
 
@@ -17,7 +22,34 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  // The page remembers its requests across reloads; each test starts with none.
+  localStorage.clear();
 });
+
+/** Advances the clock `seconds`, one tick at a time, as the countdown re-renders each second. */
+async function wait(seconds: number) {
+  for (let second = 0; second < seconds; second++) {
+    // oxlint-disable-next-line no-await-in-loop
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+  }
+}
+
+/** Signs in with fake timers and sends `count` emails in all, each after the cooldown. */
+async function sendEmails(count: number, purpose: "invitation" | null = null) {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(new Date(2026, 9, 23, 14, 0));
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const view = render(<SignInFlow next={null} arrivalError={null} purpose={purpose} />);
+  await submitEmail(user);
+  for (let sent = 1; sent < count; sent++) {
+    // Sequential on purpose: each resend waits for the cooldown.
+    // oxlint-disable-next-line no-await-in-loop
+    await wait(RESEND_COOLDOWN);
+    // oxlint-disable-next-line no-await-in-loop
+    await user.click(screen.getByRole("button", { name: "Resend email" }));
+  }
+  return { user, ...view };
+}
 
 async function submitEmail(user: ReturnType<typeof userEvent.setup>, email = EMAIL) {
   await user.type(screen.getByLabelText("Email"), email);
@@ -183,6 +215,63 @@ describe("SignInFlow", () => {
     await tryCode("444444");
 
     expect(await screen.findByRole("alert")).toHaveTextContent("That code didn't work.");
+  });
+
+  describe("past the sign-in email limits (3 per 10 minutes, 6 per hour)", () => {
+    it("says when the next email can go out after the 3rd, instead of resending nothing", async () => {
+      const { user, container } = await sendEmails(3);
+      expect(requestSignIn).toHaveBeenCalledTimes(3);
+
+      // Sent at 14:00, 14:00:30 and 14:01; the 10 minutes end at 14:10.
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        "You've asked for several emails recently, so the next one can be sent at 2:10 PM. Until then, check your spam or junk folder for the ones already sent.",
+      );
+      const resend = screen.getByRole("button", { name: /^Resend email in 9:\d\d$/ });
+      expect(resend).toHaveAttribute("aria-disabled", "true");
+      await user.click(resend);
+      expect(requestSignIn).toHaveBeenCalledTimes(3);
+      await expect(container).toHaveNoA11yViolations();
+    });
+
+    it("sends again once the 10 minutes are over", async () => {
+      const { user } = await sendEmails(3);
+      await wait(9 * 60);
+
+      await user.click(await screen.findByRole("button", { name: "Resend email" }));
+
+      expect(requestSignIn).toHaveBeenCalledTimes(4);
+      expect(screen.getByRole("status")).toHaveTextContent(
+        `If ${EMAIL} has access, a new email is on its way.`,
+      );
+    });
+
+    it("remembers across a reload, without asking the server", async () => {
+      const { unmount } = await sendEmails(3);
+      unmount();
+
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      render(<SignInFlow next={null} arrivalError={null} />);
+      await submitEmail(user);
+
+      expect(requestSignIn).toHaveBeenCalledTimes(3);
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        "so the next one can be sent at 2:10 PM",
+      );
+      // Under a hash: the address itself is never stored.
+      const stored = Array.from({ length: localStorage.length }, (_, index) => {
+        const key = localStorage.key(index) ?? "";
+        return `${key}=${localStorage.getItem(key)}`;
+      });
+      expect(stored).toHaveLength(1);
+      expect(stored.join("\n")).not.toContain(EMAIL);
+    });
+
+    it("asks invitees to check the address their invitation went to", async () => {
+      await sendEmails(3, "invitation");
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        "and make sure this is the address your invitation went to.",
+      );
+    });
   });
 
   it("says it's for an invitation, without naming the workspace", () => {

@@ -4,9 +4,10 @@ import { test as dbTest } from "@repo/db/testing";
 import { auditEvent, invitation, verification } from "@repo/db/schema";
 import { parseSetCookies } from "@repo/testing/sign-in";
 import { eq } from "drizzle-orm";
-import { describe, expect } from "vitest";
+import { describe, expect, onTestFinished, vi } from "vitest";
 import { AUTH_BASE_PATH, DEVICE_COOKIE_NAMES } from "./constants";
 import { DEVICE_COOKIE_MAX_AGE } from "./device";
+import { createMemoryStorage } from "./storage/memory";
 import { createTestAuth, TEST_BASE_URL, type TestAuth } from "./testing";
 
 const test = dbTest.extend("t", ({ orm }) => createTestAuth({ orm }));
@@ -18,6 +19,11 @@ const VERIFY_URL = new URL(`${TEST_BASE_URL}${AUTH_BASE_PATH}/magic-link/verify`
 
 /** From `ip`, with `cookie` as the `Cookie` header. */
 type Init = { ip?: string; cookie?: string };
+
+/** Moves the faked clock forward `n` minutes. */
+function minutes(n: number) {
+  vi.setSystemTime(Date.now() + n * 60_000);
+}
 
 /** Sends `count` sign-in requests for `email`, each answered `{ status: true }`, then lets sends finish. */
 async function requestEmails(t: TestAuth, email: string, count: number, { ip, cookie }: Init = {}) {
@@ -116,6 +122,33 @@ describe("per-requester limit", () => {
     expect(t.mailer.messages).toHaveLength(3);
 
     expect(await emailsFor(t, ADA, { ip: "203.0.113.67" })).toBe(1);
+  });
+
+  test("allows 3 more after 10 minutes, and 6 in an hour", async ({ orm }) => {
+    // Storage that reads the faked clock on every call, so windows expire as time moves.
+    const t = createTestAuth({
+      orm,
+      secondaryStorage: createMemoryStorage({ now: () => Date.now() }),
+    });
+    await t.seedUser({ email: ADA });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+
+    await requestEmails(t, ADA, 4, { ip: ATTACKER });
+    expect(t.mailer.messages).toHaveLength(3);
+    minutes(10);
+    await requestEmails(t, ADA, 4, { ip: ATTACKER });
+    expect(t.mailer.messages).toHaveLength(6);
+    // A new 10 minutes, but the hour already has its 6.
+    minutes(10);
+    await requestEmails(t, ADA, 1, { ip: ATTACKER });
+    expect(t.mailer.messages).toHaveLength(6);
+    // An hour after the first email, both windows start again.
+    minutes(40);
+    await requestEmails(t, ADA, 1, { ip: ATTACKER });
+    expect(t.mailer.messages).toHaveLength(7);
   });
 
   test("a refused request answers the same, issues no code, leaves no link, and is audited", async ({

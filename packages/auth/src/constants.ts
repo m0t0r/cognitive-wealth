@@ -28,3 +28,14 @@ export const DEVICE_COOKIE_NAMES = [
  * `invalid_request`, and the confirm page treats anything else as a dead link without calling it.
  */
 export const SIGN_IN_TOKEN_PATTERN = /^[A-Za-z0-9_-]{1,256}$/;
+
+/**
+ * Sign-in emails per address and client IP (ADR 0001, "Sign-in request"). Both windows apply,
+ * each fixed from its first request: someone who resends quickly waits at most 10 minutes, and
+ * one requester's hourly total stays below the per-address backstop. The sign-in page counts its
+ * own requests against the same rules to say when another email can go out.
+ */
+export const SIGN_IN_REQUESTER_LIMITS = {
+  burst: { window: 10 * 60, max: 3 },
+  hour: { window: 60 * 60, max: 6 },
+} as const;
