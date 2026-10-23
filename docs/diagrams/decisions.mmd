@@ -7,10 +7,16 @@ flowchart LR
   a6["0006 Sign-in email sent<br/>after the response"]
   a7["0007 No auth backdoor"]
   a8["0008 Production mode<br/>everywhere"]
+  a9["0009 The custodian is<br/>the book of record"]
+  a10["0010 Cognitive AI states<br/>only computed facts"]
+  a11["0011 Custodian simulator<br/>in Python"]
+  a12["0012 One package<br/>per domain area"]
+  a13["0013 Money, shares, prices<br/>and rates are separate types"]
+  a14["0014 AI SDK,<br/>smallest model first"]
 
   ir["incident-response.md"]
   host["Hosting must keep<br/>after() work alive"]
-  rls["RLS deferred until<br/>domain tables exist"]
+  rls["RLS on domain tables<br/>in phase 1"]
   harness["dev-sign-in.md harness"]
 
   a1 -->|"its ID defaults"| a3
@@ -23,3 +29,8 @@ flowchart LR
   a2 --> rls
   a7 --> harness
   a8 -->|"e2e runs prod guards"| a7
+  a9 -->|"a separate service"| a11
+  a9 -->|"decimal strings at the contract"| a13
+  a10 -->|"pure calculations as tools"| a12
+  a10 -->|"tools are AI SDK tools"| a14
+  a13 -->|"@repo/money"| a12
