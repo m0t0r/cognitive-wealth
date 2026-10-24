@@ -603,6 +603,37 @@ Two rules come with it:
 
 A good test for #35 is Dana's week: load rows 1 to 11 and the prices, and every Position the code works out must match the tables in this primer exactly. #84 does the same for Settled cash and Market value.
 
+### What if nobody runs the custodian for a week?
+
+**Short answer:** when it starts again, it fills in each missed Business day, one at a time and in order, and gets exactly the numbers it would have got by running every evening.
+
+A real Custodian never stops: every Business day ends with a **Close**, which settles that day's prices and Transactions. The simulated Custodian only runs while someone runs it, on a laptop that may be switched off for a week. (Dana's week is hand-written and fixed, so it can't change while nobody looks. This question is about the live version, which closes each day by itself.)
+
+Think of a diary you're meant to write every evening. If you miss a week, you don't skip it, and you don't rewrite last month. You sit down and fill in each missing day, in order, then carry on as usual.
+
+Say the Custodian last closed on Friday 6 March and is next started on Monday 16 March:
+
+| Step               | Days                                                |
+| ------------------ | --------------------------------------------------- |
+| Last Close stored  | Fri 6 Mar                                           |
+| Started again      | Mon 16 Mar                                          |
+| Catch-up, in order | Mon 9, Tue 10, Wed 11, Thu 12, Fri 13 Mar           |
+| Skipped            | Sat 7, Sun 8, Sat 14, Sun 15 Mar: not Business days |
+| From then on       | a Close each evening, starting Mon 16 Mar           |
+
+Each catch-up Close does what that evening's Close would have done: that day's prices, dividends, interest, and any money a Household puts in or takes out.
+
+Four rules make those filled-in days as trustworthy as if they had happened on time:
+
+1. **A day is a recipe, not luck.** Every number for a day comes from three fixed ingredients: the _seed_ (the starting number for the simulation's random choices), the _pin_ (the exact version of the real market history the prices are built from) and the date. The same ingredients always make the same day. So closing 11 March on 16 March gives exactly what closing it on 11 March would have given, and a wiped database or a second laptop rebuilds the same history.
+2. **Closed days are never rewritten.** It's the Ledger's append-only rule, applied to whole days: catching up only adds the missing days at the end.
+3. **Nothing asks "what day is it?" in the middle of a sum.** Every calculation is told which date it's for. That's why the code that works out Positions takes the As-of date as an input instead of reading today's date: it gives the same answer for 11 March whether it runs on 11 March or a week later.
+4. **Cognitive Wealth catches up the same way.** Each Close publishes that day's files, the **Custodian feed**. Cognitive Wealth reads them one Close at a time, in order, and ignores a file it has already read (Part 6, "How do real Custodians send corrections?"). It doesn't matter whether five days of files arrive at once or one each evening.
+
+This is also how real systems recover. A real Custodian doesn't stop, but an advisor's software does: an outage, a failed nightly job, a holiday. Real platforms recover the same way, by fetching the daily files they missed and reading them in order. So a week away from the project is a free rehearsal of recovering from an outage.
+
+One wrinkle: the real market history that prices are built from ends on some date. For days after that, the simulation draws returns at random from the past, using the date itself as the seed, so those days are still the same every time, just not real. The primers on prices (#44) and the Close (#48) cover both. Catching up is built in #50, after a single day's Close in #49.
+
 ## Recap
 
 1. A **share** is a small piece of a company; a **fund** is a basket of them. Both are **Securities**.
@@ -619,6 +650,7 @@ A good test for #35 is Dana's week: load rows 1 to 11 and the prices, and every 
 12. In the real world, the Ledger is _bitemporal_: it answers both "what was true then?" and "what did we know then?".
 13. Shares can change without a trade (a split), shares can be fractional, and settlement can be late, so each row carries its own dates and amounts rather than the code assuming them.
 14. When Cognitive Wealth and the Custodian disagree, the difference is a **Break**, kept until someone finds the cause.
+15. If the simulated Custodian is off for a while, it **catches up** on start: it runs each missed **Close** in order, and because every day is rebuilt from the same seed, pin and date, the result is the same as running every evening.
 
 ## Check yourself
 
@@ -684,5 +716,12 @@ A bank account holds only dollars, and money deposited in a bank becomes the ban
 <summary>9. (Level 3) On 9 March, the Advisor asks "what did we tell Dana on 4 March that cash was on 3 March?" Which rows answer it?</summary>
 
 Rows with a Trade date by 3 March and a Posting date by 4 March: rows 1 to 5, giving $5,999.00. The Correction (rows 9 and 10) was posted on 6 March, so it's left out. That's the bitemporal question: what was known then, not what is known now.
+
+</details>
+
+<details>
+<summary>10. (Level 3) The simulated Custodian last closed on Friday 6 March and is started again on Monday 16 March. What does it do first, and will 11 March look any different from a week when it ran every evening?</summary>
+
+It catches up: it runs the Close for Monday 9 to Friday 13 March, one day at a time and in order, skipping the weekends because they aren't Business days. Then it closes 16 March as usual. 11 March comes out exactly the same, because each day is rebuilt from the same seed, pin and date, and no calculation reads today's date.
 
 </details>
