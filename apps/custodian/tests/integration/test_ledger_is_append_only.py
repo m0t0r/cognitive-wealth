@@ -17,6 +17,7 @@ def record_a_contribution(session: Session) -> None:
             account=danas_account(),
             kind=TransactionKind.CONTRIBUTION,
             trade_date=date(2026, 2, 26),
+            posting_date=date(2026, 2, 26),
             settlement_date=date(2026, 2, 26),
             amount=Money("5000.00"),
         )
@@ -55,6 +56,7 @@ def test_the_app_cant_choose_when_a_transaction_was_recorded(session: Session) -
                 account_id=account_id,
                 kind=TransactionKind.CONTRIBUTION,
                 trade_date=date(2026, 2, 26),
+                posting_date=date(2026, 2, 26),
                 settlement_date=date(2026, 2, 26),
                 amount=Money("1.00"),
                 recorded_at=datetime(2020, 1, 1, tzinfo=UTC),
@@ -115,6 +117,7 @@ def test_the_app_has_only_the_access_each_table_grants(database: Database) -> No
         "kind",
         "trade_date",
         "settlement_date",
+        "posting_date",
         "shares",
         "amount",
     }
