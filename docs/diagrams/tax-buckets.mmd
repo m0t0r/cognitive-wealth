@@ -1,0 +1,16 @@
+flowchart LR
+  subgraph taxable["Taxable: pay tax going in, and on gains"]
+    t1["$1,000 of salary"] -->|"20% income tax"| t2["$800 invested"]
+    t2 -->|"doubles"| t3["$1,600"]
+    t3 -->|"15% tax on the $800 gain"| t4["$1,480 kept"]
+  end
+  subgraph traditional["Traditional IRA: no tax going in, tax coming out"]
+    d1["$1,000 of salary"] -->|"no tax yet"| d2["$1,000 invested"]
+    d2 -->|"doubles"| d3["$2,000"]
+    d3 -->|"20% income tax"| d4["$1,600 kept"]
+  end
+  subgraph roth["Roth IRA: tax going in, none coming out"]
+    r1["$1,000 of salary"] -->|"20% income tax"| r2["$800 invested"]
+    r2 -->|"doubles"| r3["$1,600"]
+    r3 -->|"no tax"| r4["$1,600 kept"]
+  end
