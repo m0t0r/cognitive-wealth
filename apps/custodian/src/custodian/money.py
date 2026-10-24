@@ -4,11 +4,23 @@ Only the operations that mean something type-check:
 
 - `Money ± Money` is `Money`, and `Shares ± Shares` is `Shares`.
 - `Shares * Price` and `Money * Rate` are `UnroundedMoney`, and `Money / Price` is
-  `UnroundedShares`. Each keeps full precision and becomes recorded `Money` or `Shares` only
-  through a named `RoundingRule`, so a result is rounded once, at the end.
+  `UnroundedShares`. Each becomes recorded `Money` or `Shares` only through a named
+  `RoundingRule`, so a result is rounded once, at the end.
+
+Sums and products are exact, or raise if they'd need more than 60 significant digits. A quotient
+rarely ends (1 / 3), so division keeps 60 significant digits, far past a cent or a millionth of a
+share.
 """
 
-from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
+from decimal import (
+    ROUND_HALF_EVEN,
+    Context,
+    Decimal,
+    DivisionByZero,
+    Inexact,
+    InvalidOperation,
+    Overflow,
+)
 from enum import Enum
 from typing import ClassVar, Self
 
@@ -19,6 +31,13 @@ __all__ = ["Money", "Price", "Rate", "RoundingRule", "Shares", "UnroundedMoney",
 
 _CENT = Decimal("0.01")
 _SHARE_STEP = Decimal("0.000001")
+
+# Explicit contexts, not Python's global one (28 digits, which any code can change). A trapped
+# signal raises; an untrapped one is only recorded. `_EXACT` traps Inexact, so +, - and * raise
+# rather than round. `_ROUNDING` lets division and the rounding rules round, as they must.
+_PRECISION = 60
+_EXACT = Context(prec=_PRECISION, traps=[InvalidOperation, DivisionByZero, Overflow, Inexact])
+_ROUNDING = Context(prec=_PRECISION, traps=[InvalidOperation, DivisionByZero, Overflow])
 
 
 class RoundingRule(Enum):
@@ -53,7 +72,10 @@ class _Exact:
             raise ValueError(f"{name} must be a finite number, not {value!r}")
         if self._step is not None:
             # Kept at its scale, as Postgres numeric with a declared scale returns it: 1.5 is 1.50.
-            scaled = exact.quantize(self._step)
+            try:
+                scaled = exact.quantize(self._step, context=_ROUNDING)
+            except InvalidOperation:
+                raise ValueError(f"{name} has too many digits: {value!r}") from None
             if scaled != exact:
                 raise ValueError(f"{name} holds steps of {self._step}, so it can't hold {value!r}")
             exact = scaled
@@ -76,7 +98,7 @@ class _Exact:
     def __repr__(self) -> str:
         return f'{type(self).__name__}("{self._value}")'
 
-    def _operand(self, other: object, kind: type[_Exact]) -> Decimal:
+    def _decimal_of(self, other: object, kind: type[_Exact]) -> Decimal:
         """`other`'s Decimal, or a TypeError if it isn't a `kind`.
 
         The operators' type hints let pyright reject `Shares + Money`; this check stops code that
@@ -137,25 +159,25 @@ class Money(_DecimalString):
     _step = _CENT
 
     def __add__(self, other: Money) -> Money:
-        return Money(self._value + self._operand(other, Money))
+        return Money(_EXACT.add(self._value, self._decimal_of(other, Money)))
 
     def __sub__(self, other: Money) -> Money:
-        return Money(self._value - self._operand(other, Money))
+        return Money(_EXACT.subtract(self._value, self._decimal_of(other, Money)))
 
     def __mul__(self, rate: Rate) -> UnroundedMoney:
-        return UnroundedMoney(self._value * self._operand(rate, Rate))
+        return UnroundedMoney(_EXACT.multiply(self._value, self._decimal_of(rate, Rate)))
 
     def __truediv__(self, price: Price) -> UnroundedShares:
-        return UnroundedShares(self._value / self._operand(price, Price))
+        return UnroundedShares(_ROUNDING.divide(self._value, self._decimal_of(price, Price)))
 
 
 class UnroundedMoney(_Exact):
-    """Dollars at full precision, mid-calculation. Becomes `Money` only through a `RoundingRule`."""
+    """Dollars, unrounded, mid-calculation. Becomes `Money` only through a `RoundingRule`."""
 
     __slots__ = ()
 
     def to_money(self, rule: RoundingRule) -> Money:
-        return Money(self._value.quantize(_CENT, rounding=rule.value))
+        return Money(self._value.quantize(_CENT, rounding=rule.value, context=_ROUNDING))
 
 
 class Price(_DecimalString):
@@ -177,19 +199,19 @@ class Shares(_DecimalString):
     _step = _SHARE_STEP
 
     def __add__(self, other: Shares) -> Shares:
-        return Shares(self._value + self._operand(other, Shares))
+        return Shares(_EXACT.add(self._value, self._decimal_of(other, Shares)))
 
     def __sub__(self, other: Shares) -> Shares:
-        return Shares(self._value - self._operand(other, Shares))
+        return Shares(_EXACT.subtract(self._value, self._decimal_of(other, Shares)))
 
     def __mul__(self, price: Price) -> UnroundedMoney:
-        return UnroundedMoney(self._value * self._operand(price, Price))
+        return UnroundedMoney(_EXACT.multiply(self._value, self._decimal_of(price, Price)))
 
 
 class UnroundedShares(_Exact):
-    """A share count at full precision, mid-calculation. Becomes `Shares` via a `RoundingRule`."""
+    """A share count, unrounded, mid-calculation. Becomes `Shares` via a `RoundingRule`."""
 
     __slots__ = ()
 
     def to_shares(self, rule: RoundingRule) -> Shares:
-        return Shares(self._value.quantize(_SHARE_STEP, rounding=rule.value))
+        return Shares(self._value.quantize(_SHARE_STEP, rounding=rule.value, context=_ROUNDING))
