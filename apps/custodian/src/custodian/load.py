@@ -12,6 +12,7 @@ fixed with a Correction, which is new rows, never an edit.
 
 import argparse
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -27,8 +28,8 @@ from custodian.ledger_fixture import (
     LedgerFixture,
     read_ledger_fixture,
 )
-from custodian.models import Account, Security, SecurityPrice, Transaction
-from custodian.money import Price
+from custodian.models import Account, Security, SecurityPrice, Transaction, TransactionKind
+from custodian.money import Money, Price, Shares
 from custodian.world import WORLD_V0_PATH, CustodianAccount, WorldFile, read_world
 
 __all__ = ["LoadConflict", "load", "main"]
@@ -40,6 +41,15 @@ class LoadConflict(Exception):
 
 
 def load(session: Session, world: WorldFile, ledger: LedgerFixture) -> None:
+    # First check that the two files agree with each other, before touching the database.
+    numbers = {account.account_number for account in world.custodian.accounts}
+    for transaction in ledger.transactions:
+        if transaction.account not in numbers:
+            raise ValueError(
+                f"Transaction {transaction.number}: {transaction.account!r} isn't an Account in"
+                " the world file"
+            )
+
     with session.begin():  # commits at the end, or rolls everything back on an error
         accounts = {
             account.account_number: _account(session, account)
@@ -50,13 +60,15 @@ def load(session: Session, world: WorldFile, ledger: LedgerFixture) -> None:
         }
         for identifier, prices in ledger.prices.items():
             _prices(session, securities[identifier], prices)
-        for row in ledger.transactions:
-            if row.account not in accounts:
-                raise ValueError(f"row {row.row}: {row.account!r} isn't in the world file")
-        recorded: dict[int, Transaction] = {}
         for number, account in accounts.items():
-            rows = [row for row in ledger.transactions if row.account == number]
-            _ledger(session, account, rows, securities, recorded)
+            wanted = [row for row in ledger.transactions if row.account == number]
+            already = session.scalars(
+                select(Transaction).where(Transaction.account == account).order_by(Transaction.id)
+            ).all()
+            if already:
+                _check_ledger(account, already, wanted)
+            else:
+                _record_ledger(session, account, wanted, securities)
 
 
 # The same pattern for each kind of row: look it up by its natural key (an account number, an
@@ -108,70 +120,99 @@ def _prices(session: Session, security: Security, prices: Mapping[date, Price]) 
             )
 
 
-def _ledger(
+def _record_ledger(
     session: Session,
     account: Account,
-    rows: Sequence[FixtureTransaction],
+    wanted: Sequence[FixtureTransaction],
     securities: Mapping[str, Security],
-    recorded: dict[int, Transaction],
 ) -> None:
-    """Record `rows` in an empty Ledger, or check they are what `account`'s Ledger holds."""
-    already = session.scalars(
-        select(Transaction).where(Transaction.account == account).order_by(Transaction.id)
-    ).all()
-    if not already:
-        for row in rows:
-            transaction = Transaction(
-                account=account,
-                security=None if row.security is None else securities[row.security],
-                kind=row.kind,
-                reverses=None if row.reverses is None else recorded[row.reverses],
-                trade_date=row.trade_date,
-                settlement_date=row.settlement_date,
-                posting_date=row.posted_on,
-                shares=row.shares,
-                amount=row.amount,
-            )
-            session.add(transaction)
-            # One row at a time, so the database numbers them in Ledger order.
-            session.flush()
-            recorded[row.row] = transaction
-        return
+    """Record `wanted` in `account`'s empty Ledger, in order."""
+    recorded: dict[int, Transaction] = {}  # by fixture row number, to find what a Reversal undoes
+    for row in wanted:
+        transaction = Transaction(
+            account=account,
+            security=None if row.security is None else securities[row.security],
+            kind=row.kind,
+            reverses=None if row.reverses is None else recorded[row.reverses],
+            trade_date=row.trade_date,
+            settlement_date=row.settlement_date,
+            posting_date=row.posting_date,
+            shares=row.shares,
+            amount=row.amount,
+        )
+        session.add(transaction)
+        # One row at a time, so the database numbers them in Ledger order.
+        session.flush()
+        recorded[row.number] = transaction
 
-    # Transactions have no natural key, so the whole Ledger is compared, row by row, in the order
-    # it was recorded. Which Transaction a Reversal undoes is compared as its place in that order,
-    # since database ids differ from the fixture's row numbers.
-    place = {transaction.id: index for index, transaction in enumerate(already)}
-    row_place = {row.row: index for index, row in enumerate(rows)}
-    for transaction, row in zip(already, rows, strict=False):
-        in_database = (
-            transaction.kind,
-            transaction.security.identifier if transaction.security else None,
-            None if transaction.reverses_id is None else place[transaction.reverses_id],
-            transaction.trade_date,
-            transaction.settlement_date,
-            transaction.posting_date,
-            transaction.shares,
-            transaction.amount,
+
+@dataclass(frozen=True)
+class _LedgerRow:
+    """One Transaction as both the database and the fixture can describe it, to compare them.
+
+    A frozen dataclass compares field by field, so two `_LedgerRow`s are equal when every field is.
+    """
+
+    kind: TransactionKind
+    security: str | None
+    reverses: int | None
+    """For a Reversal, the place in the Ledger (counting from 0) of the row it undoes."""
+    trade_date: date
+    settlement_date: date
+    posting_date: date
+    shares: Shares | None
+    amount: Money
+
+
+def _check_ledger(
+    account: Account, already: Sequence[Transaction], wanted: Sequence[FixtureTransaction]
+) -> None:
+    """Refuse, unless `account`'s Ledger already holds exactly `wanted`, in the same order.
+
+    Transactions have no natural key to look each one up by, so the whole Ledger is compared, row
+    by row. Which row a Reversal undoes is compared as its place in the Ledger, since database
+    ids and fixture row numbers differ.
+    """
+    place_of_id = {transaction.id: index for index, transaction in enumerate(already)}
+    in_database = [
+        _LedgerRow(
+            kind=transaction.kind,
+            security=None if transaction.security is None else transaction.security.identifier,
+            reverses=None
+            if transaction.reverses_id is None
+            else place_of_id[transaction.reverses_id],
+            trade_date=transaction.trade_date,
+            settlement_date=transaction.settlement_date,
+            posting_date=transaction.posting_date,
+            shares=transaction.shares,
+            amount=transaction.amount,
         )
-        in_fixture = (
-            row.kind,
-            row.security,
-            None if row.reverses is None else row_place[row.reverses],
-            row.trade_date,
-            row.settlement_date,
-            row.posted_on,
-            row.shares,
-            row.amount,
+        for transaction in already
+    ]
+    place_of_number = {row.number: index for index, row in enumerate(wanted)}
+    in_fixture = [
+        _LedgerRow(
+            kind=row.kind,
+            security=row.security,
+            reverses=None if row.reverses is None else place_of_number[row.reverses],
+            trade_date=row.trade_date,
+            settlement_date=row.settlement_date,
+            posting_date=row.posting_date,
+            shares=row.shares,
+            amount=row.amount,
         )
-        if in_database != in_fixture:
+        for row in wanted
+    ]
+    # `zip` pairs the two lists up; `strict=False` stops at the shorter one, checked after.
+    for row, found, expected in zip(wanted, in_database, in_fixture, strict=False):
+        if found != expected:
             raise LoadConflict(
-                f"{account.account_number}'s Ledger differs from the fixture at row {row.row}"
+                f"{account.account_number}'s Ledger differs from the fixture at row {row.number}"
             )
-    if len(already) != len(rows):
+    if len(in_database) != len(in_fixture):
         raise LoadConflict(
-            f"{account.account_number}'s Ledger has {len(already)} Transactions,"
-            f" the fixture {len(rows)}"
+            f"{account.account_number}'s Ledger has {len(in_database)} Transactions,"
+            f" the fixture {len(in_fixture)}"
         )
 
 

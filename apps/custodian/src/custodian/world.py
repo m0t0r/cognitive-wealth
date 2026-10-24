@@ -28,7 +28,10 @@ __all__ = [
     "SCHEMA_PATH",
     "WORLD_V0_PATH",
     "AccountRole",
+    "CrmHalf",
     "CustodianAccount",
+    "CustodianHalf",
+    "Firm",
     "Household",
     "Person",
     "WorldFile",
@@ -134,11 +137,12 @@ class WorldFile(_Strict):
         numbers = Counter(account.account_number for account in self.custodian.accounts)
         if repeated := [number for number, count in numbers.items() if count > 1]:
             raise ValueError(f"custodian.accounts: account {repeated[0]!r} is listed twice")
-        for h, household in enumerate(self.crm.households):
-            for r, role in enumerate(household.account_roles):
+        for household_index, household in enumerate(self.crm.households):
+            for role_index, role in enumerate(household.account_roles):
                 if role.account_number not in numbers:
                     raise ValueError(
-                        f"crm.households.{h}.account_roles.{r}.account_number:"
+                        f"crm.households.{household_index}.account_roles.{role_index}"
+                        ".account_number:"
                         f" {role.account_number!r} isn't an Account in the custodian half"
                     )
         return self

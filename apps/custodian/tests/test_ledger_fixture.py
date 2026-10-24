@@ -19,7 +19,7 @@ def write_fixture_with_row(tmp_path: Path, number: int, change: dict[str, object
 def test_the_v0_fixture_holds_danas_week_and_the_iras_first_day() -> None:
     fixture = read_ledger_fixture(LEDGER_V0_PATH)
 
-    assert [(row.row, row.account, row.kind) for row in fixture.transactions][8:] == [
+    assert [(row.number, row.account, row.kind) for row in fixture.transactions][8:] == [
         (9, "CW-000001", "reversal"),
         (10, "CW-000001", "dividend"),
         (11, "CW-000001", "interest"),
@@ -43,7 +43,7 @@ def test_a_reversal_must_undo_an_earlier_row(tmp_path: Path) -> None:
 
 
 def test_rows_are_numbered_in_order(tmp_path: Path) -> None:
-    path = write_fixture_with_row(tmp_path, 3, {"row": 4})
+    path = write_fixture_with_row(tmp_path, 3, {"number": 4})
 
-    with pytest.raises(ValidationError, match=r"transactions\.2\.row: .*should be 3"):
+    with pytest.raises(ValidationError, match=r"transactions\.2\.number: .*should be 3"):
         read_ledger_fixture(path)

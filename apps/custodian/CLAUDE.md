@@ -95,3 +95,11 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 | `python -m custodian.load` runs `if __name__ == "__main__":`   | `node script.js`, with the code at the module's top level |
 | `argparse.ArgumentParser`, `add_argument("--world")`           | `util.parseArgs` from `node:util`                         |
 | `def f(a, b, *, c=None)`: after `*`, pass by name only (`c=…`) | an options object: `f(a, b, { c })`                       |
+| `raise SystemExit("message")` (prints it, exits with 1)        | `console.error(message); process.exit(1)`                 |
+| `Path(__file__).parents[2]` (two folders up from this file)    | `path.resolve(import.meta.dirname, "../..")`              |
+| `Mapping[str, X]`, `Sequence[X]` (read-only views, as params)  | `ReadonlyMap<string, X>`, `readonly X[]`                  |
+| `a \|= b` on dicts (merge `b` into `a`)                        | `Object.assign(a, b)`                                     |
+| `[only] = items` (unpack; fails unless exactly one)            | `const [only] = items`, without the length check          |
+| `zip(a, b, strict=False)` (pairs items up)                     | `a.map((x, i) => [x, b[i]])`                              |
+| `sum(p.role == "primary" for p in people)` (`True` counts 1)   | `people.filter((p) => p.role === "primary").length`       |
+| `@dataclass(frozen=True)` instances compare field by field     | a deep-equality check such as `isDeepStrictEqual`         |
