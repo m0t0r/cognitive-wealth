@@ -2,8 +2,10 @@ import json
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator, validate
 from pydantic import ValidationError
 
+from custodian.load import main as world_load
 from custodian.models import RegistrationType
 from custodian.world import SCHEMA_PATH, WORLD_V0_PATH, read_world, world_json_schema
 
@@ -85,3 +87,22 @@ def test_the_committed_json_schema_matches_the_models() -> None:
     # The TypeScript seed validates the world file against this file, so it must not drift.
     # Regenerate it with `pnpm --filter custodian world:schema`.
     assert json.loads(SCHEMA_PATH.read_text()) == world_json_schema()
+
+
+def test_world_v0_passes_the_committed_json_schema() -> None:
+    # What the TypeScript seed will do with the same two files. The schema checks each field's
+    # shape; rules across fields, such as "exactly one Primary", are checked by read_world only.
+    schema = json.loads(SCHEMA_PATH.read_text())
+
+    validate(json.loads(WORLD_V0_PATH.read_text()), schema, cls=Draft202012Validator)
+
+
+def test_world_load_names_the_bad_field_and_loads_nothing(tmp_path: Path) -> None:
+    world = json.loads(WORLD_V0_PATH.read_text())
+    world["custodian"]["accounts"][1]["registration_type"] = "brokerage"
+    path = tmp_path / "world.json"
+    path.write_text(json.dumps(world))
+
+    # It stops before connecting: the test environment has no DATABASE_URL to connect with.
+    with pytest.raises(SystemExit, match=r"custodian\.accounts\.1\.registration_type"):
+        world_load(["--world", str(path)])

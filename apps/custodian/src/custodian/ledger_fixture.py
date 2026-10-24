@@ -40,7 +40,7 @@ class FixtureSecurity(_Strict):
 
 
 class FixtureTransaction(_Strict):
-    row: int
+    number: int
     """The row's number in the fixture, counting from 1, as the primer numbers Dana's rows."""
     account: str
     """An account number in the world file."""
@@ -50,21 +50,10 @@ class FixtureTransaction(_Strict):
     amount: Money
     trade_date: date
     settlement_date: date
-    posting_date: date | None = None
-    """When it differs from the Trade date, as for a Correction."""
+    posting_date: date
+    """The Trade date, except for a Correction, which is posted the day the mistake was found."""
     reverses: int | None = None
-    """For a Reversal, the `row` it undoes."""
-
-    @property
-    def posted_on(self) -> date:
-        return self.posting_date or self.trade_date
-
-
-def _negated(row: FixtureTransaction) -> tuple[object, ...]:
-    """What a Reversal of `row` must hold: the same Account, Security and dates, legs negated."""
-    shares = None if row.shares is None else Shares(0) - row.shares
-    amount = Money(0) - row.amount
-    return (row.account, row.security, row.trade_date, row.settlement_date, shares, amount)
+    """For a Reversal, the `number` of the row it undoes."""
 
 
 class LedgerFixture(_Strict):
@@ -82,24 +71,39 @@ class LedgerFixture(_Strict):
         for identifier in self.prices:
             if identifier not in identifiers:
                 raise ValueError(f"prices.{identifier}: not a Security in this fixture")
-        for index, row in enumerate(self.transactions):
+        for index, transaction in enumerate(self.transactions):
             where = f"transactions.{index}"
-            if row.row != index + 1:
-                raise ValueError(f"{where}.row: row {row.row} should be {index + 1}")
-            if row.security is not None and row.security not in identifiers:
-                raise ValueError(f"{where}.security: {row.security!r} isn't in this fixture")
-            if row.reverses is None:
-                continue
-            if not 1 <= row.reverses < row.row:
-                raise ValueError(f"{where}: a Reversal undoes an earlier row, not {row.reverses}")
-            original = self.transactions[row.reverses - 1]
-            mirror = (row.account, row.security, row.trade_date, row.settlement_date)
-            if (*mirror, row.shares, row.amount) != _negated(original):
+            if transaction.number != index + 1:
+                raise ValueError(f"{where}.number: row {transaction.number} should be {index + 1}")
+            if transaction.security is not None and transaction.security not in identifiers:
                 raise ValueError(
-                    f"{where}: a Reversal must negate row {original.row}, on the same Account,"
-                    " Security and dates"
+                    f"{where}.security: {transaction.security!r} isn't in this fixture"
                 )
+            if transaction.reverses is not None:
+                if not 1 <= transaction.reverses < transaction.number:
+                    raise ValueError(
+                        f"{where}: a Reversal undoes an earlier row, not {transaction.reverses}"
+                    )
+                original = self.transactions[transaction.reverses - 1]
+                _check_reversal(where, transaction, original)
         return self
+
+
+def _check_reversal(where: str, reversal: FixtureTransaction, original: FixtureTransaction) -> None:
+    """A Reversal is a copy of the row it undoes with every amount negated (GLOSSARY.md)."""
+    negated_shares = None if original.shares is None else Shares(0) - original.shares
+    if (
+        reversal.account != original.account
+        or reversal.security != original.security
+        or reversal.trade_date != original.trade_date
+        or reversal.settlement_date != original.settlement_date
+        or reversal.shares != negated_shares
+        or reversal.amount != Money(0) - original.amount
+    ):
+        raise ValueError(
+            f"{where}: a Reversal must negate row {original.number}, on the same Account,"
+            " Security and dates"
+        )
 
 
 def read_ledger_fixture(path: Path) -> LedgerFixture:

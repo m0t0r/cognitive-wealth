@@ -1,8 +1,20 @@
 {
   "securities": [
-    { "identifier": "LKSF", "name": "Larkspur Stock Fund", "kind": "fund" },
-    { "identifier": "LKBF", "name": "Larkspur Bond Fund", "kind": "fund" },
-    { "identifier": "SWEEP", "name": "Larkspur Bank Sweep", "kind": "cash_sweep" }
+    {
+      "identifier": "LKSF",
+      "name": "Larkspur Stock Fund",
+      "kind": "fund"
+    },
+    {
+      "identifier": "LKBF",
+      "name": "Larkspur Bond Fund",
+      "kind": "fund"
+    },
+    {
+      "identifier": "SWEEP",
+      "name": "Larkspur Bank Sweep",
+      "kind": "cash_sweep"
+    }
   ],
   "prices": {
     "LKSF": {
@@ -26,78 +38,86 @@
   },
   "transactions": [
     {
-      "row": 1,
+      "number": 1,
       "account": "CW-000001",
       "kind": "contribution",
       "amount": "5000.00",
       "trade_date": "2026-02-26",
-      "settlement_date": "2026-02-26"
+      "settlement_date": "2026-02-26",
+      "posting_date": "2026-02-26"
     },
     {
-      "row": 2,
+      "number": 2,
       "account": "CW-000001",
       "kind": "buy",
       "security": "LKBF",
       "shares": "300",
       "amount": "-3000.00",
       "trade_date": "2026-02-26",
-      "settlement_date": "2026-02-27"
+      "settlement_date": "2026-02-27",
+      "posting_date": "2026-02-26"
     },
     {
-      "row": 3,
+      "number": 3,
       "account": "CW-000001",
       "kind": "contribution",
       "amount": "10000.00",
       "trade_date": "2026-03-02",
-      "settlement_date": "2026-03-02"
+      "settlement_date": "2026-03-02",
+      "posting_date": "2026-03-02"
     },
     {
-      "row": 4,
+      "number": 4,
       "account": "CW-000001",
       "kind": "buy",
       "security": "LKSF",
       "shares": "40",
       "amount": "-6010.00",
       "trade_date": "2026-03-02",
-      "settlement_date": "2026-03-03"
+      "settlement_date": "2026-03-03",
+      "posting_date": "2026-03-02"
     },
     {
-      "row": 5,
+      "number": 5,
       "account": "CW-000001",
       "kind": "dividend",
       "security": "LKBF",
       "amount": "9.00",
       "trade_date": "2026-03-03",
-      "settlement_date": "2026-03-03"
+      "settlement_date": "2026-03-03",
+      "posting_date": "2026-03-03"
     },
     {
-      "row": 6,
+      "number": 6,
       "account": "CW-000001",
       "kind": "sell",
       "security": "LKSF",
       "shares": "-10",
       "amount": "1520.00",
       "trade_date": "2026-03-04",
-      "settlement_date": "2026-03-05"
+      "settlement_date": "2026-03-05",
+      "posting_date": "2026-03-04"
     },
     {
-      "row": 7,
+      "number": 7,
       "account": "CW-000001",
       "kind": "fee",
       "amount": "-45.00",
       "trade_date": "2026-03-04",
-      "settlement_date": "2026-03-04"
+      "settlement_date": "2026-03-04",
+      "posting_date": "2026-03-04"
     },
     {
-      "row": 8,
+      "number": 8,
       "account": "CW-000001",
       "kind": "withdrawal",
       "amount": "-1000.00",
       "trade_date": "2026-03-05",
-      "settlement_date": "2026-03-05"
+      "settlement_date": "2026-03-05",
+      "posting_date": "2026-03-05"
     },
     {
-      "row": 9,
+      "number": 9,
       "account": "CW-000001",
       "kind": "reversal",
       "reverses": 5,
@@ -108,7 +128,7 @@
       "posting_date": "2026-03-06"
     },
     {
-      "row": 10,
+      "number": 10,
       "account": "CW-000001",
       "kind": "dividend",
       "security": "LKBF",
@@ -118,30 +138,33 @@
       "posting_date": "2026-03-06"
     },
     {
-      "row": 11,
+      "number": 11,
       "account": "CW-000001",
       "kind": "interest",
       "amount": "1.15",
       "trade_date": "2026-03-06",
-      "settlement_date": "2026-03-06"
+      "settlement_date": "2026-03-06",
+      "posting_date": "2026-03-06"
     },
     {
-      "row": 12,
+      "number": 12,
       "account": "CW-000002",
       "kind": "contribution",
       "amount": "6000.00",
       "trade_date": "2026-03-02",
-      "settlement_date": "2026-03-02"
+      "settlement_date": "2026-03-02",
+      "posting_date": "2026-03-02"
     },
     {
-      "row": 13,
+      "number": 13,
       "account": "CW-000002",
       "kind": "buy",
       "security": "LKSF",
       "shares": "20",
       "amount": "-3005.00",
       "trade_date": "2026-03-02",
-      "settlement_date": "2026-03-03"
+      "settlement_date": "2026-03-03",
+      "posting_date": "2026-03-02"
     }
   ]
 }

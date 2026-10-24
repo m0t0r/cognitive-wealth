@@ -79,7 +79,7 @@ def test_a_load_that_would_change_the_ledger_is_refused(
     changed = ledger.model_copy(
         update={
             "transactions": [
-                row.model_copy(update={"amount": Money("-1000.01")}) if row.row == 8 else row
+                row.model_copy(update={"amount": Money("-1000.01")}) if row.number == 8 else row
                 for row in ledger.transactions
             ]
         }

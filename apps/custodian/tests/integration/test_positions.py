@@ -73,6 +73,29 @@ def test_without_known_on_every_row_posted_so_far_counts(session: Session) -> No
     assert positions_as_of(session, JOINT, date(2026, 3, 3))["SWEEP"] == Shares("6000.50")
 
 
+def test_a_settlement_date_never_moves_a_position(session: Session) -> None:
+    # Row 6, the sale on Wed 4 Mar, settles on Thu 5 Mar. Say it settled a week late instead:
+    # the Positions on Wednesday are the same, since they count from the Trade date (ADR 0015).
+    ledger = read_ledger_fixture(LEDGER_V0_PATH)
+    late = ledger.model_copy(
+        update={
+            "transactions": [
+                row.model_copy(update={"settlement_date": date(2026, 3, 11)})
+                if row.number == 6
+                else row
+                for row in ledger.transactions
+            ]
+        }
+    )
+    load(session, read_world(WORLD_V0_PATH), late)
+
+    assert positions_as_of(session, JOINT, date(2026, 3, 4), known_on=date(2026, 3, 4)) == {
+        "SWEEP": Shares("7474.00"),
+        "LKSF": Shares("30"),
+        "LKBF": Shares("300"),
+    }
+
+
 def test_the_iras_positions_are_its_own(session: Session) -> None:
     load_v0(session)
 
