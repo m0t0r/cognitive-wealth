@@ -76,6 +76,23 @@ def test_shares_add_and_subtract_shares() -> None:
     assert Shares("1.5") + Shares("0.444982") - Shares("1") == Shares("0.944982")
 
 
+def test_unrounded_money_adds_up_exactly_and_is_rounded_once() -> None:
+    # Two Positions worth $0.005 each: rounding each first would give 0.00 + 0.00.
+    line = Shares("0.001") * Price("5")
+
+    total = line + line
+
+    assert total.to_money(RoundingRule.HALF_EVEN) == Money("0.01")
+    assert line.to_money(RoundingRule.HALF_EVEN) == Money("0.00")
+
+
+@pytest.mark.parametrize("other", [Money("1.00"), Shares("1")])
+def test_unrounded_money_only_adds_unrounded_money(other: Money | Shares) -> None:
+    # pyright rejects these too (see typing_misuses.py).
+    with pytest.raises(TypeError):
+        Shares("1") * Price("1") + other  # pyright: ignore[reportOperatorIssue, reportUnusedExpression]
+
+
 @pytest.mark.parametrize(
     ("value", "text"),
     [

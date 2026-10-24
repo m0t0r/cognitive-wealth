@@ -475,6 +475,8 @@ At the end of Friday 6 March, the Stock Fund's price is $153.40 and the Bond Fun
 
 Remember Part 1: shares only change with a Transaction, but prices change every day. So Market value changes every day, even in a week with no trades. That's why it's never stored. It's always worked out from the Positions and the prices.
 
+Some days have no price. Markets are shut at weekends, so on Saturday 7 March the funds use Friday's close, and the Market value is still 14,084.65. A Security that has no price at all yet isn't valued at $0.00, because that would say it's worthless. It has no Market value, it's left out of the total, and the report says so. Real statements do the same, with a note such as "Excludes unpriced securities" ([research](../research/settled-cash-and-market-value.md)).
+
 ### Is cash a Position too?
 
 **Short answer:** yes. Cash is held in a Security worth exactly $1.00 a share.
@@ -595,15 +597,15 @@ Breaks have ordinary causes: a missing row, a row read twice, or two sides count
 **Worked out** when asked, for an As-of date and the day asked, counting only rows posted by the day asked:
 
 - Positions: shares per Security, and cash, by Trade date ([ADR 0015](../adr/0015-positions-counted-by-trade-date.md))
-- Settled cash: money going out by Trade date, money coming in by Settlement date (built after #35, in #84)
-- Market value: Positions × prices (also #84)
+- Settled cash: money going out by Trade date, money coming in by Settlement date. A Reversal counts on the same day as the row it undoes, so the two cancel ([ADR 0016](../adr/0016-settled-cash-and-market-value-rules.md))
+- Market value: Positions × the latest prices, added up exactly and rounded to cents once
 
 Two rules come with it:
 
 - **Corrections are new rows.** The code has no way to update or delete a Transaction. A fix adds a Reversal and a replacement.
 - **Each number keeps its type.** Cash is dollars in whole cents. Shares are a count, to six decimal places. Prices keep the decimal places they were quoted with. A Market value is worked out at full precision and rounded to cents once, at the end ([ADR 0013](../adr/0013-money-shares-prices-and-rates-are-separate-types.md)).
 
-A good test for #35 is Dana's week: load rows 1 to 11 and the prices, and every Position the code works out must match the tables in this primer exactly. #84 does the same for Settled cash and Market value.
+The custodian's tests use Dana's week: they load rows 1 to 11 and the prices, and every Position, Settled cash and Market value the code works out must match the tables in this primer exactly.
 
 ### What if nobody runs the custodian for a week?
 

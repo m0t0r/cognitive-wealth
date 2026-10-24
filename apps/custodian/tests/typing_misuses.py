@@ -35,6 +35,8 @@ def misuses() -> None:
 
     # An unrounded amount isn't Money until a rounding rule makes it so.
     money + unrounded  # pyright: ignore[reportOperatorIssue]
+    unrounded + money  # pyright: ignore[reportOperatorIssue]
+    unrounded + shares  # pyright: ignore[reportOperatorIssue]
     _recorded: Money = unrounded  # pyright: ignore[reportAssignmentType]
     unrounded.to_money("half-even")  # pyright: ignore[reportArgumentType]
 

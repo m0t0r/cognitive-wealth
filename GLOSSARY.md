@@ -193,7 +193,7 @@ What was paid for a Tax lot, used to work out the gain or loss when it is sold.
 _Avoid_: Book value
 
 **Market value**:
-The shares of a Position multiplied by the Security's price on a given date.
+The shares of a Position multiplied by the Security's latest price on or before the date. A Security with no price by then has no Market value and is left out of the total, not counted as $0.00.
 _Avoid_: Balance (for a Position)
 
 **Cash sweep**:

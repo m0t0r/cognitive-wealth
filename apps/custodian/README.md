@@ -51,7 +51,8 @@ src/custodian/database.py  an engine from DATABASE_URL and DATABASE_PASSWORD_FIL
 src/custodian/world.py     the world file's format, as Pydantic models
 src/custodian/ledger_fixture.py  the hand-written ledger's format
 src/custodian/load.py      world:load: the world's custodian half and the ledger, into Postgres
-src/custodian/positions.py Positions rebuilt from the Ledger, as of a date
+src/custodian/positions.py Positions and Settled cash rebuilt from the Ledger, as of a date
+src/custodian/market_value.py  Positions × the latest prices, rounded once
 fixtures/ledger-v0.json    Dana's week from docs/learn/01, plus the IRA's first day
 ../../world/               the world file (v0.json) and its JSON Schema, shared with the seed
 ../../world/invalid/       world files that each break one rule, which both loaders must reject
