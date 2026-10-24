@@ -27,13 +27,13 @@ node .claude/skills/pr-visual/scripts/facts.mjs --out .dev/pr-visual/<branch>   
 
 This writes `facts.json` (totals, per-file change and lines, test cases added and removed per layer, commits) and one `.mmd` per chart that has something to show:
 
-| Chart                | Shows                                                                                                       | Use when                                                                |
-| -------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `mix` (sankey)       | lines by area → source code, test code, docs, config, migrations                                            | more than one area changed                                              |
-| `churn` (treemap)    | lines by area and file, largest first; vendored `.agents/skills` left out, its line count in the root label | always, unless only vendored files changed; it's the change's footprint |
-| `files` (treeView)   | every changed file with change kind and `+/−`                                                               | up to 60 files                                                          |
-| `tests` (xychart)    | test cases added and removed per layer (unit, ui, integration, e2e, pytest)                                 | tests changed                                                           |
-| `commits` (gitGraph) | the branch's commits                                                                                        | 3–25 commits, when their order tells a story                            |
+| Chart                | Shows                                                                                                                                                                                     | Use when                                                                  |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `mix` (sankey)       | lines by area → source code, test code, docs, config, migrations                                                                                                                          | more than one area changed                                                |
+| `churn` (treemap)    | lines by area and file, largest first; an area with more than 5 files splits by its first folder (`src/`, `tests/`); vendored `.agents/skills` left out, its line count in the root label | always, unless only vendored files changed; it's the change's footprint   |
+| `files` (treeView)   | every changed file with change kind and `+/−`                                                                                                                                             | up to 60 files                                                            |
+| `tests` (xychart)    | test cases added and removed per layer (unit, ui, integration, e2e, and pytest's `def test_` functions, which count a parametrized test once)                                             | tests changed in two or more layers; with one, list the tests in Evidence |
+| `commits` (gitGraph) | the branch's commits                                                                                                                                                                      | 3–25 commits, when their order tells a story                              |
 
 ## 3. Runtime evidence, before and after
 
@@ -82,6 +82,11 @@ node .claude/skills/pr-visual/scripts/render.mjs .dev/pr-visual/<branch>
 ```
 
 Every `.mmd` becomes `<name>.light.png` and `<name>.dark.png` (2x, from SVGs in the design system's colours). The PNGs are what the PR attaches, since GitHub's attachments don't take SVG. Read them and check for overlapping or truncated labels, an empty chart, or the wrong diagram type. Fix and re-render once; if it's still wrong, drop that chart. A chart wider than about 1600 px (`width` in the receipt) is unreadable at GitHub's column width: switch a flowchart to `TB` or cut labels.
+
+Two pele traps the render won't stop on:
+
+- **`<word>` in a label is dropped as an HTML tag** (`test_<uuid>` renders as `test_`). The receipt lists such tags under `dropped` and warns on stderr; write `{uuid}`. (`#lt;uuid#gt;` works in a quoted label but breaks a sequence message.)
+- **Edges between subgraphs can bundle into one trunk**, so the picture misstates which node each edge leaves from or enters; a subgraph with its own `direction` makes it worse. Check every cross-subgraph edge in the PNG. Flatten the inner subgraph into a plain chain, or use a Markdown table for "operation → result" content.
 
 ## 6. Assemble the body
 
@@ -147,10 +152,10 @@ Creating or editing a PR publishes to GitHub, so confirm with the user first unl
 Everything goes through `gh`; there's no asset branch.
 
 1. `gh pr create --draft` (or `gh pr view <n>`) to get the number. It stays a draft only until step 8 passes, so nobody reviews a body whose images haven't uploaded yet.
-2. Put the screenshots in the body by local path too, both themes like the charts (the `before-and-after` skill's formatter lays out pairs). Then publish from `.dev/pr-visual/<branch>/`, where the body's `./<file>` paths resolve:
+2. Put the screenshots in the body by local path too, both themes like the charts (the `before-and-after` skill's formatter lays out pairs). Then publish from the repo root; the body's `./<file>` paths resolve from the body's own folder:
 
    ```sh
-   node ../../../.claude/skills/pr-visual/scripts/attach.mjs <n> body.md
+   node .claude/skills/pr-visual/scripts/attach.mjs <n> .dev/pr-visual/<branch>/body.md
    ```
 
    It uploads every `./<file>` the body names with `gh pr edit --attach`, and publishes the body with each path replaced by its `github.com/user-attachments` URL, theme fragments kept. Plain `gh --attach` alone rewrites only a bare `![alt](./file.png)`: with a `#gh-dark-mode-only` fragment or in an HTML `src`, it leaves the broken local path and appends the image at the end.

@@ -209,17 +209,39 @@ const rootLabel = vendoredLines
   ? `Lines changed, excluding ${vendoredLines.toLocaleString("en-US")} vendored`
   : "Lines changed";
 const tree = ["treemap-beta", `"${rootLabel}"`];
+// Each group's largest files by name (parent and name, since a bare `page.tsx` or `index.ts` says
+// nothing), the rest as one tile; a single leftover file is named instead.
+const leaves = (group, pad) => {
+  const cut = group.length === PER_AREA + 1 ? group.length : PER_AREA;
+  const named = group.slice(0, cut);
+  const rest = group.slice(cut);
+  for (const f of named)
+    tree.push(`${pad}"${q(f.path.split("/").slice(-2).join("/"))}": ${churn(f)}`);
+  if (rest.length) tree.push(`${pad}"${rest.length} more files": ${areaChurn(rest)}`);
+};
+// The first folder under the area (`src/`, `tests/`, `migrations/`), or the area's own files.
+const subfolder = (a, path) => {
+  const rel = path.slice(a.length + 1);
+  return rel.includes("/") ? `${rel.split("/")[0]}/` : "(top level)";
+};
 const reviewed = [...folded].filter(([a]) => !vendored(a));
 for (const [a, group] of reviewed.toSorted((x, y) => areaChurn(y[1]) - areaChurn(x[1]))) {
   const sorted = group.filter((f) => churn(f) > 0).toSorted((x, y) => churn(y) - churn(x));
   if (sorted.length === 0) continue;
-  const named = sorted.slice(0, PER_AREA);
-  const rest = sorted.slice(PER_AREA);
   tree.push(`  "${q(a)}"`);
-  // Parent and name, since a bare `page.tsx` or `index.ts` says nothing.
-  for (const f of named)
-    tree.push(`    "${q(f.path.split("/").slice(-2).join("/"))}": ${churn(f)}`);
-  if (rest.length) tree.push(`    "${rest.length} more files": ${areaChurn(rest)}`);
+  // An area with more files than fit by name splits by folder first (#88): one area can hold most
+  // of a change, and a single "N more files" tile would then be the chart's largest, saying nothing.
+  const bySub = sorted.every((f) => f.path.startsWith(`${a}/`))
+    ? Map.groupBy(sorted, (f) => subfolder(a, f.path))
+    : new Map();
+  if (sorted.length <= PER_AREA + 1 || bySub.size < 2) {
+    leaves(sorted, "    ");
+    continue;
+  }
+  for (const [sub, subFiles] of [...bySub].toSorted((x, y) => areaChurn(y[1]) - areaChurn(x[1]))) {
+    tree.push(`    "${q(sub)}"`);
+    leaves(subFiles, "      ");
+  }
 }
 if (files.some((f) => !vendored(f.area) && churn(f) > 0)) emit("churn", tree.join("\n"));
 
@@ -257,16 +279,19 @@ const walk = (node, depth) => {
 walk(root, 1);
 if (files.length <= 60) emit("files", view.join("\n"));
 
-// Test cases per layer.
+// Test cases per layer. One layer is one bar with nothing to compare it to, which the Evidence
+// section says better (#81), so the chart needs two. pytest counts `def test_` functions, not the
+// cases a parametrized one runs, so its axis label says so.
 const layers = Object.entries(tests).filter(([, t]) => t.added + t.removed > 0);
-if (layers.length) {
+const layerLabel = (l) => (l === "pytest" ? '"pytest functions"' : l);
+if (layers.length > 1) {
   const max = Math.max(...layers.map(([, t]) => Math.max(t.added, t.removed)));
   emit(
     "tests",
     [
       "xychart",
       `  title "Test cases by layer: added (left), removed (right)"`,
-      `  x-axis [${layers.map(([l]) => l).join(", ")}]`,
+      `  x-axis [${layers.map(([l]) => layerLabel(l)).join(", ")}]`,
       `  y-axis "cases" 0 --> ${Math.ceil(max * 1.15) || 1}`,
       `  bar [${layers.map(([, t]) => t.added).join(", ")}]`,
       `  bar [${layers.map(([, t]) => t.removed).join(", ")}]`,
