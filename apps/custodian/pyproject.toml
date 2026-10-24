@@ -36,6 +36,9 @@ pythonVersion = "3.15"
 include = ["src", "tests"]
 venvPath = "."
 venv = ".venv"
+# An ignore comment that hides no error fails the check, so tests/typing_misuses.py proves each
+# misuse there is still a type error.
+reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

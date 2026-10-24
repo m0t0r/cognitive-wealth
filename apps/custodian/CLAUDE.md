@@ -39,3 +39,16 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 | context manager: `with x as y:` (cleanup on exit)             | `try/finally`, or `using`                                |
 | `Decimal("0.10")` (standard library, exact)                   | a decimal library (`decimal.js`), never `number`         |
 | `"""docstring"""` as a module's or function's first line      | a `/** JSDoc */` comment                                 |
+| `def __add__(self, other: Money) -> Money:` (operator method) | no operator overloading: a method such as `a.plus(b)`    |
+| `_name` (private by convention; pyright strict enforces it)   | `#name` or `private name`                                |
+| `__all__ = ["Money", …]` (a module's public names)            | the module's `export`s                                   |
+| `__slots__` plus a `__setattr__` that raises: immutable       | `readonly` fields and `Object.freeze`                    |
+| `class RoundingRule(Enum): HALF_EVEN = …`                     | a union of string literals, or an `enum`                 |
+| `@classmethod` (gets the class as `cls`), returning `Self`    | a `static` method returning `this`'s type                |
+| `ClassVar[Decimal \| None]` (one value per class)             | a `static` field                                         |
+| `raise ValueError(…) from None` (hides the original error)    | `throw new Error(…)` inside a `catch`                    |
+| `f"{value!r}"` (the value's `repr`, quotes and all)           | `` `${JSON.stringify(value)}` ``                         |
+| `@pytest.mark.parametrize(("a", "b"), [(1, 2), …])`           | `it.each([[1, 2], …])`                                   |
+| `with pytest.raises(TypeError):`                              | `expect(() => …).toThrow(TypeError)`                     |
+| `# pyright: ignore[reportOperatorIssue]` on one line          | `// @ts-expect-error` (fails if there's no error)        |
+| `__get_pydantic_core_schema__` (makes a class a field type)   | a custom Zod schema (`z.custom`, `.transform`)           |
