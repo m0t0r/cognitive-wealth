@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "AccountRole": {
+      "additionalProperties": false,
+      "description": "A dated link between a Person and an Account (GLOSSARY.md, \"Account role\").",
+      "properties": {
+        "person": {
+          "title": "Person",
+          "type": "string"
+        },
+        "account_number": {
+          "title": "Account Number",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "owner",
+            "joint_owner",
+            "custodian",
+            "beneficiary",
+            "power_of_attorney"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "starts_on": {
+          "format": "date",
+          "title": "Starts On",
+          "type": "string"
+        }
+      },
+      "required": [
+        "person",
+        "account_number",
+        "role",
+        "starts_on"
+      ],
+      "title": "AccountRole",
+      "type": "object"
+    },
+    "CrmHalf": {
+      "additionalProperties": false,
+      "properties": {
+        "firm": {
+          "$ref": "#/$defs/Firm"
+        },
+        "households": {
+          "items": {
+            "$ref": "#/$defs/Household"
+          },
+          "title": "Households",
+          "type": "array"
+        }
+      },
+      "required": [
+        "firm",
+        "households"
+      ],
+      "title": "CrmHalf",
+      "type": "object"
+    },
+    "CustodianAccount": {
+      "additionalProperties": false,
+      "properties": {
+        "account_number": {
+          "title": "Account Number",
+          "type": "string"
+        },
+        "registration_type": {
+          "$ref": "#/$defs/RegistrationType"
+        },
+        "opened_on": {
+          "format": "date",
+          "title": "Opened On",
+          "type": "string"
+        }
+      },
+      "required": [
+        "account_number",
+        "registration_type",
+        "opened_on"
+      ],
+      "title": "CustodianAccount",
+      "type": "object"
+    },
+    "CustodianHalf": {
+      "additionalProperties": false,
+      "properties": {
+        "accounts": {
+          "items": {
+            "$ref": "#/$defs/CustodianAccount"
+          },
+          "title": "Accounts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "accounts"
+      ],
+      "title": "CustodianHalf",
+      "type": "object"
+    },
+    "Firm": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Firm",
+      "type": "object"
+    },
+    "Household": {
+      "additionalProperties": false,
+      "description": "The People a Firm serves together, and the Accounts they are linked to.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "relationship_status": {
+          "enum": [
+            "prospect",
+            "client",
+            "former_client"
+          ],
+          "title": "Relationship Status",
+          "type": "string"
+        },
+        "people": {
+          "items": {
+            "$ref": "#/$defs/Person"
+          },
+          "title": "People",
+          "type": "array"
+        },
+        "account_roles": {
+          "items": {
+            "$ref": "#/$defs/AccountRole"
+          },
+          "title": "Account Roles",
+          "type": "array"
+        }
+      },
+      "required": [
+        "key",
+        "name",
+        "relationship_status",
+        "people",
+        "account_roles"
+      ],
+      "title": "Household",
+      "type": "object"
+    },
+    "Person": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "first_name": {
+          "title": "First Name",
+          "type": "string"
+        },
+        "last_name": {
+          "title": "Last Name",
+          "type": "string"
+        },
+        "born_on": {
+          "format": "date",
+          "title": "Born On",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "primary",
+            "co_client",
+            "dependent"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "first_name",
+        "last_name",
+        "born_on",
+        "role"
+      ],
+      "title": "Person",
+      "type": "object"
+    },
+    "RegistrationType": {
+      "description": "The legal form of an Account, which sets its ownership and tax rules.",
+      "enum": [
+        "individual",
+        "joint",
+        "traditional_ira",
+        "roth_ira",
+        "custodial",
+        "529"
+      ],
+      "title": "RegistrationType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 0,
+      "title": "Version",
+      "type": "integer"
+    },
+    "custodian": {
+      "$ref": "#/$defs/CustodianHalf"
+    },
+    "crm": {
+      "$ref": "#/$defs/CrmHalf"
+    }
+  },
+  "required": [
+    "version",
+    "custodian",
+    "crm"
+  ],
+  "title": "WorldFile",
+  "type": "object"
+}

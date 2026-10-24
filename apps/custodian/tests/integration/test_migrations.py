@@ -39,7 +39,7 @@ def test_the_package_script_migrates_an_empty_database_to_head(
     )
 
     assert result.returncode == 0, result.stderr
-    assert "Running upgrade  -> 0001" in result.stderr
+    assert "Running upgrade 0001 -> 0002" in result.stderr
     engine = create_engine(postgres_server.url_for(empty_database, "app"))
     try:
         assert set(inspect(engine).get_table_names()) == {
@@ -47,6 +47,7 @@ def test_the_package_script_migrates_an_empty_database_to_head(
             "account",
             "security",
             "transaction",
+            "price",
         }
     finally:
         engine.dispose()

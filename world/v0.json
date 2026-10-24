@@ -1,0 +1,69 @@
+{
+  "version": 0,
+  "custodian": {
+    "accounts": [
+      {
+        "account_number": "CW-000001",
+        "registration_type": "joint",
+        "opened_on": "2026-02-26"
+      },
+      {
+        "account_number": "CW-000002",
+        "registration_type": "traditional_ira",
+        "opened_on": "2026-03-02"
+      }
+    ]
+  },
+  "crm": {
+    "firm": { "name": "Larkspur Wealth Partners" },
+    "households": [
+      {
+        "key": "reyes",
+        "name": "The Reyes Household",
+        "relationship_status": "client",
+        "people": [
+          {
+            "key": "dana-reyes",
+            "first_name": "Dana",
+            "last_name": "Reyes",
+            "born_on": "1978-05-14",
+            "role": "primary"
+          },
+          {
+            "key": "jordan-reyes",
+            "first_name": "Jordan",
+            "last_name": "Reyes",
+            "born_on": "1980-09-02",
+            "role": "co_client"
+          }
+        ],
+        "account_roles": [
+          {
+            "person": "dana-reyes",
+            "account_number": "CW-000001",
+            "role": "joint_owner",
+            "starts_on": "2026-02-26"
+          },
+          {
+            "person": "jordan-reyes",
+            "account_number": "CW-000001",
+            "role": "joint_owner",
+            "starts_on": "2026-02-26"
+          },
+          {
+            "person": "dana-reyes",
+            "account_number": "CW-000002",
+            "role": "owner",
+            "starts_on": "2026-03-02"
+          },
+          {
+            "person": "jordan-reyes",
+            "account_number": "CW-000002",
+            "role": "beneficiary",
+            "starts_on": "2026-03-02"
+          }
+        ]
+      }
+    ]
+  }
+}

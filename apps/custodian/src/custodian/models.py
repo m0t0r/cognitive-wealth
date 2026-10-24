@@ -23,12 +23,13 @@ from sqlalchemy import (
     Index,
     MetaData,
     Numeric,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import DateTime, TypeDecorator
 
-from custodian.money import Money, Shares
+from custodian.money import Money, Price, Shares
 
 __all__ = [
     "Account",
@@ -36,6 +37,7 @@ __all__ = [
     "RegistrationType",
     "Security",
     "SecurityKind",
+    "SecurityPrice",
     "Transaction",
     "TransactionKind",
 ]
@@ -67,13 +69,26 @@ class SharesColumn(TypeDecorator[Shares]):
         return None if value is None else Shares(value)
 
 
+class PriceColumn(TypeDecorator[Price]):
+    """`numeric` with no fixed scale, so a price keeps the decimal places it was quoted with."""
+
+    impl = Numeric()
+    cache_ok = True
+
+    def process_bind_param(self, value: Price | None, dialect: Dialect) -> Decimal | None:
+        return None if value is None else Decimal(str(value))
+
+    def process_result_value(self, value: Decimal | None, dialect: Dialect) -> Price | None:
+        return None if value is None else Price(value)
+
+
 class Base(DeclarativeBase):
     # Constraint names come from these patterns, so a migration names them the same every time.
     metadata = MetaData(
         naming_convention={
             "pk": "%(table_name)s_pkey",
             "fk": "%(table_name)s_%(column_0_name)s_fkey",
-            "uq": "%(table_name)s_%(column_0_name)s_key",
+            "uq": "%(table_name)s_%(column_0_N_name)s_key",
             "ck": "%(table_name)s_%(constraint_name)s_check",
             "ix": "%(table_name)s_%(column_0_N_name)s_idx",
         }
@@ -82,6 +97,7 @@ class Base(DeclarativeBase):
     type_annotation_map: ClassVar[Mapping[type, object]] = {
         Money: MoneyColumn(),
         Shares: SharesColumn(),
+        Price: PriceColumn(),
         datetime: DateTime(timezone=True),
     }
 
@@ -120,7 +136,7 @@ class RegistrationType(StrEnum):
 
 
 class TransactionKind(StrEnum):
-    """The eight kinds in docs/learn/01-ledger-positions-and-dates.md. Reversals come with #35."""
+    """The eight kinds in docs/learn/01-ledger-positions-and-dates.md, and the Reversal of one."""
 
     CONTRIBUTION = "contribution"
     WITHDRAWAL = "withdrawal"
@@ -130,6 +146,8 @@ class TransactionKind(StrEnum):
     INTEREST = "interest"
     FEE = "fee"
     TRANSFER = "transfer"
+    REVERSAL = "reversal"
+    """Undoes the Transaction it names, with every amount negated (GLOSSARY.md, "Reversal")."""
 
 
 class Security(Base):
@@ -165,6 +183,9 @@ class Transaction(Base):
         CheckConstraint("settlement_date >= trade_date", name="settles_after_trade"),
         CheckConstraint("posting_date >= trade_date", name="posted_after_trade"),
         CheckConstraint("shares is null or security_id is not null", name="shares_of_a_security"),
+        CheckConstraint(
+            "(kind = 'reversal') = (reverses_id is not null)", name="reversal_names_what_it_undoes"
+        ),
         # Positions are rebuilt from an Account's rows up to a Trade date (ADR 0015).
         Index(None, "account_id", "trade_date"),
     )
@@ -174,6 +195,8 @@ class Transaction(Base):
     security_id: Mapped[int | None] = mapped_column(ForeignKey("security.id"))
     """None for a cash-only Transaction, such as a contribution or a fee."""
     kind: Mapped[TransactionKind] = mapped_column(_pg_enum(TransactionKind, "transaction_kind"))
+    reverses_id: Mapped[int | None] = mapped_column(ForeignKey("transaction.id"), unique=True)
+    """For a Reversal, the Transaction it undoes, which can be reversed only once. Else None."""
     trade_date: Mapped[date]
     settlement_date: Mapped[date]
     posting_date: Mapped[date]
@@ -191,3 +214,25 @@ class Transaction(Base):
 
     account: Mapped[Account] = relationship()
     security: Mapped[Security | None] = relationship()
+    # `remote_side`: the row this one points at is the "one" side of the link, not this row.
+    reverses: Mapped[Transaction | None] = relationship(remote_side=[id])
+
+
+class SecurityPrice(Base):
+    """A Security's closing price on one Business day. Like the Ledger, never changed once written.
+
+    The cash sweep has none: it is worth exactly $1.00 a share.
+    """
+
+    __tablename__ = "price"
+    __table_args__ = (
+        UniqueConstraint("security_id", "price_date"),
+        CheckConstraint("price > 0", name="positive"),
+    )
+
+    id: Mapped[int] = _id()
+    security_id: Mapped[int] = mapped_column(ForeignKey("security.id"))
+    price_date: Mapped[date]
+    price: Mapped[Price]
+
+    security: Mapped[Security] = relationship()
