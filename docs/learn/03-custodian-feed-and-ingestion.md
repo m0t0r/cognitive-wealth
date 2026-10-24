@@ -82,7 +82,7 @@ This project has one Custodian, so it has one format. The simulated Custodian de
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/feed-delivery.dark.svg">
-  <img alt="At the Custodian, the Book of record, the Close of Monday 2 March writes one Delivery: first the five files (securities, accounts, transactions, positions and prices), then manifest.json, written last, with each file's row count and Content hash. The Delivery goes overnight into a shared folder: usually SFTP at real Custodians; here a local folder, later SeaweedFS. Cognitive Wealth's Ingestion reads it when the Manifest is there, then checks, validates and writes it once into its own database of Transactions, Positions and prices." src="../diagrams/feed-delivery.light.svg">
+  <img alt="At the Custodian, the Close of Monday 2 March writes one Delivery: first the five files (securities, accounts, transactions, positions and prices), then, last, manifest.json with each file's row count and Content hash. The Delivery goes overnight into a shared folder: SFTP at real Custodians, a local folder here. Cognitive Wealth's Ingestion reads it, checks it, then writes it once into its own database." src="../diagrams/feed-delivery.light.svg">
 </picture>
 
 ### What is a Delivery?
