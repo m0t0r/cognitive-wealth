@@ -13,7 +13,7 @@ from custodian.money import Money, Price, Rate, Shares
 
 def misuses() -> None:
     money = Money("37.50")
-    shares = Shares("0.444982")
+    shares = Shares("0.444981")
     price = Price("84.2731")
     rate = Rate("0.0075")
     unrounded = shares * price

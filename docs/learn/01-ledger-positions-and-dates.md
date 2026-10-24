@@ -538,7 +538,7 @@ Events like splits and mergers are called _corporate actions_. Real Custodians r
 
 **Short answer:** yes. Fractional shares are common, which is why shares aren't stored as whole numbers.
 
-Many Accounts reinvest dividends automatically: the cash from a dividend buys more shares of the same fund at once. A $37.50 dividend reinvested at $84.2731 a share buys 37.50 ÷ 84.2731 ≈ 0.444982 shares, rounded to six decimal places. That's why shares are kept to six decimal places, and prices to as many as they're quoted with ([ADR 0013](../adr/0013-money-shares-prices-and-rates-are-separate-types.md)).
+Many Accounts reinvest dividends automatically: the cash from a dividend buys more shares of the same fund at once. A $37.50 dividend reinvested at $84.2731 a share buys 37.50 ÷ 84.2731 = 0.4449818… shares, recorded as 0.444981: the digits past the sixth are dropped (rounded down), so the shares never cost more than the $37.50 that bought them. That's why shares are kept to six decimal places, and prices to as many as they're quoted with ([ADR 0013](../adr/0013-money-shares-prices-and-rates-are-separate-types.md)).
 
 ### Does every trade settle on time?
 
