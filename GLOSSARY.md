@@ -177,7 +177,7 @@ A Transaction that exactly undoes an earlier one, with every amount negated, and
 _Avoid_: Cancel, void
 
 **Settled cash**:
-The cash an Account can actually withdraw: money going out counts from its Trade date, money coming in only from its Settlement date.
+The cash an Account can actually withdraw: money going out counts from its Trade date, money coming in only from its Settlement date. Custodians name this number differently: it is Interactive Brokers' "Settled Cash" and Fidelity's "Available to withdraw", while Fidelity's own "Settled cash" is a different number, what can be traded without a good faith violation ([research](docs/research/settled-cash-and-market-value.md)).
 _Avoid_: Available cash, buying power
 
 **Position**:

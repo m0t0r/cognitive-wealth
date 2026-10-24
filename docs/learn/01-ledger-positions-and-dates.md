@@ -401,6 +401,8 @@ Here are both numbers for Dana's week:
 
 On Wednesday, Dana could withdraw at most **$5,954.00**, even though the Account's cash is $7,474.00. That's $7,474.00 − $1,520.00 still on its way. By Thursday the two numbers agree again.
 
+A warning for when you read a real Custodian's help pages: they don't agree on this name. Interactive Brokers calls this number "Settled Cash", like us. Fidelity calls it "Available to withdraw", and uses "Settled cash" for a different number: the cash you can trade with without breaking a cash-account rule ([research](../research/settled-cash-and-market-value.md)). So check how a page defines a balance, not just its name.
+
 ### As-of date: which day does a number describe?
 
 **Short answer:** the day a report is about, not the day it was made.
