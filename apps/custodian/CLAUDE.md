@@ -43,6 +43,13 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 | `_name` (private by convention; pyright strict enforces it)   | `#name` or `private name`                                |
 | `__all__ = ["Money", …]` (a module's public names)            | the module's `export`s                                   |
 | `__slots__` plus a `__setattr__` that raises: immutable       | `readonly` fields and `Object.freeze`                    |
+| `object.__setattr__(self, "_value", v)` in `__init__`         | assigning a `readonly` field in the constructor          |
+| `__init__`, `__eq__`, `__hash__`, `__str__`, `__repr__`       | `constructor`, an `equals()` method, `toString()`        |
+| `isinstance(x, int \| str)` (also narrows the type)           | `typeof x === "number" \|\| typeof x === "string"`       |
+| `type[Money]` (the class itself, not an instance)             | `typeof Money`                                           |
+| a string literal under an attribute: its docstring            | a `/** JSDoc */` comment above a field                   |
+| `Context(prec=60, traps=[Inexact])`, `context.add(a, b)`      | a `Decimal.clone({ precision: 60 })` from decimal.js     |
+| `# pyright: reportUnusedExpression=false` at a file's top     | an `/* oxlint-disable rule */` comment for the file      |
 | `class RoundingRule(Enum): HALF_EVEN = …`                     | a union of string literals, or an `enum`                 |
 | `@classmethod` (gets the class as `cls`), returning `Self`    | a `static` method returning `this`'s type                |
 | `ClassVar[Decimal \| None]` (one value per class)             | a `static` field                                         |

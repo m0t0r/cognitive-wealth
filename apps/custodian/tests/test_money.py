@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -45,6 +46,7 @@ def test_a_float_is_refused(kind: type[Money | Shares | Price | Rate]) -> None:
         (Price, "twelve"),
         (Rate, "NaN"),
         (Money, "Infinity"),
+        (Money, "1" + "0" * 70),  # more digits than the module's 60-digit precision
     ],
 )
 def test_a_value_the_type_cannot_hold_is_refused(
@@ -78,6 +80,27 @@ def test_each_type_converts_to_a_decimal_string(
 ) -> None:
     assert str(value) == text
     assert type(value)(text) == value
+
+
+def test_a_product_too_long_to_hold_exactly_raises_instead_of_rounding() -> None:
+    long_price = Price("0." + "1" * 58)  # Shares * this needs more than 60 digits
+
+    with pytest.raises(ArithmeticError):
+        Shares("1.000001") * long_price  # pyright: ignore[reportUnusedExpression] -- it raises
+
+
+def test_a_value_cannot_be_changed() -> None:
+    money = Money("37.50")
+
+    with pytest.raises(AttributeError):
+        money._value = Decimal("0")  # pyright: ignore[reportPrivateUsage] -- the guard is under test
+
+    assert money == Money("37.50")
+
+
+def test_equal_numbers_of_different_kinds_are_not_equal() -> None:
+    assert Money("1.00") != Price("1.00")
+    assert Shares("1") != Rate("1")
 
 
 def test_mixing_kinds_fails_at_runtime_too() -> None:
