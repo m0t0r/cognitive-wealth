@@ -1,10 +1,10 @@
 # The Custodian feed and Ingestion
 
-This primer is for you if you've never seen how an advisor's software learns what happened in a client's Accounts. It starts from zero. It builds on [the first primer](01-ledger-positions-and-dates.md): what a Custodian, a Transaction, the Ledger and a Position are, and the Trade, Settlement and Posting dates. It follows the Reyes Household from [the second primer](02-account-types.md): Dana and Jordan Reyes, their joint account CW-000001, and Dana's Traditional IRA CW-000002.
+This primer is for you if you've never seen how an Advisor's software learns what happened in a client's Accounts. It starts from zero. It builds on [the first primer](01-ledger-positions-and-dates.md): what a Custodian, a Transaction, the Ledger and a Position are, and the Trade, Settlement and Posting dates. It follows the Reyes Household from [the second primer](02-account-types.md): Dana and Jordan Reyes, their joint account CW-000001, and Dana's Traditional IRA CW-000002.
 
 By the end you'll know:
 
-- how a Custodian tells an advisor's software what happened each day, and why it's done with files
+- how a Custodian tells an Advisor's software what happened each day, and why it's done with files
 - what one day's files hold, and why each file is needed
 - how a reader can tell a complete set of files from a partial or damaged one
 - what a Content hash is, and why one file listing them all is enough to check everything
@@ -12,7 +12,7 @@ By the end you'll know:
 - why Cognitive Wealth checks every row instead of trusting the file
 - what goes wrong in the real world: late files, files sent twice, past days sent again, and numbers that don't agree
 
-Read it before the custodian writes its files (#37) and before Cognitive Wealth loads them (#40). Each section answers one question. It starts with the short answer, then explains it, then shows it with numbers. Words with a capital letter, such as Delivery or Manifest, are defined in [GLOSSARY.md](../../GLOSSARY.md).
+Read it before the simulated Custodian writes its files (#37) and before Cognitive Wealth loads them (#40). Each section answers one question. It starts with the short answer, then explains it, then shows it with numbers. Words with a capital letter, such as Delivery or Manifest, are defined in [GLOSSARY.md](../../GLOSSARY.md).
 
 ## How to read this
 
@@ -32,7 +32,7 @@ Not covered here: Reconciliation and Breaks in depth (phase 2, though Part 6 pre
 
 ### Why can't Cognitive Wealth just look in the Custodian's records?
 
-**Short answer:** because they belong to the Custodian. Cognitive Wealth only ever gets a copy, which the Custodian sends.
+**Short answer:** because they belong to the Custodian, so Cognitive Wealth only ever gets the copy the Custodian sends.
 
 Think of your bank and a budgeting app on your phone. The app can't open the bank's database and read your account. The bank decides what to share, in what shape, and when, and the app works from what it's given.
 
@@ -58,25 +58,25 @@ During the day, prices move every second and new Transactions keep arriving. A r
 
 So the files are made after the Close and describe one day: their **As-of date**, the Business day they describe (first primer, Part 3).
 
-Real Custodians also offer live connections for some jobs, such as checking one Account's balance during the day. But the daily files remain the full, official copy that an advisor's software is built from. (That's general practice across the industry, not a rule.)
+Real Custodians also offer live connections for some jobs, such as checking one Account's balance during the day. But the daily files remain the full, official copy that an Advisor's software is built from. (That's general practice across the industry, not a rule.)
 
 ### How do the files travel?
 
-**Short answer:** usually over SFTP, a secure way to copy files between companies, into a folder the advisor's software reads.
+**Short answer:** usually over SFTP, a secure way to copy files between companies, into a folder the Firm's software reads.
 
 Think of a locked mailbox. The Custodian has a key to put things in, the Firm's software has a key to take things out, and nobody else can open it.
 
-SFTP (the SSH File Transfer Protocol) is a common way to build that mailbox. The files travel encrypted, and each side signs in with its own key. Overnight, the Custodian puts the day's files in a folder, and the advisor's software picks them up in the morning. (That's general practice: each Custodian sets its own delivery methods, and Schwab lets firms "choose the files and delivery method that fit your technology and workflows".)
+SFTP (the SSH File Transfer Protocol) is a common way to build that mailbox. The files travel encrypted, and each side has to prove who it is before it can connect. Overnight, the Custodian puts the day's files in a folder, and the Firm's software picks them up in the morning. (That's general practice, described in the [research notes](../research/synthetic-data-and-infra.md): each Custodian sets its own delivery methods, and Schwab lets firms "choose the files and delivery method that fit your technology and workflows".)
 
 This project skips the network. The simulated Custodian writes its files to a folder on the same machine (#37). Later, it writes them to SeaweedFS instead (#54): _object storage_, a service that stores files by name for programs, like a shared drive.
 
 ### Why does every Custodian send a different format?
 
-**Short answer:** because there is no single standard. Each Custodian designed its own files, long ago, and changing them would break every Firm that reads them.
+**Short answer:** because there is no single standard: each Custodian designed its own files long ago, and changing them now would break every Firm that reads them.
 
 So the same buy can look different at two Custodians: different column names, different date formats ("2026-03-02" or "03/02/2026"), and even different signs (one shows cash going out as "−6010.00", another as "6010.00" with a separate "debit" column). Software that serves Firms at several Custodians writes one reader per Custodian, each turning its files into one common shape. (General practice; the research notes in [docs/research/](../research/synthetic-data-and-infra.md) list examples.)
 
-This project has one Custodian, so it has one format. The simulated Custodian defines it (#37) and publishes it as a contract (#38).
+This project has one Custodian, so it has one format. The simulated Custodian defines it (#37) and publishes it as a _contract_ (#38): a written description of every file and every row, which both sides follow.
 
 ## Part 2: What's in a Delivery? (Level 1)
 
@@ -95,9 +95,9 @@ You may also hear a Delivery called a _bundle_ or a _drop_. This primer says Del
 
 ### What files are in a Delivery, and why is each one needed?
 
-**Short answer:** five files: the Securities, the Accounts, the day's Transactions, every Position, and the day's prices. Each answers a question the others can't.
+**Short answer:** five files (the Securities, the Accounts, the day's Transactions, every Position and the day's prices), each answering a question the others can't.
 
-Back to the chain of shops. Its end-of-day report would hold a product catalogue, a customer list, the day's receipts, a stock count and a price list. A Delivery holds the same five things:
+Think of the chain of shops again. Its end-of-day report would hold a product catalogue, a customer list, the day's receipts, a stock count and a price list. A Delivery holds the same five things:
 
 | File               | What it holds                                                               | The shop's version | Why it's needed                                                                       |
 | ------------------ | --------------------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------- |
@@ -107,7 +107,7 @@ Back to the chain of shops. Its end-of-day report would hold a product catalogue
 | `positions.csv`    | the Custodian's own count of every Position, as of that day                 | stock count        | to check the copy: Cognitive Wealth's sum of the Transactions must match it           |
 | `prices.csv`       | each Security's price that day                                              | price list         | Market value is shares × price, and Cognitive Wealth has no prices of its own         |
 
-CSV ("comma-separated values") is a plain text format for a table: one row per line, with commas between the values, and a first line naming the columns. Any spreadsheet can open it.
+CSV ("comma-separated values") is a plain text format for a table: one row per line, with commas between the values. Its first row names the columns: the _header row_. Any spreadsheet can open it.
 
 Three of these need a closer look.
 
@@ -119,7 +119,7 @@ Three of these need a closer look.
 
 ### Why do some files repeat everything, and others only what's new?
 
-**Short answer:** Transactions are events, so each one is sent once. The other four describe how things stand today, so they're sent whole every day.
+**Short answer:** Transactions are events, so each one is sent once, while the other four describe how things stand today, so they're sent whole every day.
 
 Compare a diary with a photo. A diary gets one new page each day; you never copy out the old pages again. A photo of your desk is taken whole every day; yesterday's photo is no use for today.
 
@@ -134,19 +134,19 @@ From here on, the primer follows one Delivery: the one for the Close of **Monday
 
 ### What happened on 2 March?
 
-**Short answer:** money went into both Accounts, and each Account bought a fund.
+**Short answer:** money went into both Accounts, and each Account bought shares of the Stock Fund.
 
 In the joint account, CW-000001, this is rows 3 and 4 of the first primer: the Reyes family puts in $10,000.00, and the Advisor buys 40 shares of the Larkspur Stock Fund (LKSF) at $150.25: 40 × $150.25 = $6,010.00.
 
-Dana's Traditional IRA, CW-000002, opens that day. Dana puts in $6,000.00 (second primer, Part 3), and the Advisor buys 300 shares of the Larkspur Bond Fund (LKBF) at $10.00: 300 × $10.00 = $3,000.00. (The IRA's buy is added for this example. The custodian's hand-written Ledger, `apps/custodian/fixtures/ledger-v0.json`, has no Transactions in the IRA yet.)
+Dana's Traditional IRA, CW-000002, opens that day. Dana puts in $6,000.00 (second primer, Part 3), and the Advisor buys 20 shares of the Stock Fund at $150.25: 20 × $150.25 = $3,005.00. These are rows 12 and 13 of the simulated Custodian's hand-written Ledger, `apps/custodian/fixtures/ledger-v0.json`.
 
-The joint account already had a history. On Thursday 26 February it received $5,000.00 and bought 300 Bond Fund shares (rows 1 and 2 of the first primer). Friday 27 February was quiet.
+The joint account already had a history. On Thursday 26 February it received $5,000.00 and bought 300 shares of the Larkspur Bond Fund (LKBF) (rows 1 and 2 of the first primer). Friday 27 February was quiet.
 
 ### What does each file hold?
 
-**Short answer:** five small tables. Here they are, exactly as the Custodian writes them.
+**Short answer:** five small tables, shown here exactly as the Custodian writes them.
 
-The column names and the transaction IDs below are made up for this primer. The real ones are #37's to choose, but the ideas are the same.
+The layout below (the column names, the order of the columns, how the Manifest in Part 4 is spaced) is made up for this primer. #37 decides the real one, so its files and hashes will differ, but the ideas are the same.
 
 **`securities.csv`**, the Security master. The same three rows arrive every day:
 
@@ -171,28 +171,28 @@ CW-000002,traditional_ira,2026-03-02
 
 ```csv
 transaction_id,account_number,kind,security,shares,amount,trade_date,settlement_date,posting_date
-CW-000001-0003,CW-000001,contribution,,,10000.00,2026-03-02,2026-03-02,2026-03-02
-CW-000001-0004,CW-000001,buy,LKSF,40.000000,-6010.00,2026-03-02,2026-03-03,2026-03-02
-CW-000002-0001,CW-000002,contribution,,,6000.00,2026-03-02,2026-03-02,2026-03-02
-CW-000002-0002,CW-000002,buy,LKBF,300.000000,-3000.00,2026-03-02,2026-03-03,2026-03-02
+3,CW-000001,contribution,,,10000.00,2026-03-02,2026-03-02,2026-03-02
+4,CW-000001,buy,LKSF,40.000000,-6010.00,2026-03-02,2026-03-03,2026-03-02
+12,CW-000002,contribution,,,6000.00,2026-03-02,2026-03-02,2026-03-02
+13,CW-000002,buy,LKSF,20.000000,-3005.00,2026-03-02,2026-03-03,2026-03-02
 ```
 
 A few things to notice:
 
-- **Every row has the Custodian's own ID**, in `transaction_id`. Here it's the account number plus the row's place in that Account's Ledger, so `CW-000001-0003` is row 3 of the first primer. Part 5 shows why this ID matters so much.
+- **Every row has the Custodian's own ID**, in `transaction_id`: its row number in the hand-written Ledger. The IRA's rows are 12 and 13 because they were added to that file after rows 5 to 11. An ID only has to be unique, not in date order. Part 5 shows why this ID matters so much.
 - **Empty values are left empty.** A contribution has no Security and no shares, so those two columns are blank (the `,,`).
 - **The buys settle a day later.** Their Settlement date is Tuesday 3 March: T+1 (first primer, Part 3).
 - **Numbers are written in full, always the same way.** Cash has two decimal places, shares six ([ADR 0013](../adr/0013-money-shares-prices-and-rates-are-separate-types.md)), and money going out is negative. Part 6 shows why "always the same way" matters.
 
-**`positions.csv`**: every Position in both Accounts, as of the end of 2 March, counted by Trade date ([ADR 0015](../adr/0015-positions-counted-by-trade-date.md)):
+**`positions.csv`**: every Position in both Accounts, as of the end of 2 March, counted by Trade date ([ADR 0015](../adr/0015-positions-counted-by-trade-date.md)), with the price the Custodian used and the Market value it worked out:
 
 ```csv
-account_number,security,shares
-CW-000001,LKBF,300.000000
-CW-000001,LKSF,40.000000
-CW-000001,SWEEP,5990.000000
-CW-000002,LKBF,300.000000
-CW-000002,SWEEP,3000.000000
+account_number,security,shares,price,market_value
+CW-000001,LKBF,300.000000,10.00,3000.00
+CW-000001,LKSF,40.000000,150.25,6010.00
+CW-000001,SWEEP,5990.000000,1.00,5990.00
+CW-000002,LKSF,20.000000,150.25,3005.00
+CW-000002,SWEEP,2995.000000,1.00,2995.00
 ```
 
 Cash is here too, as shares of SWEEP: 5,990 shares worth $1.00 each is $5,990.00 of cash.
@@ -216,28 +216,28 @@ SWEEP,1.00
 | Fri 27 Feb            | 3          | 1        | **0**        | 2         | 3      |
 | Mon 2 Mar             | 3          | 2        | 4            | 5         | 3      |
 
-The numbers are rows in each file, not counting the line of column names. Saturday 28 February and Sunday 1 March aren't Business days, so they have no Close and no Delivery.
+The numbers are rows in each file, not counting the header row. Saturday 28 February and Sunday 1 March aren't Business days, so they have no Close and no Delivery.
 
-Look at Friday. Nothing happened, so `transactions.csv` has **zero rows**: only its line of column names. But the file is still sent. Why send an empty file? Because "nothing happened" and "the file got lost" must look different. If the file were simply left out on quiet days, a reader couldn't tell a quiet day from a lost file, and a lost file is exactly the kind of damage Part 4 is about.
+Notice Friday. Nothing happened, so `transactions.csv` has **zero rows**: only its header row. But the file is still sent. Why send an empty file? Because "nothing happened" and "the file got lost" must look different. If the file were simply left out on quiet days, a reader couldn't tell a quiet day from a lost file, and a lost file is exactly the kind of damage Part 4 is about.
 
 ### Do the files agree with each other?
 
-**Short answer:** yes. Adding up the Transactions from all three Deliveries gives exactly the Positions in 2 March's `positions.csv`.
+**Short answer:** yes: adding up the Transactions from all three Deliveries gives exactly the Positions in 2 March's `positions.csv`.
 
 | Account   | Security | Transactions added up                                                  | `positions.csv` |
 | --------- | -------- | ---------------------------------------------------------------------- | --------------- |
 | CW-000001 | SWEEP    | 5,000.00 − 3,000.00 (26 Feb) + 10,000.00 − 6,010.00 (2 Mar) = 5,990.00 | 5,990.000000    |
 | CW-000001 | LKBF     | +300 (26 Feb)                                                          | 300.000000      |
 | CW-000001 | LKSF     | +40 (2 Mar)                                                            | 40.000000       |
-| CW-000002 | SWEEP    | 6,000.00 − 3,000.00 (2 Mar) = 3,000.00                                 | 3,000.000000    |
-| CW-000002 | LKBF     | +300 (2 Mar)                                                           | 300.000000      |
+| CW-000002 | SWEEP    | 6,000.00 − 3,005.00 (2 Mar) = 2,995.00                                 | 2,995.000000    |
+| CW-000002 | LKSF     | +20 (2 Mar)                                                            | 20.000000       |
 
-And with the prices, here's what the Household is worth at the Close of 2 March:
+And with the prices, here's what the Household is worth at the Close of 2 March. It's the sum of the `market_value` column, so the Custodian's own numbers agree too:
 
 | Account   | Stock Fund              | Bond Fund               | Cash     | Market value  |
 | --------- | ----------------------- | ----------------------- | -------- | ------------- |
 | CW-000001 | 40 × $150.25 = 6,010.00 | 300 × $10.00 = 3,000.00 | 5,990.00 | 15,000.00     |
-| CW-000002 | –                       | 300 × $10.00 = 3,000.00 | 3,000.00 | 6,000.00      |
+| CW-000002 | 20 × $150.25 = 3,005.00 | –                       | 2,995.00 | 6,000.00      |
 | **Total** |                         |                         |          | **21,000.00** |
 
 Notice the comparison needed **all three** Deliveries, not just 2 March's: the joint account's Bond Fund shares were bought on 26 February. That's the reason every Delivery matters, which the next Part builds on.
@@ -252,7 +252,7 @@ Files travel through programs, disks and networks, and each can fail:
 
 - **Missing:** the Custodian's job crashed after writing three of the five files.
 - **Cut short:** the connection dropped while a file was being copied, so only its first part arrived.
-- **Changed:** a disk error flipped some bytes, or a program between the two sides rewrote the file.
+- **Changed:** a disk error changed some bytes (a _byte_ is the smallest piece a file is stored in; in these files, one character), or a program between the two sides rewrote the file.
 - **Not finished yet:** the reader looked while the Custodian was still writing.
 
 From the outside, a damaged file usually looks fine. A `transactions.csv` that lost its last row is still a valid CSV file. Nothing in the file itself says "I'm incomplete". So the Custodian sends a separate file that says what complete looks like.
@@ -278,7 +278,7 @@ The **Manifest** is that slip. Here's 2 March's, `manifest.json`, exactly as the
     {
       "name": "positions.csv",
       "rows": 5,
-      "sha256": "0b9ca7d738bb8dc617b55c67488528b70147f1aa87964def9438ceca3b14c987"
+      "sha256": "38153f72cf4fe88a865704f3deea1f99f3b4c097f53b695d42667544c786bb80"
     },
     {
       "name": "prices.csv",
@@ -293,7 +293,7 @@ The **Manifest** is that slip. Here's 2 March's, `manifest.json`, exactly as the
     {
       "name": "transactions.csv",
       "rows": 4,
-      "sha256": "a2bd7be1402f3639ae40df82482587e14fd12ed769b5a3da49a6c9263f0cab3a"
+      "sha256": "848c0bf753dce9ebafd05d35a09fafe2841deb84d32375237c4e1d97be4b2aa4"
     }
   ]
 }
@@ -301,13 +301,13 @@ The **Manifest** is that slip. Here's 2 March's, `manifest.json`, exactly as the
 
 - `format_version` says which version of the file format this is, so a reader can refuse a format it doesn't know.
 - `as_of_date` says which Close the Delivery describes.
-- `files` lists each data file with its `rows` (not counting the line of column names) and its `sha256`, its **Content hash**, explained next.
+- `files` lists each data file with its `rows` (not counting the header row) and its `sha256`, its **Content hash**, explained next.
 
-These hashes are real: they're computed from the exact files shown in Part 3, so you can check them yourself.
+These hashes are real: they're computed from the exact files shown in Part 3 (with LF line endings), so you can check them yourself.
 
 ### What is a Content hash?
 
-**Short answer:** a fingerprint of a file: a short code worked out from its exact bytes. Change even one character of the file, and the code comes out completely different.
+**Short answer:** a fingerprint of a file: a short code worked out from its exact bytes, which comes out completely different if even one character of the file changes.
 
 A person's fingerprint is small, but it identifies one person out of billions. A **Content hash** does the same for a file. It's worked out by a fixed recipe called a _hash function_. This project uses SHA-256, a standard published by the US National Institute of Standards and Technology, whose stated purpose is exactly this: the codes "are used to detect whether messages have been changed since the digests were generated" ([NIST, FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/upd1/final)). A SHA-256 hash is 64 characters, using the digits 0 to 9 and the letters a to f.
 
@@ -321,11 +321,11 @@ Here's what happens to 2 March's `transactions.csv` when it's damaged in two way
 
 | `transactions.csv`                           | rows | SHA-256 starts with | Matches the Manifest? |
 | -------------------------------------------- | ---- | ------------------- | --------------------- |
-| as the Custodian wrote it                    | 4    | `a2bd7be1402f…`     | yes                   |
-| cut short: the IRA's buy row never arrived   | 3    | `b0d8b6bf6a81…`     | no: rows and hash     |
-| changed: the IRA's `6000.00` became `600.00` | 4    | `edf78157e43b…`     | no: hash only         |
+| as the Custodian wrote it                    | 4    | `848c0bf753dc…`     | yes                   |
+| cut short: the IRA's buy row never arrived   | 3    | `06b559943d12…`     | no: rows and hash     |
+| changed: the IRA's `6000.00` became `600.00` | 4    | `e6b93535e4ac…`     | no: hash only         |
 
-The last row of that table is why the Manifest has both. The row count is easy to read and gives a clear message ("expected 4 rows, found 3"), but it misses a changed value. The hash catches any change, but can't say what changed. Together they catch everything and explain most of it.
+The last row of that table is why the Manifest has both. The row count is easy to read and gives a clear message ("expected 4 rows, found 3"), but it misses a changed value. The hash catches any change, but can't say what changed. Together they catch both kinds of damage, and the row count often says what went wrong.
 
 ### Why is the Manifest written last?
 
@@ -337,11 +337,11 @@ The Custodian writes the five data files first, works out their row counts and h
 
 ### Why is an incomplete Delivery never loaded?
 
-**Short answer:** because a Transaction is only ever sent once. Load a Delivery with a row missing, and that row is lost for good.
+**Short answer:** because a Transaction is only ever sent once, so a row missing from a loaded Delivery would never arrive later.
 
 Remember Part 2: Transactions are the diary, sent once, on their Posting date. Say 2 March's `transactions.csv` arrived cut short, without the IRA's buy, and Cognitive Wealth loaded it anyway. Then:
 
-- Cognitive Wealth's copy of the IRA shows $6,000.00 of cash and no Bond Fund shares. The Custodian says $3,000.00 and 300 shares.
+- Cognitive Wealth's copy of the IRA shows $6,000.00 of cash and no Stock Fund shares. The Custodian says $2,995.00 and 20 shares.
 - 3 March's Delivery won't fix it. It only carries rows posted on 3 March.
 - Every Position in that IRA is wrong from then on, and so is every number built on it: Market value, the Household's AUM, and one day a fee.
 
@@ -355,17 +355,17 @@ A partial load is worse than none. Loading nothing is visible and safe: the page
 
 **Ingestion** is Cognitive Wealth's side of the feed. For one As-of date, it:
 
-1. finds the Delivery and its Manifest
-2. checks every file against the Manifest (Part 4)
-3. checks every row (later in this Part)
-4. writes the rows into its own tables, all at once
-5. records that this Delivery has been loaded
+1. finds the Delivery and its Manifest, and stops if there's no Manifest yet
+2. checks it hasn't already loaded this Delivery, or a different one for the same day (later in this Part, and Part 6)
+3. checks every file against the Manifest (Part 4)
+4. checks every row and every account number (later in this Part)
+5. writes the rows into its own tables, all at once, with a record that this Delivery has been loaded
 
 Here's every check, in the order it runs:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/ingestion-checks.dark.svg">
-  <img alt="A Delivery for an As-of date arrives. Is manifest.json there? If no, it isn't finished: wait and write nothing. If yes: was a Delivery with this Manifest's hash already ingested? If yes, write nothing and say so. If no: was a different Delivery for this As-of date ingested? If yes, refuse it as a Restatement, handled in phase 2. If no: is every file there, with the row count and Content hash the Manifest lists? If no, refuse, write nothing and name the problem. If yes: is every row valid, and every account number known? If no, refuse the same way. If yes, write every row plus a record of the Delivery and its hash in one database commit. The Delivery is ingested." src="../diagrams/ingestion-checks.light.svg">
+  <img alt="A Delivery for an As-of date arrives. Is manifest.json there? If no, it isn't finished: stop, write nothing and try again later. If yes: was a Delivery with this Manifest's hash already ingested? If yes, write nothing and say so. If no: was a different Delivery for this As-of date ingested? If yes, refuse it as a Restatement, handled in phase 2. If no: is every file there, with the row count and Content hash the Manifest lists? If no, refuse, write nothing and name the problem. If yes: is every row valid, and every account number known? If no, refuse the same way. If yes, write every row plus a record of the Delivery and its hash in one database commit. The Delivery is ingested." src="../diagrams/ingestion-checks.light.svg">
 </picture>
 
 ### What rows does Ingestion write for 2 March?
@@ -383,15 +383,15 @@ Here's every check, in the order it runs:
 
 Two rows in that table need explaining.
 
-**Accounts are matched, not written.** Cognitive Wealth already knows the Reyes Accounts, and whose they are, from the world file (#39). So Ingestion only checks that each account number in the Delivery is one it knows. An unknown number stops Ingestion and names it. Why stop? A row Ingestion can't tie to a Household and a Firm can't be shown to anyone or kept apart from other Firms' data, so a person has to look first.
+**Accounts are matched, not written.** Cognitive Wealth already knows the Reyes Accounts, and whose they are, from the _world file_ (#39): the one file that describes the whole synthetic world, including who owns each Account. So Ingestion only checks that each account number in the Delivery is one it knows. An unknown number stops Ingestion and names it. Why stop? Every row must belong to a Household at one Firm. Without that, it can't be shown to anyone, or kept apart from other Firms' data, so a person has to look first.
 
 **Each row remembers when it arrived.** Every row Ingestion writes is stamped with the moment it reached Cognitive Wealth. That's the third kind of time from the first primer (Part 6), and it's what lets a past report be rebuilt from exactly the data it was made from ([ADR 0009](../adr/0009-custodian-is-the-book-of-record.md)).
 
-For comparison, 26 February's Delivery wrote 11 rows (the Delivery record, 3 Securities seen for the first time, 2 Transactions, 2 Positions, 3 prices), and 27 February's wrote 6 (the Delivery record, 2 Positions, 3 prices).
+For comparison, 26 February's Delivery wrote 11 rows (the record of the Delivery, 3 Securities seen for the first time, 2 Transactions, 2 Positions, 3 prices), and 27 February's wrote 6 (the record of the Delivery, 2 Positions, 3 prices).
 
 ### Why must loading twice change nothing?
 
-**Short answer:** because sooner or later the same Delivery will be loaded twice, and counting its Transactions twice would invent money.
+**Short answer:** because the same Delivery will be loaded twice at some point, and counting its Transactions twice would invent money.
 
 It happens in ordinary ways:
 
@@ -412,17 +412,17 @@ An operation that gives the same result whether it runs once or many times is ca
 
 ### How does a Content hash make that checkable?
 
-**Short answer:** the hash of the Manifest identifies the whole Delivery. Ingestion records it, and refuses work it has already done.
+**Short answer:** the hash of the Manifest identifies the whole Delivery, so Ingestion records it and writes nothing for a Delivery it has already loaded.
 
 The Manifest holds the hash of every data file. So if any file changes, its hash changes, the Manifest changes, and so does the Manifest's own hash. One hash therefore stands for the whole Delivery. For 2 March it's:
 
 ```text
-6d70c0affe4e80b45854e44d4ba11e7a031b6b367ea090aa1323f9a157c85951
+8f71bcf3b3856947e5163afed994bdb2482ebf5430e43ccdced91947df042d92
 ```
 
 Ingestion keeps it in the record of the Delivery. Before loading anything, it asks: "have I already loaded a Delivery with this hash?" If yes, it writes nothing and says "already ingested". Running it a second, third or tenth time leaves every table exactly as it was.
 
-A second guard sits underneath: each Transaction's `transaction_id` from the Custodian is unique in Cognitive Wealth's database. Even if something got past the first check, the database itself refuses a second row with the same ID. Two locks on one door: either one stops a Transaction from being counted twice.
+A second guard sits underneath: each Transaction's `transaction_id` from the Custodian is unique in Cognitive Wealth's database. Even if something got past the first check, the database itself refuses a second row with the same ID. Either guard alone stops a Transaction from being counted twice.
 
 ### What if Ingestion stops halfway through?
 
@@ -430,7 +430,7 @@ A second guard sits underneath: each Transaction's `transaction_id` from the Cus
 
 Databases have a way to group many writes so they happen together or not at all. Databases call it a _transaction_, which is unlucky, because this project already uses Transaction for the Custodian's events. So this primer calls it a **database commit**.
 
-Ingestion writes all 13 rows of 2 March, including the record of the Delivery, in one database commit. If it crashes after writing 7 of them, the database throws all 7 away. There's never a half-loaded day, and since the record of the Delivery wasn't kept either, the next run simply starts again from the beginning.
+Ingestion writes all 13 rows of 2 March, including the record of the Delivery, in one database commit. If it crashes after writing 7 of them, the database discards all 7. There's never a half-loaded day, and since the record of the Delivery wasn't kept either, the next run simply starts again from the beginning.
 
 ### Why check every row instead of trusting the file?
 
@@ -458,7 +458,7 @@ The Reyes Delivery arrived complete, on time, once. Real feeds aren't always so 
 
 ### What if a Delivery is late?
 
-**Short answer:** Ingestion waits, and someone is told if it stays late. It never skips ahead.
+**Short answer:** Ingestion waits without skipping ahead, and someone is told if the Delivery stays late.
 
 Real Deliveries usually arrive overnight, but sometimes hours late: the Custodian's own Close ran long, or a transfer failed and was retried. (General practice; each Custodian publishes its own schedule to its clients.)
 
@@ -475,7 +475,7 @@ Custodians resend Deliveries for ordinary reasons: a transfer they weren't sure 
 
 This only works if the Custodian writes the **same bytes** every time it writes a day. If running the Close for 2 March again changed even one byte, the second Delivery would have a different hash and would look like a different Delivery. So the simulated Custodian's writer (#37) follows strict rules:
 
-- **No "now" in any file.** A line like "made at 02:14:07" would differ on every run.
+- **No "now" in any file.** A value like "made at 02:14:07" would differ on every run.
 - **The same row order every time**, for example by account number and then ID.
 - **The same way of writing every value**: `40.000000`, never sometimes `40` and sometimes `40.0`; dates always as `2026-03-02`; the same line endings.
 
@@ -483,11 +483,11 @@ With those rules, the same seed, pin and date (first primer, Part 7) always give
 
 ### What if the Custodian sends a different Delivery for a past day?
 
-**Short answer:** that's a **Restatement**: a replacement for a Delivery already sent, because the first one was wrong. Ingestion refuses it for now, and phase 2 handles it.
+**Short answer:** that's a **Restatement**: a replacement for a Delivery already sent, because the first one was wrong, which Ingestion refuses until phase 2 handles it.
 
-Say the Custodian finds that 2 March's Stock Fund price should have been $150.52, not $150.25, and sends 2 March again with the right price. Only `prices.csv` changes, but that changes its hash (it now starts with `966129f44e6d…`), so the Manifest changes, so the Manifest's own hash changes. Ingestion sees an As-of date it has already loaded, with a different hash: a Restatement.
+Say the Custodian finds that 2 March's Stock Fund price should have been $150.52, not $150.25, and sends 2 March again with the right price. `prices.csv` changes, and so does `positions.csv`, whose `price` and `market_value` columns use that price. Their hashes change (the new `prices.csv` starts with `966129f44e6d…`), so the Manifest changes, so the Manifest's own hash changes. Ingestion sees an As-of date it has already loaded, with a different hash: a Restatement.
 
-What would change? The joint account's Market value on 2 March goes from $15,000.00 to $15,010.80, because 40 × ($150.52 − $150.25) = $10.80.
+What would change? The joint account's Market value on 2 March goes from $15,000.00 to $15,010.80, because 40 × ($150.52 − $150.25) = $10.80. The IRA's goes from $6,000.00 to $6,005.40, because 20 × $0.27 = $5.40.
 
 A Restatement is harder than a Correction, and it's worth seeing why:
 
@@ -501,28 +501,28 @@ Anything shown or computed from the old Delivery, such as a Household's AUM on 2
 
 ### What if the Custodian's Positions don't match the Transactions?
 
-**Short answer:** that's a **Break**: a difference between the Positions Cognitive Wealth works out and the ones the Custodian reports. It's kept until someone finds the cause. Phase 2 builds this.
+**Short answer:** that's a **Break**: a difference between the Positions Cognitive Wealth works out and the ones the Custodian reports, kept until someone finds the cause (phase 2 builds this).
 
 Part 3 checked that 2 March's Transactions, added up across all three Deliveries, match 2 March's `positions.csv`. Reconciliation runs that check every day, for every Position, automatically.
 
 Suppose the IRA's buy had somehow been lost, despite all the checks: say the Custodian itself left it out of `transactions.csv` but counted it in `positions.csv`. The row count and hash would match the Manifest, because the Custodian wrote them that way. Reconciliation would then find two Breaks:
 
-| CW-000002, 2 March | From the Transactions | From `positions.csv` | Break      |
-| ------------------ | --------------------- | -------------------- | ---------- |
-| Cash               | 6,000.00              | 3,000.00             | 3,000.00   |
-| Bond Fund          | 0 shares              | 300 shares           | 300 shares |
+| CW-000002, 2 March | From the Transactions | From `positions.csv` | Break     |
+| ------------------ | --------------------- | -------------------- | --------- |
+| Cash               | 6,000.00              | 2,995.00             | 3,005.00  |
+| Stock Fund         | 0 shares              | 20 shares            | 20 shares |
 
 The Manifest proves the files arrived as they were sent. Reconciliation checks that what was sent agrees with itself. They catch different problems, so a real platform needs both.
 
 ### What do real Custodians do differently?
 
-**Short answer:** more files, older formats and many more kinds of row. The ideas stay the same.
+**Short answer:** more files, older formats and many more kinds of row, but the same ideas.
 
 All of these are general practice, and each Custodian documents its own format for its clients:
 
 - **More files.** Real feeds also send cash balances, Cost basis (what was paid for each Tax lot, which phase 2 covers) and owner details. Schwab's list includes "Cost basis" and "Client and account profile information" alongside positions, transactions and prices ([Schwab Advisor Services](https://advisorservices.schwab.com/managing-your-business/tech-integration/daily-data-files)).
 - **Fixed-width files.** Some formats don't use commas. Each value sits at fixed character positions instead: characters 1 to 9 for the account number, 10 to 17 for the date, and so on.
-- **The check inside the file.** Older formats often put the row count in the file itself, in a _header_ line at the top and a _trailer_ line at the bottom ("this file has 4 rows"). It's the same idea as a Manifest, kept inside each file.
+- **The check inside the file.** Older formats often put the row count in the file itself, in a _header_ row at the top and a _trailer_ row at the bottom ("this file has 4 rows"). It's the same idea as a Manifest, kept inside each file.
 - **Many more kinds of Transaction.** The first primer's eight kinds are a small part of what real Custodians send (first primer, Part 6).
 - **Many Custodians.** A platform serving Firms at several Custodians has one reader per Custodian, each turning its files into the same shape. This project has one Custodian, so it doesn't need that layer.
 
@@ -530,7 +530,7 @@ All of these are general practice, and each Custodian documents its own format f
 
 ### Which slices build what?
 
-**Short answer:** the Custodian writes Deliveries (#37), the contract describes their rows (#38), and Ingestion loads them (#40). Later slices change where they're stored and when they run.
+**Short answer:** the Custodian writes Deliveries (#37), the contract describes their rows (#38), Ingestion loads them (#40), and later slices change where they're stored and when they run.
 
 | Slice | What it builds                                                                                                         |
 | ----- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -540,7 +540,7 @@ All of these are general practice, and each Custodian documents its own format f
 | #40   | `pnpm custodian:ingest <date>`: Ingestion of one Delivery, from the command line                                       |
 | #54   | SeaweedFS replaces the local folder                                                                                    |
 | #56   | A background job ingests each Close as it happens                                                                      |
-| #61   | One trace follows a day from the Custodian's Close through Ingestion                                                   |
+| #61   | One trace (a timed record of every step) follows a day from the Close through Ingestion                                |
 
 Phase 2 adds Reconciliation, Breaks and Restatements.
 
@@ -549,7 +549,7 @@ Phase 2 adds Reconciliation, Breaks and Restatements.
 **Short answer:** six, one for each problem this primer described.
 
 1. **The Custodian writes the Manifest last**, and writes the same bytes for the same day every time.
-2. **Ingestion checks the whole Delivery before writing anything**: the Manifest, then every file's row count and Content hash, then every row, then every account number.
+2. **Ingestion checks the whole Delivery before writing anything**: the Manifest, then that this Delivery and its day are new, then every file's row count and Content hash, then every row and every account number.
 3. **One database commit per Delivery.** Every row, and the record of the Delivery, or none of them.
 4. **Loading twice changes nothing.** The Manifest's hash is recorded, and each Transaction's ID is unique.
 5. **A different Delivery for a day already loaded is refused**, never merged or overwritten, until phase 2 decides how to handle a Restatement.
@@ -629,7 +629,7 @@ The second run finds a Delivery with the same Manifest hash already recorded, wr
 <details>
 <summary>8. Ingestion crashes after writing 7 of 2 March's 13 rows. What's in the database afterwards?</summary>
 
-None of the 13. They were all in one database commit, so the database throws away the 7 it had. The record of the Delivery wasn't kept either, so the next run starts 2 March again from the beginning.
+None of the 13. They were all in one database commit, so the database discards the 7 it had. The record of the Delivery wasn't kept either, so the next run starts 2 March again from the beginning.
 
 </details>
 
@@ -643,6 +643,6 @@ Every file's bytes change, so every Content hash changes, so the Manifest's hash
 <details>
 <summary>10. (Level 3) The Custodian restates 2 March with the Stock Fund at $150.52 instead of $150.25. What changes for the joint account, and what does Ingestion do in phase 1?</summary>
 
-Its Market value on 2 March goes from $15,000.00 to 40 × $150.52 + 300 × $10.00 + $5,990.00 = $15,010.80, $10.80 more. In phase 1, Ingestion refuses the Restatement with a clear error: an As-of date it has already loaded, with a different Manifest hash. Phase 2 decides how to apply it while keeping the old version explainable.
+Its Market value on 2 March goes from $15,000.00 to 40 × $150.52 + 300 × $10.00 + $5,990.00 = $15,010.80, $10.80 more. (The IRA gains 20 × $0.27 = $5.40.) In phase 1, Ingestion refuses the Restatement with a clear error: an As-of date it has already loaded, with a different Manifest hash. Phase 2 decides how to apply it while keeping the old version explainable.
 
 </details>

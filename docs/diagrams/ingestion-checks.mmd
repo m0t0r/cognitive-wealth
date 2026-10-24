@@ -1,7 +1,7 @@
 flowchart TB
   start["A Delivery for an As-of date"]
   m{"Is manifest.json there?"}
-  wait["Not finished yet:<br/>wait, write nothing"]
+  wait["Not finished yet: stop,<br/>write nothing, try again later"]
   same{"Was a Delivery with this<br/>Manifest's hash already ingested?"}
   skip["Already ingested:<br/>write nothing, say so"]
   other{"Was a different Delivery<br/>for this As-of date ingested?"}

@@ -217,7 +217,7 @@ _Avoid_: Export, dump
 
 **Delivery**:
 One Close's Custodian feed: the files for one As-of date and their Manifest. Transactions in it are the ones posted that day; Securities, Accounts, Positions and prices are complete snapshots.
-_Avoid_: Bundle, drop, batch
+_Avoid_: Bundle, drop
 
 **Security master**:
 The Custodian's list of every Security, with its identifier, name and kind, sent in every Delivery so other files can name a Security by its identifier.
@@ -234,6 +234,9 @@ _Avoid_: Checksum
 **Ingestion**:
 Cognitive Wealth reading a Delivery, checking it against its Manifest and the contract row by row, and writing it into its own database in one commit, or not at all. Loading the same Delivery twice changes nothing.
 _Avoid_: Import, sync
+
+**Idempotent**:
+Giving the same result however many times it runs. Ingestion is idempotent: loading a Delivery a second time writes nothing.
 
 **Redelivery**:
 A Delivery sent again, byte for byte the same as one already received. Ingestion ignores it.
