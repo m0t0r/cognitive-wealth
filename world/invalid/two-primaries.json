@@ -1,0 +1,52 @@
+{
+  "version": 0,
+  "custodian": {
+    "accounts": [
+      {
+        "account_number": "CW-000001",
+        "registration_type": "individual",
+        "opened_on": "2026-02-26"
+      }
+    ]
+  },
+  "crm": {
+    "firm": {
+      "name": "Larkspur Wealth Partners"
+    },
+    "households": [
+      {
+        "key": "reyes",
+        "name": "The Reyes Household",
+        "relationship_status": "client",
+        "primary": [
+          {
+            "key": "dana-reyes",
+            "first_name": "Dana",
+            "last_name": "Reyes",
+            "born_on": "1978-05-14",
+            "account_roles": [
+              {
+                "account_number": "CW-000001",
+                "role": "owner",
+                "starts_on": "2026-02-26"
+              }
+            ]
+          },
+          {
+            "key": "jordan-reyes",
+            "first_name": "Dana",
+            "last_name": "Reyes",
+            "born_on": "1978-05-14",
+            "account_roles": [
+              {
+                "account_number": "CW-000001",
+                "role": "owner",
+                "starts_on": "2026-02-26"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

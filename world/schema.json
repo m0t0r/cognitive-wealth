@@ -3,12 +3,8 @@
   "$defs": {
     "AccountRole": {
       "additionalProperties": false,
-      "description": "A dated link between a Person and an Account (GLOSSARY.md, \"Account role\").",
+      "description": "A dated link between the Person who holds it and an Account (GLOSSARY.md, \"Account role\").",
       "properties": {
-        "person": {
-          "title": "Person",
-          "type": "string"
-        },
         "account_number": {
           "title": "Account Number",
           "type": "string"
@@ -31,7 +27,6 @@
         }
       },
       "required": [
-        "person",
         "account_number",
         "role",
         "starts_on"
@@ -117,7 +112,7 @@
     },
     "Household": {
       "additionalProperties": false,
-      "description": "The People a Firm serves together, and the Accounts they are linked to.",
+      "description": "The People a Firm serves together. Who leads is part of the shape (GLOSSARY.md):\n\nexactly one Primary, at most one Co-client, and any number of Dependents.",
       "properties": {
         "key": {
           "title": "Key",
@@ -136,18 +131,26 @@
           "title": "Relationship Status",
           "type": "string"
         },
-        "people": {
+        "primary": {
+          "$ref": "#/$defs/Person"
+        },
+        "co_client": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Person"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "dependents": {
+          "default": [],
           "items": {
             "$ref": "#/$defs/Person"
           },
-          "title": "People",
-          "type": "array"
-        },
-        "account_roles": {
-          "items": {
-            "$ref": "#/$defs/AccountRole"
-          },
-          "title": "Account Roles",
+          "title": "Dependents",
           "type": "array"
         }
       },
@@ -155,8 +158,7 @@
         "key",
         "name",
         "relationship_status",
-        "people",
-        "account_roles"
+        "primary"
       ],
       "title": "Household",
       "type": "object"
@@ -181,22 +183,20 @@
           "title": "Born On",
           "type": "string"
         },
-        "role": {
-          "enum": [
-            "primary",
-            "co_client",
-            "dependent"
-          ],
-          "title": "Role",
-          "type": "string"
+        "account_roles": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AccountRole"
+          },
+          "title": "Account Roles",
+          "type": "array"
         }
       },
       "required": [
         "key",
         "first_name",
         "last_name",
-        "born_on",
-        "role"
+        "born_on"
       ],
       "title": "Person",
       "type": "object"

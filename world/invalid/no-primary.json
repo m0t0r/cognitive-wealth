@@ -1,0 +1,24 @@
+{
+  "version": 0,
+  "custodian": {
+    "accounts": [
+      {
+        "account_number": "CW-000001",
+        "registration_type": "individual",
+        "opened_on": "2026-02-26"
+      }
+    ]
+  },
+  "crm": {
+    "firm": {
+      "name": "Larkspur Wealth Partners"
+    },
+    "households": [
+      {
+        "key": "reyes",
+        "name": "The Reyes Household",
+        "relationship_status": "client"
+      }
+    ]
+  }
+}
