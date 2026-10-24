@@ -13,7 +13,7 @@ from custodian.models import (
     TransactionKind,
 )
 from custodian.money import Money, Price, Shares
-from tests.integration.examples import bond_fund, danas_account
+from tests.integration.examples import a_transaction_id, bond_fund, danas_account
 
 
 @pytest.mark.parametrize(
@@ -30,6 +30,7 @@ def test_money_and_shares_come_back_exactly_as_recorded(
 ) -> None:
     session.add(
         Transaction(
+            transaction_id=a_transaction_id(),
             account=danas_account(),
             security=bond_fund(),
             kind=TransactionKind.BUY,
@@ -61,6 +62,7 @@ def test_the_cash_sweep_is_stored_as_its_own_kind(session: Session) -> None:
 def test_a_transaction_cant_settle_before_its_trade_date(session: Session) -> None:
     session.add(
         Transaction(
+            transaction_id=a_transaction_id(),
             account=danas_account(),
             kind=TransactionKind.CONTRIBUTION,
             trade_date=date(2026, 3, 3),
@@ -77,6 +79,7 @@ def test_a_transaction_cant_settle_before_its_trade_date(session: Session) -> No
 def test_shares_cant_move_without_a_security(session: Session) -> None:
     session.add(
         Transaction(
+            transaction_id=a_transaction_id(),
             account=danas_account(),
             kind=TransactionKind.TRANSFER,
             trade_date=date(2026, 3, 2),
@@ -97,6 +100,7 @@ def test_a_correction_keeps_its_trade_date_and_the_later_day_it_was_posted(
     # The primer's row 10: the right dividend for Tue 3 Mar, found and posted on Fri 6 Mar.
     session.add(
         Transaction(
+            transaction_id=a_transaction_id(),
             account=danas_account(),
             security=bond_fund(),
             kind=TransactionKind.DIVIDEND,
@@ -117,6 +121,7 @@ def test_a_correction_keeps_its_trade_date_and_the_later_day_it_was_posted(
 def test_a_transaction_cant_be_posted_before_its_trade_date(session: Session) -> None:
     session.add(
         Transaction(
+            transaction_id=a_transaction_id(),
             account=danas_account(),
             kind=TransactionKind.CONTRIBUTION,
             trade_date=date(2026, 3, 3),
@@ -133,6 +138,7 @@ def test_a_transaction_cant_be_posted_before_its_trade_date(session: Session) ->
 def a_dividend() -> Transaction:
     # The primer's row 5: the Bond Fund's dividend on Tue 3 Mar, which turned out to be wrong.
     return Transaction(
+        transaction_id=a_transaction_id(),
         account=danas_account(),
         security=bond_fund(),
         kind=TransactionKind.DIVIDEND,
@@ -148,6 +154,7 @@ def reversal_of(
 ) -> Transaction:
     # The primer's row 9: the same row with every amount negated, posted the day it was found.
     return Transaction(
+        transaction_id=a_transaction_id(),
         account=original.account,
         security=original.security,
         kind=kind,
@@ -157,6 +164,17 @@ def reversal_of(
         posting_date=date(2026, 3, 6),
         amount=Money("-9.00"),
     )
+
+
+def test_a_transaction_id_names_one_transaction(session: Session) -> None:
+    # The feed publishes it, and Ingestion (#40) tells Transactions apart by it.
+    first, second = a_dividend(), a_dividend()
+    second.account, second.security = first.account, first.security
+    second.transaction_id = first.transaction_id
+    session.add_all([first, second])
+
+    with pytest.raises(IntegrityError, match="transaction_transaction_id_key"):
+        session.commit()
 
 
 def test_a_reversal_names_the_transaction_it_undoes(session: Session) -> None:

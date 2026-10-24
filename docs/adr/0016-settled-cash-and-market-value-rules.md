@@ -28,4 +28,4 @@ The total is rounded once, from the exact sum of every `Shares × Price` ([ADR 0
 - A Reversal posted after its original settled is counted only in answers given on or after its Posting date (`known_on`), like any Correction. Asked earlier, the original still stands.
 - The direction comes from the row a Reversal names, one level deep, so a Reversal can't undo a Reversal: it would take its direction from the wrong row. A wrong Reversal is fixed with a new Transaction instead. The database refuses such a row with a trigger, since a check constraint can't see the row being undone, and the ledger fixture refuses it too.
 - Prices have no Posting date yet, so a price corrected later changes past Market values. A limit on carried prices, and corrected prices, are left for later.
-- The Custodian feed (#37) prints each Position's line value, rounded to the cent, beside a total rounded once. A reader checking the total by hand can be a cent or so out.
+- The Custodian feed (#37) sends each Position's line value, rounded to the cent, and no total ([ADR 0017](0017-custodian-feed-format.md)). A total worked out from the lines can be a cent or so from `market_value_as_of`'s.

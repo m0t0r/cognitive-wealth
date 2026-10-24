@@ -28,6 +28,18 @@ def test_the_v0_fixture_holds_danas_week_and_the_iras_first_day() -> None:
     ]
 
 
+def test_a_rows_transaction_id_comes_from_its_number() -> None:
+    # So a world rebuilt from the same files publishes the same IDs, whatever order it's loaded in.
+    fixture = read_ledger_fixture(LEDGER_V0_PATH)
+
+    assert [row.transaction_id for row in fixture.transactions][:3] == [
+        "TX-000000001",
+        "TX-000000002",
+        "TX-000000003",
+    ]
+    assert fixture.transactions[12].transaction_id == "TX-000000013"
+
+
 def test_a_reversal_must_negate_the_row_it_undoes(tmp_path: Path) -> None:
     path = write_fixture_with_row(tmp_path, 9, {"amount": "-10.50"})
 

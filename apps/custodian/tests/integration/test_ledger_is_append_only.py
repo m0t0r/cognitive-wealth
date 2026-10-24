@@ -13,13 +13,14 @@ from custodian.models import (
     TransactionKind,
 )
 from custodian.money import Money, Price
-from tests.integration.examples import bond_fund, danas_account
+from tests.integration.examples import a_transaction_id, bond_fund, danas_account
 from tests.integration.postgres import Database
 
 
 def record_a_contribution(session: Session) -> None:
     session.add(
         Transaction(
+            transaction_id=a_transaction_id(),
             account=danas_account(),
             kind=TransactionKind.CONTRIBUTION,
             trade_date=date(2026, 2, 26),
@@ -133,6 +134,7 @@ def test_the_app_has_only_the_access_each_table_grants(database: Database) -> No
         columns.setdefault(table, set()).add(column)
     assert columns == {
         "transaction": {
+            "transaction_id",
             "account_id",
             "security_id",
             "kind",

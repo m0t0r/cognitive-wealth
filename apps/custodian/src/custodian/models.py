@@ -4,7 +4,8 @@ The Ledger is append-only: the `app` role can insert and read Transactions, neve
 delete them (GLOSSARY.md, "Ledger"). A mistake is fixed with a Reversal and a new Transaction.
 
 Each table's bigint `id` stays inside the custodian (ADR 0003). What it publishes are the keys
-its domain already has: an Account's `account_number` and a Security's `identifier`.
+its domain already has: an Account's `account_number`, a Security's `identifier` and a
+Transaction's `transaction_id`.
 """
 
 from collections.abc import Iterable, Mapping
@@ -191,6 +192,10 @@ class Transaction(Base):
     )
 
     id: Mapped[int] = _id()
+    transaction_id: Mapped[str] = mapped_column(unique=True)
+    """The Custodian's own ID for the Transaction, which the feed publishes: opaque, and never
+    reused. Whoever records the row sets it, with no random default, so a world rebuilt from the
+    same files publishes the same IDs (ADR 0017). The ledger fixture's are `TX-000000003`."""
     account_id: Mapped[int] = mapped_column(ForeignKey("account.id"))
     security_id: Mapped[int | None] = mapped_column(ForeignKey("security.id"))
     """None for a cash-only Transaction, such as a contribution or a fee."""

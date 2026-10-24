@@ -26,7 +26,7 @@ The primer climbs in three levels. Each level uses only what the levels before i
 
 On a first read, it's fine to stop after Level 1, take a break, and come back.
 
-Not covered here: Reconciliation and Breaks in depth (phase 2, though Part 6 previews them), the exact columns of each file (#37 decides them, and the contract in #38 records them), and how the Close works out each day's numbers (the Close primer, #48).
+Not covered here: Reconciliation and Breaks in depth (phase 2, though Part 6 previews them), what each column may hold (the row models in `apps/custodian/src/custodian/feed.py`, which the contract in #38 publishes), and how the Close works out each day's numbers (the Close primer, #48).
 
 ## Part 1: How does Cognitive Wealth learn what happened? (Level 1)
 
@@ -146,7 +146,7 @@ The joint account already had a history. On Thursday 26 February it received $5,
 
 **Short answer:** five small tables, shown here exactly as the Custodian writes them.
 
-The layout below (the column names, the order of the columns, how the Manifest in Part 4 is spaced) is made up for this primer. #37 decides the real one, so its files and hashes will differ, but the ideas are the same.
+These are the real files: what the simulated Custodian writes for 2 March, byte for byte, when you run `pnpm --filter custodian feed:write --date 2026-03-02` with the hand-written Ledger loaded (#37). The Manifest in Part 4 and its hashes are real too.
 
 **`securities.csv`**, the Security master. The same three rows arrive every day:
 
@@ -170,17 +170,18 @@ CW-000002,traditional_ira,2026-03-02
 **`transactions.csv`**: the four Transactions posted on 2 March:
 
 ```csv
-transaction_id,account_number,kind,security,shares,amount,trade_date,settlement_date,posting_date
-3,CW-000001,contribution,,,10000.00,2026-03-02,2026-03-02,2026-03-02
-4,CW-000001,buy,LKSF,40.000000,-6010.00,2026-03-02,2026-03-03,2026-03-02
-12,CW-000002,contribution,,,6000.00,2026-03-02,2026-03-02,2026-03-02
-13,CW-000002,buy,LKSF,20.000000,-3005.00,2026-03-02,2026-03-03,2026-03-02
+transaction_id,account_number,kind,reverses,security,shares,amount,trade_date,settlement_date,posting_date
+TX-000000003,CW-000001,contribution,,,,10000.00,2026-03-02,2026-03-02,2026-03-02
+TX-000000004,CW-000001,buy,,LKSF,40.000000,-6010.00,2026-03-02,2026-03-03,2026-03-02
+TX-000000012,CW-000002,contribution,,,,6000.00,2026-03-02,2026-03-02,2026-03-02
+TX-000000013,CW-000002,buy,,LKSF,20.000000,-3005.00,2026-03-02,2026-03-03,2026-03-02
 ```
 
 A few things to notice:
 
-- **Every row has the Custodian's own ID**, in `transaction_id`: its row number in the hand-written Ledger. The IRA's rows are 12 and 13 because they were added to that file after rows 5 to 11. An ID only has to be unique, not in date order. Part 5 shows why this ID matters so much.
-- **Empty values are left empty.** A contribution has no Security and no shares, so those two columns are blank (the `,,`).
+- **Every row has the Custodian's own ID**, in `transaction_id`. For the hand-written Ledger, it's `TX-` followed by the row's number in that file. The IRA's rows are TX-000000012 and TX-000000013 because they were added to that file after rows 5 to 11. An ID only has to be unique, not in date order, and a reader treats it as a label, never as a number to do sums with. Part 5 shows why this ID matters so much.
+- **`reverses` is empty here.** Only a Reversal fills it in, with the `transaction_id` of the Transaction it undoes. 6 March's Delivery has one: `TX-000000009` reverses `TX-000000005`, the wrong dividend.
+- **Empty values are left empty.** A contribution undoes nothing and has no Security and no shares, so those three columns are blank (the `,,,,`).
 - **The buys settle a day later.** Their Settlement date is Tuesday 3 March: T+1 (first primer, Part 3).
 - **Numbers are written in full, always the same way.** Cash has two decimal places, shares six ([ADR 0013](../adr/0013-money-shares-prices-and-rates-are-separate-types.md)), and money going out is negative. Part 6 shows why "always the same way" matters.
 
@@ -293,7 +294,7 @@ The **Manifest** is that slip. Here's 2 March's, `manifest.json`, exactly as the
     {
       "name": "transactions.csv",
       "rows": 4,
-      "sha256": "848c0bf753dce9ebafd05d35a09fafe2841deb84d32375237c4e1d97be4b2aa4"
+      "sha256": "4353c6396bde51965802c867d1219be10d90d60b2c4f1fcfdfcb9b13a8257254"
     }
   ]
 }
@@ -321,9 +322,9 @@ Here's what happens to 2 March's `transactions.csv` when it's damaged in two way
 
 | `transactions.csv`                           | rows | SHA-256 starts with | Matches the Manifest? |
 | -------------------------------------------- | ---- | ------------------- | --------------------- |
-| as the Custodian wrote it                    | 4    | `848c0bf753dc…`     | yes                   |
-| cut short: the IRA's buy row never arrived   | 3    | `06b559943d12…`     | no: rows and hash     |
-| changed: the IRA's `6000.00` became `600.00` | 4    | `e6b93535e4ac…`     | no: hash only         |
+| as the Custodian wrote it                    | 4    | `4353c6396bde…`     | yes                   |
+| cut short: the IRA's buy row never arrived   | 3    | `90f1df2d7ad4…`     | no: rows and hash     |
+| changed: the IRA's `6000.00` became `600.00` | 4    | `72000fff5be6…`     | no: hash only         |
 
 The last row of that table is why the Manifest has both. The row count is easy to read and gives a clear message ("expected 4 rows, found 3"), but it misses a changed value. The hash catches any change, but can't say what changed. Together they catch both kinds of damage, and the row count often says what went wrong.
 
@@ -417,7 +418,7 @@ An operation that gives the same result whether it runs once or many times is ca
 The Manifest holds the hash of every data file. So if any file changes, its hash changes, the Manifest changes, and so does the Manifest's own hash. One hash therefore stands for the whole Delivery. For 2 March it's:
 
 ```text
-8f71bcf3b3856947e5163afed994bdb2482ebf5430e43ccdced91947df042d92
+20067846433cbe524c6aa4e5f748804f294f35e878fe318d0e6fd371e7f2b1d2
 ```
 
 Ingestion keeps it in the record of the Delivery. Before loading anything, it asks: "have I already loaded a Delivery with this hash?" If yes, it writes nothing and says "already ingested". Running it a second, third or tenth time leaves every table exactly as it was.

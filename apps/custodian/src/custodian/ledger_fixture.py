@@ -55,6 +55,16 @@ class FixtureTransaction(_Strict):
     reverses: int | None = None
     """For a Reversal, the `number` of the row it undoes."""
 
+    @property
+    def transaction_id(self) -> str:
+        """The Custodian's ID for this row, worked out from its number: row 3 is `TX-000000003`.
+
+        It depends only on the file, never on the database's `id` or the order rows are loaded
+        in, so a world rebuilt from the same files publishes the same IDs (ADR 0017). Adding a
+        row at the end changes no other row's ID; one added in the middle renumbers those after.
+        """
+        return f"TX-{self.number:09d}"
+
 
 class LedgerFixture(_Strict):
     securities: list[FixtureSecurity]

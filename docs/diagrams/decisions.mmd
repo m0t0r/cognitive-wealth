@@ -14,6 +14,8 @@ flowchart LR
   a13["0013 Money, shares, prices<br/>and rates are separate types"]
   a14["0014 AI SDK,<br/>smallest model first"]
   a15["0015 Positions counted<br/>by trade date"]
+  a16["0016 Settled cash and<br/>Market value rules"]
+  a17["0017 Custodian feed format,<br/>Transaction IDs"]
 
   ir["incident-response.md"]
   host["Hosting must keep<br/>after() work alive"]
@@ -36,3 +38,8 @@ flowchart LR
   a10 -->|"pure calculations as tools"| a12
   a10 -->|"tools are AI SDK tools"| a14
   a13 -->|"@repo/money"| a12
+  a13 -->|"round once"| a16
+  a15 -->|"Settled cash by<br/>settlement date"| a16
+  a3 -->|"id stays inside"| a17
+  a15 -->|"Positions as known<br/>that day"| a17
+  a16 -->|"line values, no total"| a17

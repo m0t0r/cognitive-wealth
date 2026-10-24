@@ -11,7 +11,7 @@ from custodian.market_value import ValuedPosition, market_value_as_of
 from custodian.models import Security, SecurityKind, SecurityPrice, Transaction, TransactionKind
 from custodian.money import Money, Price, Shares
 from custodian.world import WORLD_V0_PATH, read_world
-from tests.integration.examples import danas_account
+from tests.integration.examples import a_transaction_id, danas_account
 
 JOINT = "CW-000001"
 IRA = "CW-000002"
@@ -82,6 +82,7 @@ def test_the_total_is_rounded_once_not_line_by_line(session: Session) -> None:
             [
                 SecurityPrice(security=security, price_date=day, price=Price("5")),
                 Transaction(
+                    transaction_id=a_transaction_id(),
                     account=account,
                     security=security,
                     kind=TransactionKind.TRANSFER,

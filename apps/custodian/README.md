@@ -4,6 +4,8 @@ The simulated custodian: the book of record for client holdings ([ADR 0009](../.
 
 For now it serves one route, `GET /health`, which returns `{"status": "ok"}`. Its ledger lives in a Postgres database of its own: Securities, their daily prices, Accounts and the append-only Transactions, Reversals included. An Account's Positions are never stored: `positions_as_of()` rebuilds them from its Transactions, counting by Trade date ([ADR 0015](../../docs/adr/0015-positions-counted-by-trade-date.md)).
 
+Each day, the Custodian feed publishes what the Ledger says as one Delivery: `securities.csv`, `accounts.csv`, the `transactions.csv` posted that day, `positions.csv` and `prices.csv`, then `manifest.json` with each file's row count and SHA-256. The same data always gives the same bytes ([ADR 0017](../../docs/adr/0017-custodian-feed-format.md)); [the feed primer](../../docs/learn/03-custodian-feed-and-ingestion.md) shows 2 March's files.
+
 ## Prerequisites
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (`brew install uv`). It installs the pinned Python (`.python-version`) and the locked dependencies (`uv.lock`) into `.venv/` on first run; there's no separate install step.
@@ -21,6 +23,7 @@ From the repo root, through the package scripts (each calls `uv run`):
 | `pnpm --filter custodian db:migrate`       | Alembic migrations to head, as `DATABASE_URL` (+ `DATABASE_PASSWORD_FILE`)       |
 | `pnpm --filter custodian world:load`       | Loads `world/v0.json`'s custodian half and `fixtures/ledger-v0.json`; idempotent |
 | `pnpm --filter custodian world:schema`     | Regenerates `world/schema.json` from the world file's models                     |
+| `pnpm --filter custodian feed:write`       | `--date 2026-03-02`: writes that day's Delivery to `.dev/custodian-feed/`        |
 | `pnpm --filter custodian lint`             | Ruff lint                                                                        |
 | `pnpm --filter custodian format`           | Ruff format (`format:check` to check only)                                       |
 | `pnpm --filter custodian check-types`      | pyright, strict mode                                                             |
@@ -53,6 +56,8 @@ src/custodian/ledger_fixture.py  the hand-written ledger's format
 src/custodian/load.py      world:load: the world's custodian half and the ledger, into Postgres
 src/custodian/positions.py Positions and Settled cash rebuilt from the Ledger, as of a date
 src/custodian/market_value.py  Positions × the latest prices, rounded once
+src/custodian/feed.py      feed:write: one As-of date's Delivery, five CSV files and manifest.json
+src/custodian/feed_store.py  where Deliveries are kept: put, get and list, in a local folder for now
 fixtures/ledger-v0.json    Dana's week from docs/learn/01, plus the IRA's first day
 ../../world/               the world file (v0.json) and its JSON Schema, shared with the seed
 ../../world/invalid/       world files that each break one rule, which both loaders must reject

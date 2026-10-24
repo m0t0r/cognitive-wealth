@@ -147,6 +147,10 @@ _Avoid_: Instrument, asset, holding
 A dated movement the Custodian records in an Account: a buy, sell, dividend, interest payment, contribution, withdrawal, fee or transfer, or the Reversal of one.
 _Avoid_: Activity, trade (a trade is only a buy or a sell)
 
+**Transaction ID**:
+The Custodian's own label for one Transaction, such as `TX-000000003`, sent with it in the Custodian feed. Unique and never reused; a reader compares it but never reads meaning into it.
+_Avoid_: Row number, sequence number
+
 **Corporate action**:
 An event decided by the company or fund behind a Security that changes what its holders own without them trading, such as a stock split or a merger.
 _Avoid_: Corp action, event

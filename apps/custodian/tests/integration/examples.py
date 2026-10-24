@@ -4,8 +4,14 @@ Each call returns new, unsaved objects, so tests never share one.
 """
 
 from datetime import date
+from uuid import uuid4
 
 from custodian.models import Account, RegistrationType, Security, SecurityKind
+
+
+def a_transaction_id() -> str:
+    """A Transaction ID no other row has. Opaque, like any Custodian's, so a random one will do."""
+    return f"TX-{uuid4().hex}"
 
 
 def danas_account() -> Account:

@@ -130,6 +130,7 @@ def _record_ledger(
     recorded: dict[int, Transaction] = {}  # by fixture row number, to find what a Reversal undoes
     for row in wanted:
         transaction = Transaction(
+            transaction_id=row.transaction_id,
             account=account,
             security=None if row.security is None else securities[row.security],
             kind=row.kind,
@@ -153,6 +154,7 @@ class _LedgerRow:
     A frozen dataclass compares field by field, so two `_LedgerRow`s are equal when every field is.
     """
 
+    transaction_id: str
     kind: TransactionKind
     security: str | None
     reverses: int | None
@@ -176,6 +178,7 @@ def _check_ledger(
     place_of_id = {transaction.id: index for index, transaction in enumerate(already)}
     in_database = [
         _LedgerRow(
+            transaction_id=transaction.transaction_id,
             kind=transaction.kind,
             security=None if transaction.security is None else transaction.security.identifier,
             reverses=None
@@ -192,6 +195,7 @@ def _check_ledger(
     place_of_number = {row.number: index for index, row in enumerate(wanted)}
     in_fixture = [
         _LedgerRow(
+            transaction_id=row.transaction_id,
             kind=row.kind,
             security=row.security,
             reverses=None if row.reverses is None else place_of_number[row.reverses],
