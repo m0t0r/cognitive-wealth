@@ -196,7 +196,8 @@ class Transaction(Base):
     """None for a cash-only Transaction, such as a contribution or a fee."""
     kind: Mapped[TransactionKind] = mapped_column(_pg_enum(TransactionKind, "transaction_kind"))
     reverses_id: Mapped[int | None] = mapped_column(ForeignKey("transaction.id"), unique=True)
-    """For a Reversal, the Transaction it undoes, which can be reversed only once. Else None."""
+    """For a Reversal, the Transaction it undoes, which can be reversed only once and isn't itself
+    a Reversal (a trigger checks, migration 0003). Else None."""
     trade_date: Mapped[date]
     settlement_date: Mapped[date]
     posting_date: Mapped[date]

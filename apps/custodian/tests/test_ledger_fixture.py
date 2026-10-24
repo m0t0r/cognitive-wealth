@@ -42,6 +42,19 @@ def test_a_reversal_must_undo_an_earlier_row(tmp_path: Path) -> None:
         read_ledger_fixture(path)
 
 
+def test_a_reversal_cant_undo_a_reversal(tmp_path: Path) -> None:
+    fixture = json.loads(LEDGER_V0_PATH.read_text())
+    reversal = fixture["transactions"][8]  # row 9, which reverses row 5
+    fixture["transactions"].append(
+        reversal | {"number": len(fixture["transactions"]) + 1, "reverses": 9, "amount": "9.00"}
+    )
+    path = tmp_path / "ledger.json"
+    path.write_text(json.dumps(fixture))
+
+    with pytest.raises(ValidationError, match=r"transactions\.13: .*row 9 is a Reversal"):
+        read_ledger_fixture(path)
+
+
 def test_rows_are_numbered_in_order(tmp_path: Path) -> None:
     path = write_fixture_with_row(tmp_path, 3, {"number": 4})
 
