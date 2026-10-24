@@ -3,19 +3,27 @@
 // <name>.dark.svg, themed with the design system's own tokens (packages/design-system globals.css),
 // so a PR's diagrams match the app and follow GitHub's theme through <picture>.
 //
-//   node render.mjs <dir> [name ...] [--svg-only]
+//   node render.mjs <dir> [name ...] [--svg-only] [--png-dir <dir>]
 //
 // Then rasterizes each SVG to a 2x PNG with agent-browser, because GitHub's attachments take PNG.
 // `--svg-only` stops at the SVGs: docs/diagrams (`pnpm docs:diagrams`) commits those and no PNGs.
+// `--png-dir` writes the PNGs (and nothing else) to another directory, so committed diagrams can
+// be previewed without leaving PNGs beside them (`pnpm docs:diagrams:preview`).
 import { execFileSync, spawnSync } from "node:child_process";
-import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { parseArgs } from "node:util";
 
-const args = process.argv.slice(2);
-const svgOnly = args.includes("--svg-only");
-const [dirArg, ...only] = args.filter((a) => a !== "--svg-only");
-if (!dirArg) throw new Error("usage: render.mjs <dir> [name ...] [--svg-only]");
+const { values, positionals } = parseArgs({
+  allowPositionals: true,
+  options: { "svg-only": { type: "boolean" }, "png-dir": { type: "string" } },
+});
+const svgOnly = values["svg-only"] ?? false;
+const [dirArg, ...only] = positionals;
+if (!dirArg) throw new Error("usage: render.mjs <dir> [name ...] [--svg-only] [--png-dir <dir>]");
 const dir = resolve(dirArg);
+const pngDir = values["png-dir"] ? resolve(values["png-dir"]) : dir;
+mkdirSync(pngDir, { recursive: true });
 const root = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
 const peleRender = join(root, ".claude/skills/pele/scripts/render.mjs");
 
@@ -92,6 +100,14 @@ function themed(svg, vars) {
   );
 }
 
+// Pele parses `<word>` in a label as an HTML tag and drops it without a warning (`test_<uuid>`
+// renders as `test_`), so flag any tag that isn't one of Mermaid's formatting tags.
+const FORMATTING = new Set("b br code del em i mark s small span strong sub sup u".split(" "));
+function droppedTags(source) {
+  const tags = [...source.matchAll(/<\/?([A-Za-z][\w-]*)[^<>]*>/g)];
+  return [...new Set(tags.filter(([, t]) => !FORMATTING.has(t.toLowerCase())).map(([m]) => m))];
+}
+
 // ---- Render --------------------------------------------------------------------------------
 
 const names = only.length
@@ -114,8 +130,19 @@ for (const name of names) {
   const svg = readFileSync(base, "utf8");
   for (const [mode, vars] of Object.entries(THEMES))
     writeFileSync(join(dir, `${name}.${mode}.svg`), themed(svg, vars));
-  if (svgOnly) rmSync(base);
-  receipts.push({ name, type: receipt.type, width: receipt.width, height: receipt.height });
+  if (svgOnly || pngDir !== dir) rmSync(base);
+  const dropped = droppedTags(readFileSync(join(dir, `${name}.mmd`), "utf8"));
+  if (dropped.length)
+    console.error(
+      `${name}.mmd: ${dropped.join(", ")} will be dropped as HTML; write {word} instead of <word>`,
+    );
+  receipts.push({
+    name,
+    type: receipt.type,
+    width: receipt.width,
+    height: receipt.height,
+    ...(dropped.length && { dropped }),
+  });
 }
 if (svgOnly) {
   console.log(JSON.stringify({ ok: process.exitCode !== 1, dir, rendered: receipts }));
@@ -138,7 +165,7 @@ try {
       const svgPath = join(dir, `${name}.${mode}.svg`);
       ab("set", "viewport", String(Math.ceil(width) + 16), String(Math.ceil(height) + 16), "2");
       ab("open", `file://${svgPath}`);
-      ab("screenshot", "svg", join(dir, `${name}.${mode}.png`));
+      ab("screenshot", "svg", join(pngDir, `${name}.${mode}.png`));
     }
   }
 } finally {
@@ -149,4 +176,4 @@ try {
   }
 }
 
-console.log(JSON.stringify({ ok: process.exitCode !== 1, dir, rendered: receipts }));
+console.log(JSON.stringify({ ok: process.exitCode !== 1, dir, pngDir, rendered: receipts }));
