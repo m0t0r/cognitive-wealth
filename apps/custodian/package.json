@@ -9,7 +9,9 @@
     "format": "uv run ruff format",
     "format:check": "uv run ruff format --check",
     "check-types": "uv run pyright",
-    "test": "uv run pytest"
+    "test": "uv run pytest --ignore=tests/integration",
+    "test:integration": "uv run pytest tests/integration",
+    "db:migrate": "uv run alembic upgrade head"
   },
   "devDependencies": {
     "portless": "0.15.8"

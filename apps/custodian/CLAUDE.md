@@ -4,7 +4,8 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 
 ## Layout and running
 
-- `src/custodian/` is the package (src layout); `main.py` holds the FastAPI `app`. Tests are in `tests/`, named `test_*.py`.
+- `src/custodian/` is the package (src layout); `main.py` holds the FastAPI `app`, `models.py` the SQLAlchemy tables. Tests are in `tests/`, named `test_*.py`; the ones that need Postgres are in `tests/integration/` and run under `test:integration` (Docker), so the root `pnpm test` runs without Docker.
+- The database is Compose's `custodian-db`, a Postgres server of its own (`localhost:5434` with `compose.dev.yaml`). Alembic owns the schema: migrations are hand-written in `migrations/versions/` and applied by `pnpm --filter custodian db:migrate` as the `migrator` role (`DATABASE_URL`, `DATABASE_PASSWORD_FILE`); `test_migrations.py` fails when they and the models disagree. The service connects as `app`, created with `migrator` by `docker/initdb/01-roles.sh`.
 - Python is pinned in `.python-version` and `requires-python`; dependencies are in `pyproject.toml` and locked in `uv.lock` (commit both). Add one with `uv add <pkg>` (`--dev` for tooling), never by hand-editing the lock.
 - **Version policy**: Python is the newest minor release that every compiled dependency (pydantic-core, and later SQLAlchemy, greenlet, psycopg, numpy) ships wheels for: 3.15 today, with security fixes to October 2031. Python has no LTS line; each minor release gets five years of support. Bump it when a new minor release has those wheels, updating `.python-version`, `requires-python`, Ruff's `target-version` and pyright's `pythonVersion` together. Every dependency is on its latest stable release, as a `>=` floor in `pyproject.toml` (with a `<` cap only across a known breaking major, like Pydantic 3), and `uv.lock` pins the exact versions.
 - Run through the package scripts, which call `uv run` (it syncs `.venv` first): `pnpm --filter custodian dev | lint | format | check-types | test`. The root `pnpm lint`, `format:check`, `check-types` and `test` include them. Oxfmt formats `pyproject.toml`; Ruff formats the Python.
@@ -16,7 +17,8 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 - **Types everywhere**: pyright runs in strict mode and Ruff's `ANN` rules require every parameter and return annotated. No `Any`, no `# type: ignore` or `# pyright: ignore` without a comment saying why.
 - **Pydantic models at the boundary**: a route takes and returns `BaseModel`s and declares the return type in its signature, so FastAPI validates the response and the OpenAPI contract stays exact.
 - **Money** follows [ADR 0013](../../docs/adr/0013-money-shares-prices-and-rates-are-separate-types.md): never `float`. Use `Decimal`, round once when a value becomes recorded Money, and send amounts over JSON as decimal strings.
-- **Tests** go through the public seam: routes with FastAPI's `TestClient`, not by calling handler functions. Each test builds its own state; nothing module-level is shared between tests.
+- **Grants per table**: `app` has no default privileges, so the migration that creates a table grants `app` exactly what it needs, and adds the table to `test_the_app_has_only_the_access_each_table_grants`. The Ledger is append-only: `app` gets `select` on Transactions and `insert` on their data columns only, so the database sets `id` and `recorded_at`.
+- **Tests** go through the public seam: routes with FastAPI's `TestClient`, not by calling handler functions; the database through the `session` fixture (a `Session` as `app`) or `database` (an engine per role). Each test builds its own state; nothing module-level is shared between tests. Tests never touch the dev database: a run starts its own throwaway Postgres in Testcontainers, each database test gets its own copy of the migrated database (dropped afterwards), `tests/conftest.py` unsets the shell's `DATABASE_URL`, and pytest-randomly shuffles the order every run (`--randomly-seed=last` reruns the previous order to reproduce a failure).
 
 ## Python for TypeScript developers
 
@@ -59,3 +61,20 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 | `with pytest.raises(TypeError):`                              | `expect(() => …).toThrow(TypeError)`                     |
 | `# pyright: ignore[reportOperatorIssue]` on one line          | `// @ts-expect-error` (fails if there's no error)        |
 | `__get_pydantic_core_schema__` (makes a class a field type)   | a custom Zod schema (`z.custom`, `.transform`)           |
+| `x: Mapped[int] = mapped_column(…)` in a model class          | a column in Drizzle's `pgTable("t", { x: … })`           |
+| `Mapped[Shares \| None]` (a nullable column)                  | a Drizzle column without `.notNull()`                    |
+| `class Kind(StrEnum): FUND = "fund"`, as a Postgres enum      | `pgEnum("kind", ["fund", …])`                            |
+| `TypeDecorator[Money]` (converts a column's values)           | Drizzle's `customType` with `toDriver`/`fromDriver`      |
+| `with Session(engine) as session:` (synchronous)              | a Drizzle `db` (async there, and `await`ed)              |
+| `session.add(row)`, then `session.commit()`                   | `await db.insert(table).values(row)`                     |
+| `session.scalars(select(Transaction)).all()`                  | `await db.select().from(transaction)`                    |
+| Alembic `upgrade()`/`downgrade()` in `migrations/versions/`   | a drizzle-kit migration in `migrations/`                 |
+| a fixture that `yield`s: the code after it is the teardown    | `test.extend` with `await use(x)`, then the cleanup      |
+| `@pytest.fixture(scope="session")`: once per run              | Vitest `globalSetup`, or a worker-scoped fixture         |
+| `@contextmanager` on a `yield`ing function: `with f() as x:`  | a function taking a callback, cleaning up in `finally`   |
+| `@pytest.fixture(autouse=True)`: runs for every test          | a `beforeEach` in the shared Vitest setup file           |
+| `monkeypatch.delenv("X")` (put back after the test)           | `vi.stubEnv("X", undefined)`, restored after each        |
+| `{**os.environ, "X": "1"}` (a copy with one key set)          | `{ ...process.env, X: "1" }`                             |
+| `type Role = Literal["migrator", "app"]`                      | `type Role = "migrator" \| "app"`                        |
+| `@dataclass(frozen=True)` (a class of readonly fields)        | a `Readonly<{ … }>` type                                 |
+| `match x:` / `case {"a": str(v)}:` (checks shape, binds `v`)  | a type guard, then destructuring                         |
