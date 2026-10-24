@@ -422,7 +422,7 @@ The Manifest holds the hash of every data file. So if any file changes, its hash
 
 Ingestion keeps it in the record of the Delivery. Before loading anything, it asks: "have I already loaded a Delivery with this hash?" If yes, it writes nothing and says "already ingested". Running it a second, third or tenth time leaves every table exactly as it was.
 
-A second guard sits underneath: each Transaction's `transaction_id` from the Custodian is unique in Cognitive Wealth's database. Even if something got past the first check, the database itself refuses a second row with the same ID. Either guard alone stops a Transaction from being counted twice.
+A second guard could sit underneath: making each Transaction's `transaction_id` from the Custodian unique in Cognitive Wealth's database. Then, even if something got past the first check, the database itself would refuse a second row with the same ID. #40 asks only for the first guard; the second is an option for #40 to weigh.
 
 ### What if Ingestion stops halfway through?
 
@@ -465,7 +465,7 @@ Real Deliveries usually arrive overnight, but sometimes hours late: the Custodia
 Two things matter for the code:
 
 - **Late or not due?** Ingestion must know which days should have a Delivery. There's no Delivery for Saturday 28 February or Sunday 1 March, or for a market holiday, and that's not late. Only a missing Delivery for a Business day is.
-- **In order, with no gaps.** If 27 February's Delivery is late but 2 March's has arrived, loading 2 March first would leave a hole in the copy of the Ledger. The safe rule is to load Deliveries in As-of date order, and to stop at a gap until it's filled. It's the same rule as the Custodian's own catch-up after a pause (first primer, Part 7): each day in order, none skipped.
+- **In order, with no gaps.** If 27 February's Delivery is late but 2 March's has arrived, loading 2 March first would leave a hole in the copy of the Ledger. The safe rule is to load Deliveries in As-of date order, and to stop at a gap until it's filled. #40 loads the one date it's given, so this rule belongs to whatever picks the dates: the background job in #56. It's the same rule as the Custodian's own catch-up after a pause (first primer, Part 7): each day in order, none skipped.
 
 ### What if the Custodian sends the same Delivery again?
 
@@ -551,9 +551,9 @@ Phase 2 adds Reconciliation, Breaks and Restatements.
 1. **The Custodian writes the Manifest last**, and writes the same bytes for the same day every time.
 2. **Ingestion checks the whole Delivery before writing anything**: the Manifest, then that this Delivery and its day are new, then every file's row count and Content hash, then every row and every account number.
 3. **One database commit per Delivery.** Every row, and the record of the Delivery, or none of them.
-4. **Loading twice changes nothing.** The Manifest's hash is recorded, and each Transaction's ID is unique.
+4. **Loading twice changes nothing.** The Manifest's hash is recorded (#40). A unique Transaction ID in the database would be a second guard, which #40 may add.
 5. **A different Delivery for a day already loaded is refused**, never merged or overwritten, until phase 2 decides how to handle a Restatement.
-6. **Every row keeps when it arrived**, alongside its Trade, Settlement and Posting dates.
+6. **Every row keeps when it arrived**, alongside its Trade, Settlement and Posting dates ([ADR 0009](../adr/0009-custodian-is-the-book-of-record.md)).
 
 A good test for #37 and #40 together is this primer's three Deliveries. Write them and load them in order, and Cognitive Wealth must hold exactly the rows in Part 5. Load 2 March again, and nothing may change. Cut a row from `transactions.csv`, and Ingestion must refuse it and write nothing.
 
@@ -568,7 +568,7 @@ A good test for #37 and #40 together is this primer's three Deliveries. Write th
 7. A Content hash is a fingerprint of a file's exact bytes. Any change gives a completely different hash.
 8. An incomplete or damaged Delivery is never loaded, because a lost Transaction is never sent again. It's all or nothing.
 9. **Ingestion** checks the Delivery and every row, then writes everything in one database commit.
-10. Ingestion is **idempotent**: loading the same Delivery twice changes nothing, because the Manifest's hash is recorded and each Transaction's ID is unique.
+10. Ingestion is **idempotent**: loading the same Delivery twice changes nothing, because the Manifest's hash is recorded.
 11. Every row is checked against the contract, because the file is someone else's ([ADR 0011](../adr/0011-custodian-simulator-in-python.md)).
 12. In the real world, Deliveries can be late (load in order, never skip), sent again unchanged (a **Redelivery**, ignored), or replaced (a **Restatement**, refused until phase 2).
 13. A **Break** is when the Transactions and the Custodian's Positions disagree. The Manifest checks the files arrived as sent; Reconciliation checks that what was sent agrees with itself.
