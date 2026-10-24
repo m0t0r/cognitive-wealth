@@ -212,8 +212,36 @@ _Avoid_: End of day, batch
 The Business day a figure describes, which is the latest Close it was computed from.
 
 **Custodian feed**:
-The files the Custodian publishes for each Close.
+The files the Custodian publishes for each Close, one Delivery per Close.
 _Avoid_: Export, dump
+
+**Delivery**:
+One Close's Custodian feed: the files for one As-of date and their Manifest. Transactions in it are the ones posted that day; Securities, Accounts, Positions and prices are complete snapshots.
+_Avoid_: Bundle, drop, batch
+
+**Security master**:
+The Custodian's list of every Security, with its identifier, name and kind, sent in every Delivery so other files can name a Security by its identifier.
+_Avoid_: Security catalog (for the feed file), instrument list
+
+**Manifest**:
+The file in a Delivery that lists every other file with its row count and Content hash. Written last, so finding it means the Delivery is complete.
+_Avoid_: Index, control file
+
+**Content hash**:
+A fingerprint of a file's exact bytes, here SHA-256. Any change to the bytes gives a different hash.
+_Avoid_: Checksum
+
+**Ingestion**:
+Cognitive Wealth reading a Delivery, checking it against its Manifest and the contract row by row, and writing it into its own database in one commit, or not at all. Loading the same Delivery twice changes nothing.
+_Avoid_: Import, sync
+
+**Redelivery**:
+A Delivery sent again, byte for byte the same as one already received. Ingestion ignores it.
+_Avoid_: Resend, duplicate
+
+**Restatement**:
+A replacement Delivery for an As-of date already delivered, with different contents, because the first was wrong. Unlike a Correction, it replaces a past Delivery instead of adding new Transactions.
+_Avoid_: Correction (which is new rows), restated file
 
 **Reconciliation**:
 Comparing the Positions Cognitive Wealth rebuilt from Transactions with the Positions the Custodian reports.

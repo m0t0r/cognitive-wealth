@@ -1,0 +1,26 @@
+flowchart TB
+  start["A Delivery for an As-of date"]
+  m{"Is manifest.json there?"}
+  wait["Not finished yet:<br/>wait, write nothing"]
+  same{"Was a Delivery with this<br/>Manifest's hash already ingested?"}
+  skip["Already ingested:<br/>write nothing, say so"]
+  other{"Was a different Delivery<br/>for this As-of date ingested?"}
+  restate["Refuse: a Restatement<br/>(handled in phase 2)"]
+  files{"Is every file there, with the<br/>row count and Content hash<br/>the Manifest lists?"}
+  rows{"Is every row valid,<br/>and every account number known?"}
+  refuse["Refuse: write nothing,<br/>name the problem"]
+  write["One database commit:<br/>every row, plus a record<br/>of the Delivery and its hash"]
+  done["Ingested"]
+
+  start --> m
+  m -->|"no"| wait
+  m -->|"yes"| same
+  same -->|"yes"| skip
+  same -->|"no"| other
+  other -->|"yes"| restate
+  other -->|"no"| files
+  files -->|"no"| refuse
+  files -->|"yes"| rows
+  rows -->|"no"| refuse
+  rows -->|"yes"| write
+  write --> done

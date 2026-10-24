@@ -1,0 +1,16 @@
+flowchart LR
+  subgraph custodian["The Custodian: the Book of record"]
+    close["The Close<br/>Mon 2 Mar, evening"]
+    files["One Delivery<br/>securities.csv<br/>accounts.csv<br/>transactions.csv<br/>positions.csv<br/>prices.csv"]
+    manifest["manifest.json<br/>each file's row count<br/>and Content hash"]
+    close -->|"1. writes<br/>five files"| files
+    files -->|"2. then, last,<br/>the Manifest"| manifest
+  end
+  landing["A shared folder<br/>real Custodians: usually SFTP<br/>here: a local folder,<br/>later SeaweedFS"]
+  subgraph cw["Cognitive Wealth: a copy"]
+    ingest["Ingestion<br/>check, validate,<br/>write once"]
+    db["Its own database<br/>Transactions,<br/>Positions, prices"]
+    ingest --> db
+  end
+  manifest -->|"overnight"| landing
+  landing -->|"read once the<br/>Manifest is there"| ingest
