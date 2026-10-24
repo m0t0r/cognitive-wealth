@@ -111,7 +111,7 @@ CSV ("comma-separated values") is a plain text format for a table: one row per l
 
 Three of these need a closer look.
 
-**Transactions are the ones posted that day.** The file holds Transactions whose **Posting date** is the As-of date, not every Transaction ever made. Most were also traded that day. But a Correction (first primer, Part 4) arrives in the Delivery of the day it was posted, with its old Trade date. So 6 March's Delivery would carry the Reversal and the new dividend for 3 March.
+**Transactions are the ones posted that day.** The file holds Transactions whose **Posting date** is the As-of date, not every Transaction ever made. Most were also traded that day. But a Correction (first primer, Part 4) arrives in the Delivery of the day it was posted, with its old Trade date. So 6 March's Delivery would carry the Reversal and the new dividend for 3 March. That way a late fix doesn't mean replacing a Delivery already sent (Part 6 shows what's known about real Custodians).
 
 **Positions are there even though they can be worked out.** The first primer showed that a Position is the sum of the Ledger. So why send them? For the same reason the first primer added up Dana's Account two different ways: two routes that agree are a good sign that nothing was lost. Comparing them is **Reconciliation**, which phase 2 builds.
 
@@ -513,6 +513,22 @@ Suppose the IRA's buy had somehow been lost, despite all the checks: say the Cus
 | Stock Fund         | 0 shares              | 20 shares            | 20 shares |
 
 The Manifest proves the files arrived as they were sent. Reconciliation checks that what was sent agrees with itself. They catch different problems, so a real platform needs both.
+
+### Do real Custodians send a late fix on the day it was posted?
+
+**Short answer:** as far as public sources show, yes: a late fix arrives as new rows in a later Delivery, with its old Trade date.
+
+Part 2 said `transactions.csv` holds the Transactions posted that day, so a Correction arrives in the Delivery of the day it was posted. The other choice would be to file each row under its Trade date. Then a Correction posted on 6 March for 3 March would belong in 3 March's Delivery, which was sent three days earlier. The Custodian would have to send 3 March again. That would be a Restatement, which the section above showed is harder.
+
+A Transaction that arrives after its Trade date is called a _back-dated_ Transaction. The securities industry also calls it an "as/of" trade, meaning "this happened as of an earlier day". That's a different use of the words from this primer's As-of date, which names the day a Delivery describes.
+
+Custodians share their file formats only with their clients, so no Custodian's own format description was read for this primer. Here is what public sources show. Only the first is about Custodian data:
+
+- **A patent example.** Vestmark, a company that sells portfolio software, has a patent on matching an Advisor's trades to a Custodian's transactions. It says "Periodically, there are transactions present from the custodian that happened on an older day", and that the Custodian "often later sends a cancel transaction for the original transaction", with a corrected one. Its example table, an illustration rather than a real file, shows a cancel (a Reversal) and a rebook (the new, right row), both received on 7 January for a trade dated 1 January ([US patent 8,521,634](https://patents.google.com/patent/US8521634)). That is a Correction arriving the way Part 2 describes.
+- **Reporting trades.** FINRA, the industry body that supervises US brokers, requires its member firms to report many trades within seconds. A trade "required to be reported on trade date, but is not reported on trade date, must be reported on an 'as/of' basis on a subsequent date (T+N)", and is marked late ([FINRA Rule 6380A](https://www.finra.org/rules-guidance/rulebooks/finra-rules/6380a)). T+N means N Business days after the Trade date. This rule is about a firm reporting a trade late, not about Custodian files, but it follows the same habit: the late item goes in on the later day, labelled with its earlier date.
+- **Trade messages.** FIX, the standard format firms use to send each other trades, has a field for it: `AsOfIndicator`, for "a trade that is being submitted for a trade date prior to the current trade or clearing date" ([FIX 5.0 SP2, field 1015](https://www.inforeachinc.com/fix-dictionary/fix_5_0sp2_ep240_fields_asofindicator)). Clearing is the step, before the Settlement date, where a central company checks that both sides can deliver.
+
+So this section shows how the idea works across the industry. It doesn't prove how any one Custodian formats its files. This project's Custodian does the same, as a design choice: it's the simplest way to add a fix without replacing a Delivery already sent. It's also why Ingestion must accept a row whose Trade date is days in the past, and why every row keeps its Posting date, so Cognitive Wealth can answer "what did we know on 4 March?".
 
 ### What do real Custodians do differently?
 
