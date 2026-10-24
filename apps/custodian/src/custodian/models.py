@@ -163,6 +163,7 @@ class Transaction(Base):
     __tablename__ = "transaction"
     __table_args__ = (
         CheckConstraint("settlement_date >= trade_date", name="settles_after_trade"),
+        CheckConstraint("posting_date >= trade_date", name="posted_after_trade"),
         CheckConstraint("shares is null or security_id is not null", name="shares_of_a_security"),
         # Positions are rebuilt from an Account's rows up to a Trade date (ADR 0015).
         Index(None, "account_id", "trade_date"),
@@ -175,14 +176,18 @@ class Transaction(Base):
     kind: Mapped[TransactionKind] = mapped_column(_pg_enum(TransactionKind, "transaction_kind"))
     trade_date: Mapped[date]
     settlement_date: Mapped[date]
+    posting_date: Mapped[date]
+    """The Business day the Custodian wrote the row into the Ledger, in the simulated world. The
+    Trade date, except for a Correction, which is posted the day the mistake is found. Rows
+    posted by a given day rebuild what was known that day (docs/learn/01, Part 4)."""
     shares: Mapped[Shares | None]
     """The change in shares of `security`, signed: a sell is negative. None if no shares moved."""
     amount: Mapped[Money]
     """The change in cash, signed: money out is negative."""
     recorded_at: Mapped[datetime] = mapped_column(server_default=func.clock_timestamp())
-    """When the row was written, by the database's clock, which `app` can't override; each row
-    gets its own time, even within one transaction (`now()` would give them all its start). Not
-    the Posting date, which is a Business day in the simulated world and arrives with the Close."""
+    """When the row reached the database, by its clock, which `app` can't override; each row gets
+    its own time, even within one transaction (`now()` would give them all its start). Not the
+    Posting date: a backfill writes five years of rows today, each posted on its own day."""
 
     account: Mapped[Account] = relationship()
     security: Mapped[Security | None] = relationship()

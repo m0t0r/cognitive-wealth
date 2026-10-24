@@ -79,6 +79,7 @@ def upgrade() -> None:
         sa.Column[str]("kind", transaction_kind, nullable=False),
         sa.Column("trade_date", sa.Date(), nullable=False),
         sa.Column("settlement_date", sa.Date(), nullable=False),
+        sa.Column("posting_date", sa.Date(), nullable=False),
         sa.Column("shares", sa.Numeric(19, 6), nullable=True),
         sa.Column("amount", sa.Numeric(19, 2), nullable=False),
         sa.Column(
@@ -96,6 +97,9 @@ def upgrade() -> None:
             "settlement_date >= trade_date", name="transaction_settles_after_trade_check"
         ),
         sa.CheckConstraint(
+            "posting_date >= trade_date", name="transaction_posted_after_trade_check"
+        ),
+        sa.CheckConstraint(
             "shares is null or security_id is not null",
             name="transaction_shares_of_a_security_check",
         ),
@@ -110,7 +114,7 @@ def upgrade() -> None:
     op.execute("grant select, insert, update, delete on table security, account to app")
     op.execute(
         "grant select, insert (account_id, security_id, kind, trade_date, settlement_date,"
-        ' shares, amount) on table "transaction" to app'
+        ' posting_date, shares, amount) on table "transaction" to app'
     )
 
 
