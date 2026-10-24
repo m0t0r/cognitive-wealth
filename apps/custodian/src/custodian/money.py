@@ -2,7 +2,8 @@
 
 Only the operations that mean something type-check:
 
-- `Money ± Money` is `Money`, and `Shares ± Shares` is `Shares`.
+- `Money ± Money` is `Money`, `Shares ± Shares` is `Shares`, and `UnroundedMoney +
+  UnroundedMoney` is `UnroundedMoney`.
 - `Shares * Price` and `Money * Rate` are `UnroundedMoney`, and `Money / Price` is
   `UnroundedShares`. Each becomes recorded `Money` or `Shares` only through a named
   `RoundingRule`, so a result is rounded once, at the end.
@@ -181,6 +182,10 @@ class UnroundedMoney(_Exact):
     """Dollars, unrounded, mid-calculation. Becomes `Money` only through a `RoundingRule`."""
 
     __slots__ = ()
+
+    def __add__(self, other: UnroundedMoney) -> UnroundedMoney:
+        # So a total of many products, such as a Market value, is rounded once, not per line.
+        return UnroundedMoney(_EXACT.add(self._value, self._decimal_of(other, UnroundedMoney)))
 
     def to_money(self, rule: RoundingRule) -> Money:
         return Money(self._value.quantize(_CENT, rounding=rule.value, context=_ROUNDING))
