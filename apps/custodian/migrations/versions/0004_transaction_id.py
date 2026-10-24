@@ -22,12 +22,21 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.add_column("transaction", sa.Column("transaction_id", sa.String(), nullable=True))
-    # Rows already loaded get the ID `world:load` gives them now: the ledger fixture numbers its
-    # rows as an empty database numbers their `id`s, so row 3 becomes TX-000000003. A database
-    # loaded any other way is rebuilt from empty instead.
-    op.execute("update \"transaction\" set transaction_id = 'TX-' || lpad(id::text, 9, '0')")
+    # Rows already loaded get the ID `world:load` gives them now. It records the ledger fixture's
+    # rows in order, in one database transaction, so a row's place in the Ledger is its number in
+    # the fixture: the third row becomes TX-000000003. The place, not the `id`: a load that failed
+    # and rolled back still used up its ids (Postgres never hands one back), so the load that
+    # worked may have numbered its rows from 14. A database loaded any other way, which the next
+    # `world:load` refuses ("Ledger differs"), is rebuilt from empty instead.
+    op.execute("""
+        update "transaction" set transaction_id = 'TX-' || lpad(place::text, 9, '0')
+        from (select id, row_number() over (order by id) as place from "transaction") as ledger
+        where "transaction".id = ledger.id
+    """)
     op.alter_column("transaction", "transaction_id", nullable=False)
-    op.create_unique_constraint("transaction_transaction_id_key", "transaction", ["transaction_id"])
+    op.create_unique_constraint(
+        op.f("transaction_transaction_id_key"), "transaction", ["transaction_id"]
+    )
     # Inserted with the row, like its other data columns; still never changed (append-only).
     op.execute('grant insert (transaction_id) on table "transaction" to app')
 

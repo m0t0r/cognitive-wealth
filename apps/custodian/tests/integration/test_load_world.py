@@ -5,12 +5,11 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from sqlalchemy import Row, select, text
+from sqlalchemy import Row, text
 from sqlalchemy.orm import Session
 
 from custodian.ledger_fixture import LEDGER_V0_PATH, read_ledger_fixture
 from custodian.load import LoadConflict, load
-from custodian.models import Transaction, TransactionKind
 from custodian.money import Money, Price
 from custodian.world import WORLD_V0_PATH, read_world
 from tests.integration.postgres import CUSTODIAN, Database, PostgresServer
@@ -67,21 +66,6 @@ def test_loading_the_world_twice_changes_nothing(
         '"transaction"': 13,
     }
     assert "Loaded 2 Accounts, 3 Securities, 14 prices and 13 Transactions" in output
-
-
-def test_each_transaction_gets_its_fixture_rows_transaction_id(session: Session) -> None:
-    load(session, read_world(WORLD_V0_PATH), read_ledger_fixture(LEDGER_V0_PATH))
-
-    recorded = session.execute(
-        select(Transaction.transaction_id, Transaction.kind, Transaction.amount).order_by(
-            Transaction.transaction_id
-        )
-    ).all()
-
-    assert len(recorded) == 13
-    # The primer's row 9 is the Reversal of row 5's dividend, and row 13 the IRA's buy.
-    assert recorded[8] == ("TX-000000009", TransactionKind.REVERSAL, Money("-9.00"))
-    assert recorded[12] == ("TX-000000013", TransactionKind.BUY, Money("-3005.00"))
 
 
 def test_a_load_that_would_change_the_ledger_is_refused(

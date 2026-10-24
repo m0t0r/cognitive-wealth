@@ -2,12 +2,14 @@
 
 A key is a path such as `2026-03-02/manifest.json`: the Delivery's As-of date, then the file. For
 now `LocalFeedStore` keeps each one as a file under a directory; SeaweedFS will take its place
-(#54) without the writer changing, since the writer only ever calls `put`, `get` and `list`.
+(#54) without anything else changing, since the writer only calls `put`, and readers (the tests
+now, Ingestion in #40) only `get` and `list`.
 """
 
 import os
 from pathlib import Path, PurePosixPath
 from typing import Protocol
+from uuid import uuid4
 
 __all__ = ["FeedStore", "LocalFeedStore"]
 
@@ -38,10 +40,14 @@ class LocalFeedStore:
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         # Written beside the file, then renamed over it in one step, so a reader never finds half
-        # a file: it finds the old one or the new one.
-        partial = path.with_name(f".{path.name}.partial")
-        partial.write_bytes(content)
-        os.replace(partial, path)
+        # a file: it finds the old one or the new one. The temporary name is unique, so two
+        # writers can't write into the same one, and it's removed if the write fails.
+        partial = path.with_name(f".{path.name}.{uuid4().hex}.partial")
+        try:
+            partial.write_bytes(content)
+            os.replace(partial, path)
+        finally:
+            partial.unlink(missing_ok=True)
 
     def get(self, key: str) -> bytes:
         try:

@@ -12,7 +12,7 @@ By the end you'll know:
 - why Cognitive Wealth checks every row instead of trusting the file
 - what goes wrong in the real world: late files, files sent twice, past days sent again, and numbers that don't agree
 
-Read it before the simulated Custodian writes its files (#37) and before Cognitive Wealth loads them (#40). Each section answers one question. It starts with the short answer, then explains it, then shows it with numbers. Words with a capital letter, such as Delivery or Manifest, are defined in [GLOSSARY.md](../../GLOSSARY.md).
+Read it alongside the simulated Custodian's writer (#37) and before Cognitive Wealth loads its files (#40). Each section answers one question. It starts with the short answer, then explains it, then shows it with numbers. Words with a capital letter, such as Delivery or Manifest, are defined in [GLOSSARY.md](../../GLOSSARY.md).
 
 ## How to read this
 
@@ -146,7 +146,7 @@ The joint account already had a history. On Thursday 26 February it received $5,
 
 **Short answer:** five small tables, shown here exactly as the Custodian writes them.
 
-These are the real files: what the simulated Custodian writes for 2 March, byte for byte, when you run `pnpm --filter custodian feed:write --date 2026-03-02` with the hand-written Ledger loaded (#37). The Manifest in Part 4 and its hashes are real too.
+These are the real files: what the simulated Custodian writes for 2 March, byte for byte, when you run `pnpm --filter custodian feed:write --date 2026-03-02` after `pnpm --filter custodian world:load` has loaded the world file and the hand-written Ledger (#37). The Manifest in Part 4 and its hashes are real too.
 
 **`securities.csv`**, the Security master. The same three rows arrive every day:
 
@@ -179,7 +179,7 @@ TX-000000013,CW-000002,buy,,LKSF,20.000000,-3005.00,2026-03-02,2026-03-03,2026-0
 
 A few things to notice:
 
-- **Every row has the Custodian's own ID**, in `transaction_id`. For the hand-written Ledger, it's `TX-` followed by the row's number in that file. The IRA's rows are TX-000000012 and TX-000000013 because they were added to that file after rows 5 to 11. An ID only has to be unique, not in date order, and a reader treats it as a label, never as a number to do sums with. Part 5 shows why this ID matters so much.
+- **Every row has the Custodian's own ID**, in `transaction_id`. For the hand-written Ledger, it's `TX-` followed by the row's number in that file. The IRA's rows are TX-000000012 and TX-000000013 because they were added to that file after rows 5 to 11. An ID only has to be unique, not in date order, and a reader treats it as a label, never as a number to do sums with. Part 5 shows one more use for it.
 - **`reverses` is empty here.** Only a Reversal fills it in, with the `transaction_id` of the Transaction it undoes. 6 March's Delivery has one: `TX-000000009` reverses `TX-000000005`, the wrong dividend.
 - **Empty values are left empty.** A contribution undoes nothing and has no Security and no shares, so those three columns are blank (the `,,,,`).
 - **The buys settle a day later.** Their Settlement date is Tuesday 3 March: T+1 (first primer, Part 3).
@@ -517,7 +517,7 @@ The Manifest proves the files arrived as they were sent. Reconciliation checks t
 
 ### Do real Custodians send a late fix on the day it was posted?
 
-**Short answer:** as far as public sources show, yes: a late fix arrives as new rows in a later Delivery, with its old Trade date.
+**Short answer:** public sources are thin, but what there is points that way: one patent's worked example shows a late fix arriving as new rows in a later Delivery, with its old Trade date, and trade reporting rules use the same habit.
 
 Part 2 said `transactions.csv` holds the Transactions posted that day, so a Correction arrives in the Delivery of the day it was posted. The other choice would be to file each row under its Trade date. Then a Correction posted on 6 March for 3 March would belong in 3 March's Delivery, which was sent three days earlier. The Custodian would have to send 3 March again. That would be a Restatement, which the section above showed is harder.
 
