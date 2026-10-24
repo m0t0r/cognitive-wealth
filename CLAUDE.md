@@ -114,6 +114,10 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.
 
+### Web research
+
+When WebFetch can't open a page you need to cite (a 403, "Access Denied", an unreadable PDF), follow `docs/agents/web-research.md`: a headed agent-browser usually gets through, and a search summary is never the source.
+
 ### Verification
 
 Verify every change that reaches `apps/web` in the running app before reporting it done: invoke the `verifier-web` skill (host production build, agent-browser, chrome-devtools perf trace) and give its verdict and evidence in your summary. Passing tests aren't that evidence.
