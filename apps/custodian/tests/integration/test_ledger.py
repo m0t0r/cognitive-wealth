@@ -200,6 +200,18 @@ def test_a_transaction_is_reversed_at_most_once(session: Session) -> None:
         session.commit()
 
 
+def test_a_reversal_cant_undo_a_reversal(session: Session) -> None:
+    # A wrong Reversal is fixed with a new Transaction (ADR 0016): Settled cash takes a
+    # Reversal's direction from the row it names, which only works if that row isn't one.
+    reversal = reversal_of(a_dividend())
+    undo = reversal_of(reversal)
+    undo.amount = Money("9.00")
+    session.add(undo)
+
+    with pytest.raises(IntegrityError, match="transaction_reverses_no_reversal"):
+        session.commit()
+
+
 def test_a_price_keeps_the_decimal_places_it_was_quoted_with(session: Session) -> None:
     session.add(
         SecurityPrice(security=bond_fund(), price_date=date(2026, 3, 6), price=Price("10.0200"))

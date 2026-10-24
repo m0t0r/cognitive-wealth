@@ -85,6 +85,11 @@ class LedgerFixture(_Strict):
                         f"{where}: a Reversal undoes an earlier row, not {transaction.reverses}"
                     )
                 original = self.transactions[transaction.reverses - 1]
+                if original.kind == TransactionKind.REVERSAL:
+                    raise ValueError(
+                        f"{where}: row {original.number} is a Reversal, which can't be undone;"
+                        " fix it with a new Transaction"
+                    )
                 _check_reversal(where, transaction, original)
         return self
 
