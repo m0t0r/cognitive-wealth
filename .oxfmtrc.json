@@ -2,6 +2,7 @@
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
   "ignorePatterns": [
     "pnpm-lock.yaml",
+    "world/schema.json",
     "**/.next/**",
     "**/next-env.d.ts",
     ".agents/**",

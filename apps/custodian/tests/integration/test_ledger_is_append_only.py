@@ -5,9 +5,15 @@ from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 
-from custodian.models import Account, RegistrationType, Transaction, TransactionKind
-from custodian.money import Money
-from tests.integration.examples import danas_account
+from custodian.models import (
+    Account,
+    RegistrationType,
+    SecurityPrice,
+    Transaction,
+    TransactionKind,
+)
+from custodian.money import Money, Price
+from tests.integration.examples import bond_fund, danas_account
 from tests.integration.postgres import Database
 
 
@@ -64,6 +70,16 @@ def test_the_app_cant_choose_when_a_transaction_was_recorded(session: Session) -
         )
 
 
+def test_the_app_cant_change_a_price(session: Session) -> None:
+    session.add(
+        SecurityPrice(security=bond_fund(), price_date=date(2026, 3, 6), price=Price("10.02"))
+    )
+    session.commit()
+
+    with pytest.raises(ProgrammingError, match="permission denied for table price"):
+        session.execute(update(SecurityPrice).values(price=Price("10.03")))
+
+
 def test_the_app_can_still_change_accounts(session: Session) -> None:
     record_a_contribution(session)
 
@@ -94,10 +110,10 @@ def test_the_app_has_only_the_access_each_table_grants(database: Database) -> No
                 where grantee = 'app' and table_schema = 'public'
             """)
         ).all()
-        inserted_columns = connection.scalars(
+        inserted_columns = connection.execute(
             text("""
-                select column_name from information_schema.column_privileges
-                where grantee = 'app' and table_name = 'transaction'
+                select table_name, column_name from information_schema.column_privileges
+                where grantee = 'app' and table_name in ('transaction', 'price')
                   and privilege_type = 'INSERT'
             """)
         ).all()
@@ -109,15 +125,23 @@ def test_the_app_has_only_the_access_each_table_grants(database: Database) -> No
         "security": {"SELECT", "INSERT", "UPDATE", "DELETE"},
         "account": {"SELECT", "INSERT", "UPDATE", "DELETE"},
         "transaction": {"SELECT"},
+        "price": {"SELECT"},
     }
     # Inserting names the data columns only: the database sets `id` and `recorded_at`.
-    assert set(inserted_columns) == {
-        "account_id",
-        "security_id",
-        "kind",
-        "trade_date",
-        "settlement_date",
-        "posting_date",
-        "shares",
-        "amount",
+    columns: dict[str, set[str]] = {}
+    for table, column in inserted_columns:
+        columns.setdefault(table, set()).add(column)
+    assert columns == {
+        "transaction": {
+            "account_id",
+            "security_id",
+            "kind",
+            "reverses_id",
+            "trade_date",
+            "settlement_date",
+            "posting_date",
+            "shares",
+            "amount",
+        },
+        "price": {"security_id", "price_date", "price"},
     }

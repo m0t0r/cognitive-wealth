@@ -593,15 +593,15 @@ Breaks have ordinary causes: a missing row, a row read twice, or two sides count
 **Worked out** when asked, for an As-of date and the day asked, counting only rows posted by the day asked:
 
 - Positions: shares per Security, and cash, by Trade date ([ADR 0015](../adr/0015-positions-counted-by-trade-date.md))
-- Settled cash: money going out by Trade date, money coming in by Settlement date
-- Market value: Positions × prices
+- Settled cash: money going out by Trade date, money coming in by Settlement date (built after #35, in #84)
+- Market value: Positions × prices (also #84)
 
 Two rules come with it:
 
 - **Corrections are new rows.** The code has no way to update or delete a Transaction. A fix adds a Reversal and a replacement.
 - **Each number keeps its type.** Cash is dollars in whole cents. Shares are a count, to six decimal places. Prices keep the decimal places they were quoted with. A Market value is worked out at full precision and rounded to cents once, at the end ([ADR 0013](../adr/0013-money-shares-prices-and-rates-are-separate-types.md)).
 
-A good test for #35 is Dana's week: load rows 1 to 11 and the prices, and every number the code works out must match the tables in this primer exactly.
+A good test for #35 is Dana's week: load rows 1 to 11 and the prices, and every Position the code works out must match the tables in this primer exactly. #84 does the same for Settled cash and Market value.
 
 ## Recap
 

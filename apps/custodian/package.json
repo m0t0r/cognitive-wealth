@@ -11,7 +11,9 @@
     "check-types": "uv run pyright",
     "test": "uv run pytest --ignore=tests/integration",
     "test:integration": "uv run pytest tests/integration",
-    "db:migrate": "uv run alembic upgrade head"
+    "db:migrate": "uv run alembic upgrade head",
+    "world:load": "uv run python -m custodian.load",
+    "world:schema": "uv run python -m custodian.world"
   },
   "devDependencies": {
     "portless": "0.15.8"

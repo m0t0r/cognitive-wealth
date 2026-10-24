@@ -2,11 +2,15 @@
   "$schema": "https://turborepo.dev/schema.json",
   "extends": ["//"],
   "tasks": {
+    // Both test tasks read the world file and its schema, which sit at the repo root (world/).
+    "test": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/world/**"]
+    },
     // The custodian's integration tests start Postgres with Testcontainers (ADR 0011), so they
     // need the host's Docker settings, and they run the image compose.yaml pins.
     "test:integration": {
       "passThroughEnv": ["DOCKER_*", "TESTCONTAINERS_*", "RYUK_*"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/compose.yaml"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/compose.yaml", "$TURBO_ROOT$/world/**"]
     }
   }
 }

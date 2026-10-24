@@ -5,8 +5,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from custodian.models import Security, SecurityKind, Transaction, TransactionKind
-from custodian.money import Money, Shares
+from custodian.models import (
+    Security,
+    SecurityKind,
+    SecurityPrice,
+    Transaction,
+    TransactionKind,
+)
+from custodian.money import Money, Price, Shares
 from tests.integration.examples import bond_fund, danas_account
 
 
@@ -121,4 +127,97 @@ def test_a_transaction_cant_be_posted_before_its_trade_date(session: Session) ->
     )
 
     with pytest.raises(IntegrityError, match="transaction_posted_after_trade_check"):
+        session.commit()
+
+
+def a_dividend() -> Transaction:
+    # The primer's row 5: the Bond Fund's dividend on Tue 3 Mar, which turned out to be wrong.
+    return Transaction(
+        account=danas_account(),
+        security=bond_fund(),
+        kind=TransactionKind.DIVIDEND,
+        trade_date=date(2026, 3, 3),
+        settlement_date=date(2026, 3, 3),
+        posting_date=date(2026, 3, 3),
+        amount=Money("9.00"),
+    )
+
+
+def reversal_of(
+    original: Transaction, kind: TransactionKind = TransactionKind.REVERSAL
+) -> Transaction:
+    # The primer's row 9: the same row with every amount negated, posted the day it was found.
+    return Transaction(
+        account=original.account,
+        security=original.security,
+        kind=kind,
+        reverses=original,
+        trade_date=original.trade_date,
+        settlement_date=original.settlement_date,
+        posting_date=date(2026, 3, 6),
+        amount=Money("-9.00"),
+    )
+
+
+def test_a_reversal_names_the_transaction_it_undoes(session: Session) -> None:
+    dividend = a_dividend()
+    session.add(reversal_of(dividend))
+    session.commit()
+    session.expire_all()
+
+    reversal = session.scalars(
+        select(Transaction).where(Transaction.kind == TransactionKind.REVERSAL)
+    ).one()
+
+    assert reversal.reverses is not None
+    assert (reversal.reverses.kind, reversal.reverses.amount) == (
+        TransactionKind.DIVIDEND,
+        Money("9.00"),
+    )
+
+
+def test_a_reversal_must_name_a_transaction(session: Session) -> None:
+    reversal = reversal_of(a_dividend())
+    reversal.reverses = None
+    session.add(reversal)
+
+    with pytest.raises(IntegrityError, match="transaction_reversal_names_what_it_undoes_check"):
+        session.commit()
+
+
+def test_only_a_reversal_names_a_transaction(session: Session) -> None:
+    session.add(reversal_of(a_dividend(), kind=TransactionKind.WITHDRAWAL))
+
+    with pytest.raises(IntegrityError, match="transaction_reversal_names_what_it_undoes_check"):
+        session.commit()
+
+
+def test_a_transaction_is_reversed_at_most_once(session: Session) -> None:
+    dividend = a_dividend()
+    session.add_all([reversal_of(dividend), reversal_of(dividend)])
+
+    with pytest.raises(IntegrityError, match="transaction_reverses_id_key"):
+        session.commit()
+
+
+def test_a_price_keeps_the_decimal_places_it_was_quoted_with(session: Session) -> None:
+    session.add(
+        SecurityPrice(security=bond_fund(), price_date=date(2026, 3, 6), price=Price("10.0200"))
+    )
+    session.commit()
+    session.expire_all()
+
+    assert str(session.scalars(select(SecurityPrice.price)).one()) == "10.0200"
+
+
+def test_a_security_has_one_price_a_day(session: Session) -> None:
+    fund = bond_fund()
+    session.add_all(
+        [
+            SecurityPrice(security=fund, price_date=date(2026, 3, 6), price=Price("10.02")),
+            SecurityPrice(security=fund, price_date=date(2026, 3, 6), price=Price("10.03")),
+        ]
+    )
+
+    with pytest.raises(IntegrityError, match="price_security_id_price_date_key"):
         session.commit()
