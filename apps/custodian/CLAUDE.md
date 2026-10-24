@@ -18,7 +18,7 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 - **Pydantic models at the boundary**: a route takes and returns `BaseModel`s and declares the return type in its signature, so FastAPI validates the response and the OpenAPI contract stays exact.
 - **Money** follows [ADR 0013](../../docs/adr/0013-money-shares-prices-and-rates-are-separate-types.md): never `float`. Use `Decimal`, round once when a value becomes recorded Money, and send amounts over JSON as decimal strings.
 - **Positions count by Trade date** ([ADR 0015](../../docs/adr/0015-positions-counted-by-trade-date.md)): a row counts from its Trade date, and its Settlement date, though stored, never changes a Position. A Posting date only matters when the caller asks what was known on a given day (`known_on`). Positions are always rebuilt from the Ledger, never stored.
-- **The world file is a contract**: `world.py`'s models are its format, and the TypeScript seed validates the same file against `world/schema.json`. After changing a model, run `pnpm --filter custodian world:schema` and commit the schema; `test_world.py` fails until you do.
+- **The world file is a contract**: `world.py`'s models are its format, and the TypeScript seed validates the same file against `world/schema.json`. After changing a model, run `pnpm --filter custodian world:schema` and commit the schema; `test_world.py` fails until you do. The schema checks each field on its own, so prefer a shape that makes a rule impossible to break (one `primary` field, roles held by each Person) over a check in Python. A rule that needs the whole file goes in `WorldFile`'s validator and gets a file in `world/invalid/`, listed in `cases.json` with the field its error names and `"caught_by": "rules"`: the TypeScript seed's tests read the same files, so both loaders reject them.
 - **Loading is idempotent**: `load.py` adds what's missing and refuses (`LoadConflict`) to change what's there, in one database transaction, so a second run changes nothing.
 - **Grants per table**: `app` has no default privileges, so the migration that creates a table grants `app` exactly what it needs, and adds the table to `test_the_app_has_only_the_access_each_table_grants`. The Ledger and the prices are append-only: `app` gets `select` on them and `insert` on their data columns only, so the database sets `id` and `recorded_at`.
 - **Tests** go through the public seam: routes with FastAPI's `TestClient`, not by calling handler functions; the database through the `session` fixture (a `Session` as `app`) or `database` (an engine per role). Each test builds its own state; nothing module-level is shared between tests. Tests never touch the dev database: a run starts its own throwaway Postgres in Testcontainers, each database test gets its own copy of the migrated database (dropped afterwards), `tests/conftest.py` unsets the shell's `DATABASE_URL`, and pytest-randomly shuffles the order every run (`--randomly-seed=last` reruns the previous order to reproduce a failure).
@@ -88,8 +88,6 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 | `type Positions = dict[str, Shares]` (a type alias)            | `type Positions = Record<string, Shares>`                 |
 | `{k: v for k, v in items if v}` (a dict comprehension)         | `Object.fromEntries(items.filter(…))`                     |
 | `for index, row in enumerate(rows):`                           | `rows.forEach((row, index) => …)`                         |
-| `if (found := lookup()):` (assign inside a condition)          | `const found = lookup(); if (found) …`                    |
-| `Counter(keys)` (counts each value)                            | a `Map` of counts built with a loop                       |
 | `with session.begin():` (commit, or roll back on an error)     | `await db.transaction(async (tx) => …)`                   |
 | `relationship(remote_side=[id])` (a row pointing at its table) | a self-referencing `references(() => t.id)` in Drizzle    |
 | `python -m custodian.load` runs `if __name__ == "__main__":`   | `node script.js`, with the code at the module's top level |
@@ -101,5 +99,8 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 | `a \|= b` on dicts (merge `b` into `a`)                        | `Object.assign(a, b)`                                     |
 | `[only] = items` (unpack; fails unless exactly one)            | `const [only] = items`, without the length check          |
 | `zip(a, b, strict=False)` (pairs items up)                     | `a.map((x, i) => [x, b[i]])`                              |
-| `sum(p.role == "primary" for p in people)` (`True` counts 1)   | `people.filter((p) => p.role === "primary").length`       |
+| `sum(len(x) for x in xs)` (adds up a generator expression)     | `xs.reduce((total, x) => total + x.length, 0)`            |
+| a `def` that `yield`s, returning `Iterator[X]` (a generator)   | a `function*` generator, returning `Iterator<X>`          |
+| `@pytest.mark.parametrize(…, ids=lambda case: case.file)`      | `it.each(cases)("$file", …)`                              |
+| `with pytest.raises(E) as caught:`, then `caught.value`        | `expect(() => …).toThrow()`, or a `try/catch` to inspect  |
 | `@dataclass(frozen=True)` instances compare field by field     | a deep-equality check such as `isDeepStrictEqual`         |

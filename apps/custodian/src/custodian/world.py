@@ -12,10 +12,17 @@ Custodian never writes into an advisor's CRM, so the simulated one doesn't eithe
 These models are the format. `world/schema.json`, generated from them by
 `pnpm --filter custodian world:schema`, lets the TypeScript seed validate the same file without
 Python, and a test fails when the two drift apart.
+
+A JSON Schema checks each field on its own, so the format is shaped to make as many rules as it
+can part of the shape: a Household has one `primary` field, so it can't have two Primaries, and
+each Person holds their own Account roles, so a role can't name someone outside the Household.
+The few rules left need the whole file at once (an Account role must name an Account in the
+custodian half; keys and account numbers are unique), so only `WorldFile`'s validator checks
+them. `world/invalid/` holds a file breaking each rule, which both loaders' tests must reject.
 """
 
 import json
-from collections import Counter
+from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from typing import Literal, Self
@@ -25,6 +32,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from custodian.models import RegistrationType
 
 __all__ = [
+    "INVALID_WORLDS_PATH",
     "SCHEMA_PATH",
     "WORLD_V0_PATH",
     "AccountRole",
@@ -45,6 +53,8 @@ _WORLD = Path(__file__).parents[4] / "world"
 WORLD_V0_PATH = _WORLD / "v0.json"
 """World v0, written by hand: one Household, until the generator (slices 21 to 23) exists."""
 SCHEMA_PATH = _WORLD / "schema.json"
+INVALID_WORLDS_PATH = _WORLD / "invalid"
+"""World files that each break one rule, listed in `cases.json` with the field to name."""
 
 
 class _Strict(BaseModel):
@@ -72,51 +82,46 @@ class Firm(_Strict):
     name: str
 
 
-class Person(_Strict):
-    key: str
-    """Names the Person within the world file, such as "dana-reyes"."""
-    first_name: str
-    last_name: str
-    born_on: date
-    role: Literal["primary", "co_client", "dependent"]
-
-
 class AccountRole(_Strict):
-    """A dated link between a Person and an Account (GLOSSARY.md, "Account role")."""
+    """A dated link between the Person who holds it and an Account (GLOSSARY.md, "Account role")."""
 
-    person: str
-    """A `Person.key` in the same Household."""
     account_number: str
     """An Account in the custodian half."""
     role: Literal["owner", "joint_owner", "custodian", "beneficiary", "power_of_attorney"]
     starts_on: date
 
 
+class Person(_Strict):
+    key: str
+    """Names the Person across the whole world file, such as "dana-reyes"."""
+    first_name: str
+    last_name: str
+    born_on: date
+    account_roles: list[AccountRole] = []
+    """How this Person is linked to Accounts. Pydantic copies a default list for each instance,
+    so, unlike a plain Python default argument, it is never shared."""
+
+
 class Household(_Strict):
-    """The People a Firm serves together, and the Accounts they are linked to."""
+    """The People a Firm serves together. Who leads is part of the shape (GLOSSARY.md):
+
+    exactly one Primary, at most one Co-client, and any number of Dependents.
+    """
 
     key: str
     name: str
     relationship_status: Literal["prospect", "client", "former_client"]
-    people: list[Person]
-    account_roles: list[AccountRole]
+    primary: Person
+    co_client: Person | None = None
+    dependents: list[Person] = []
 
-    # Field types catch a bad value in one field. Rules across fields, such as "one Primary", go in
-    # a validator that runs after the fields are parsed, and gets the whole model as `self`.
-    @model_validator(mode="after")
-    def _people_and_roles_fit_together(self) -> Self:
-        if sum(person.role == "primary" for person in self.people) != 1:
-            raise ValueError("people: a Household has exactly one Primary")
-        keys = Counter(person.key for person in self.people)
-        if repeated := [key for key, count in keys.items() if count > 1]:
-            raise ValueError(f"people: each key is used once, but {repeated[0]!r} repeats")
-        for index, role in enumerate(self.account_roles):
-            if role.person not in keys:
-                raise ValueError(
-                    f"account_roles.{index}.person: {role.person!r} isn't a Person in this"
-                    " Household"
-                )
-        return self
+    def people(self) -> Iterator[tuple[str, Person]]:
+        """Each Person with the path of their field, such as "co_client" or "dependents.0"."""
+        yield "primary", self.primary
+        if self.co_client is not None:
+            yield "co_client", self.co_client
+        for index, dependent in enumerate(self.dependents):
+            yield f"dependents.{index}", dependent
 
 
 class CrmHalf(_Strict):
@@ -130,21 +135,38 @@ class WorldFile(_Strict):
     custodian: CustodianHalf
     crm: CrmHalf
 
-    # Only the whole file sees both halves, so the check that joins them lives here. Its message
-    # spells out the field's path, since an error raised here is reported against the whole file.
+    # Field types catch a bad value in one field. The rules below need the whole file at once, so
+    # they run in a validator after every field is parsed, with the whole model as `self`. An
+    # error raised here is reported against the whole file, so each message starts with the bad
+    # field's path, as Pydantic writes it for a field error.
     @model_validator(mode="after")
-    def _account_roles_name_custodian_accounts(self) -> Self:
-        numbers = Counter(account.account_number for account in self.custodian.accounts)
-        if repeated := [number for number, count in numbers.items() if count > 1]:
-            raise ValueError(f"custodian.accounts: account {repeated[0]!r} is listed twice")
+    def _keys_and_references_fit_together(self) -> Self:
+        account_numbers: set[str] = set()
+        for index, account in enumerate(self.custodian.accounts):
+            if account.account_number in account_numbers:
+                raise ValueError(
+                    f"custodian.accounts.{index}.account_number: {account.account_number!r} is"
+                    " already an Account"
+                )
+            account_numbers.add(account.account_number)
+
+        household_keys: set[str] = set()
+        person_keys: set[str] = set()
         for household_index, household in enumerate(self.crm.households):
-            for role_index, role in enumerate(household.account_roles):
-                if role.account_number not in numbers:
-                    raise ValueError(
-                        f"crm.households.{household_index}.account_roles.{role_index}"
-                        ".account_number:"
-                        f" {role.account_number!r} isn't an Account in the custodian half"
-                    )
+            where = f"crm.households.{household_index}"
+            if household.key in household_keys:
+                raise ValueError(f"{where}.key: {household.key!r} is already a Household")
+            household_keys.add(household.key)
+            for field, person in household.people():
+                if person.key in person_keys:
+                    raise ValueError(f"{where}.{field}.key: {person.key!r} is already a Person")
+                person_keys.add(person.key)
+                for role_index, role in enumerate(person.account_roles):
+                    if role.account_number not in account_numbers:
+                        raise ValueError(
+                            f"{where}.{field}.account_roles.{role_index}.account_number:"
+                            f" {role.account_number!r} isn't an Account in the custodian half"
+                        )
         return self
 
 

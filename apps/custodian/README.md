@@ -54,6 +54,7 @@ src/custodian/load.py      world:load: the world's custodian half and the ledger
 src/custodian/positions.py Positions rebuilt from the Ledger, as of a date
 fixtures/ledger-v0.json    Dana's week from docs/learn/01, plus the IRA's first day
 ../../world/               the world file (v0.json) and its JSON Schema, shared with the seed
+../../world/invalid/       world files that each break one rule, which both loaders must reject
 migrations/                Alembic: env.py and versions/
 docker/initdb/             the roles script custodian-db runs on its first start
 tests/                     pytest tests (test_*.py), through FastAPI's TestClient

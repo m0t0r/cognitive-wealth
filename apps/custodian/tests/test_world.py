@@ -1,86 +1,86 @@
 import json
 from pathlib import Path
+from typing import Literal
 
 import pytest
 from jsonschema import Draft202012Validator, validate
-from pydantic import ValidationError
+from jsonschema.exceptions import ValidationError as SchemaError
+from pydantic import BaseModel, ValidationError
 
 from custodian.load import main as world_load
 from custodian.models import RegistrationType
-from custodian.world import SCHEMA_PATH, WORLD_V0_PATH, read_world, world_json_schema
+from custodian.world import (
+    INVALID_WORLDS_PATH,
+    SCHEMA_PATH,
+    WORLD_V0_PATH,
+    read_world,
+    world_json_schema,
+)
 
 
-def write_world_with(tmp_path: Path, change: dict[str, object]) -> Path:
-    """A copy of world v0 with `change` merged into its first Household, written to a file."""
-    world = json.loads(WORLD_V0_PATH.read_text())
-    world["crm"]["households"][0] |= change
-    path = tmp_path / "world.json"
-    path.write_text(json.dumps(world))
-    return path
+class InvalidWorld(BaseModel):
+    """One entry of world/invalid/cases.json, which the TypeScript seed's tests read too."""
+
+    file: str
+    field: str
+    """The path of the bad field, which the error must name."""
+    caught_by: Literal["schema", "rules"]
+    """"schema" if world/schema.json rejects it; "rules" if only the cross-field rules do."""
+
+
+def invalid_worlds() -> list[InvalidWorld]:
+    cases = json.loads((INVALID_WORLDS_PATH / "cases.json").read_text())
+    return [InvalidWorld.model_validate(case) for case in cases]
 
 
 def test_world_v0_has_one_household_with_a_joint_account_and_an_ira() -> None:
     world = read_world(WORLD_V0_PATH)
 
     [household] = world.crm.households
-    assert [(person.key, person.role) for person in household.people] == [
-        ("dana-reyes", "primary"),
-        ("jordan-reyes", "co_client"),
-    ]
+    assert household.primary.key == "dana-reyes"
+    assert household.co_client is not None
+    assert household.co_client.key == "jordan-reyes"
     assert [account.registration_type for account in world.custodian.accounts] == [
         RegistrationType.JOINT,
         RegistrationType.TRADITIONAL_IRA,
     ]
-    assert {(role.person, role.account_number, role.role) for role in household.account_roles} == {
-        ("dana-reyes", "CW-000001", "joint_owner"),
-        ("jordan-reyes", "CW-000001", "joint_owner"),
-        ("dana-reyes", "CW-000002", "owner"),
-        ("jordan-reyes", "CW-000002", "beneficiary"),
-    }
+    assert [(role.account_number, role.role) for role in household.primary.account_roles] == [
+        ("CW-000001", "joint_owner"),
+        ("CW-000002", "owner"),
+    ]
+    assert [(role.account_number, role.role) for role in household.co_client.account_roles] == [
+        ("CW-000001", "joint_owner"),
+        ("CW-000002", "beneficiary"),
+    ]
 
 
-def test_a_malformed_world_file_is_rejected_naming_the_bad_field(tmp_path: Path) -> None:
-    world = json.loads(WORLD_V0_PATH.read_text())
-    world["custodian"]["accounts"][1]["registration_type"] = "brokerage"
-    path = tmp_path / "world.json"
-    path.write_text(json.dumps(world))
+# `ids=` names each case in pytest's output after its file, instead of "case0", "case1", ….
+@pytest.mark.parametrize("case", invalid_worlds(), ids=lambda case: case.file)
+def test_each_invalid_world_is_rejected_naming_the_bad_field(case: InvalidWorld) -> None:
+    with pytest.raises(ValidationError) as caught:
+        read_world(INVALID_WORLDS_PATH / case.file)
 
-    with pytest.raises(ValidationError, match=r"custodian\.accounts\.1\.registration_type"):
-        read_world(path)
-
-
-def test_an_unknown_field_is_rejected_rather_than_ignored(tmp_path: Path) -> None:
-    path = write_world_with(tmp_path, {"advisor": "Sam"})
-
-    with pytest.raises(ValidationError, match=r"crm\.households\.0\.advisor"):
-        read_world(path)
+    assert case.field in str(caught.value)
 
 
-def test_an_account_role_must_name_an_account_in_the_custodian_half(tmp_path: Path) -> None:
-    roles = json.loads(WORLD_V0_PATH.read_text())["crm"]["households"][0]["account_roles"]
-    roles[0]["account_number"] = "CW-999999"
-    path = write_world_with(tmp_path, {"account_roles": roles})
+@pytest.mark.parametrize("case", invalid_worlds(), ids=lambda case: case.file)
+def test_the_json_schema_catches_exactly_the_shape_errors(case: InvalidWorld) -> None:
+    # What the TypeScript seed gets from world/schema.json alone. The "rules" cases pass it, so
+    # the seed has to check those rules itself, and its tests run these same files.
+    schema = json.loads(SCHEMA_PATH.read_text())
+    world = json.loads((INVALID_WORLDS_PATH / case.file).read_text())
 
-    with pytest.raises(ValidationError, match=r"account_roles\.0\.account_number.*CW-999999"):
-        read_world(path)
-
-
-def test_an_account_role_must_name_a_person_in_its_household(tmp_path: Path) -> None:
-    roles = json.loads(WORLD_V0_PATH.read_text())["crm"]["households"][0]["account_roles"]
-    roles[0]["person"] = "alex-reyes"
-    path = write_world_with(tmp_path, {"account_roles": roles})
-
-    with pytest.raises(ValidationError, match=r"account_roles\.0\.person.*alex-reyes"):
-        read_world(path)
+    if case.caught_by == "schema":
+        with pytest.raises(SchemaError):
+            validate(world, schema, cls=Draft202012Validator)
+    else:
+        validate(world, schema, cls=Draft202012Validator)
 
 
-def test_a_household_has_exactly_one_primary(tmp_path: Path) -> None:
-    people = json.loads(WORLD_V0_PATH.read_text())["crm"]["households"][0]["people"]
-    people[1]["role"] = "primary"
-    path = write_world_with(tmp_path, {"people": people})
+def test_every_invalid_world_file_is_listed() -> None:
+    files = {path.name for path in INVALID_WORLDS_PATH.glob("*.json")} - {"cases.json"}
 
-    with pytest.raises(ValidationError, match=r"crm\.households\.0\n.*people: .*one Primary"):
-        read_world(path)
+    assert files == {case.file for case in invalid_worlds()}
 
 
 def test_the_committed_json_schema_matches_the_models() -> None:
@@ -90,8 +90,7 @@ def test_the_committed_json_schema_matches_the_models() -> None:
 
 
 def test_world_v0_passes_the_committed_json_schema() -> None:
-    # What the TypeScript seed will do with the same two files. The schema checks each field's
-    # shape; rules across fields, such as "exactly one Primary", are checked by read_world only.
+    # What the TypeScript seed will do with the same two files.
     schema = json.loads(SCHEMA_PATH.read_text())
 
     validate(json.loads(WORLD_V0_PATH.read_text()), schema, cls=Draft202012Validator)

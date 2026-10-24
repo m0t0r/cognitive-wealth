@@ -1,0 +1,42 @@
+[
+  {
+    "file": "no-primary.json",
+    "field": "crm.households.0.primary",
+    "caught_by": "schema"
+  },
+  {
+    "file": "two-primaries.json",
+    "field": "crm.households.0.primary",
+    "caught_by": "schema"
+  },
+  {
+    "file": "unknown-field.json",
+    "field": "crm.households.0.advisor",
+    "caught_by": "schema"
+  },
+  {
+    "file": "bad-registration-type.json",
+    "field": "custodian.accounts.0.registration_type",
+    "caught_by": "schema"
+  },
+  {
+    "file": "role-names-unknown-account.json",
+    "field": "crm.households.0.primary.account_roles.0.account_number",
+    "caught_by": "rules"
+  },
+  {
+    "file": "duplicate-account-number.json",
+    "field": "custodian.accounts.1.account_number",
+    "caught_by": "rules"
+  },
+  {
+    "file": "duplicate-person-key.json",
+    "field": "crm.households.0.co_client.key",
+    "caught_by": "rules"
+  },
+  {
+    "file": "duplicate-household-key.json",
+    "field": "crm.households.1.key",
+    "caught_by": "rules"
+  }
+]
