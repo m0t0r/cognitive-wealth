@@ -1,0 +1,13 @@
+gantt
+  title Off for a week, then caught up: every Business day still gets its Close
+  dateFormat YYYY-MM-DD
+  axisFormat %a %d %b
+  section The laptop
+    Running, closes each evening     :on1, 2026-03-02, 5d
+    Switched off                     :crit, off, 2026-03-07, 9d
+    Started again, catches up        :milestone, 2026-03-16, 0d
+    Running, closes each evening     :on2, 2026-03-16, 5d
+  section Business days closed
+    Closed on the evening itself     :c1, 2026-03-02, 5d
+    Closed on Mon 16 Mar, in order   :active, c2, 2026-03-09, 5d
+    Closed on the evening itself     :c3, 2026-03-16, 5d
