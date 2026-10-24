@@ -13,10 +13,22 @@ def test_shares_times_price_keeps_every_decimal_until_rounded() -> None:
     assert value.to_money(RoundingRule.HALF_EVEN) == Money("23456.70")
 
 
-def test_a_dividend_reinvested_at_a_price_buys_fractional_shares() -> None:
-    bought = Money("37.50") / Price("84.2731")
+@pytest.mark.parametrize(
+    ("dividend", "shares"),
+    [
+        # 0.4449818… shares: the seventh digit is dropped, so the shares never cost more than
+        # the dividend paid (docs/research/fractional-share-rounding.md).
+        ("37.50", "0.444981"),
+        # Reversing it removes exactly what was bought: down means toward zero.
+        ("-37.50", "-0.444981"),
+    ],
+)
+def test_a_dividend_reinvested_at_a_price_buys_fractional_shares_rounded_down(
+    dividend: str, shares: str
+) -> None:
+    bought = Money(dividend) / Price("84.2731")
 
-    assert bought.to_shares(RoundingRule.HALF_EVEN) == Shares("0.444982")
+    assert bought.to_shares(RoundingRule.DOWN) == Shares(shares)
 
 
 @pytest.mark.parametrize(
@@ -121,7 +133,7 @@ def test_a_pydantic_model_round_trips_through_json_as_decimal_strings() -> None:
     reinvestment = Reinvestment(
         dividend=Money("37.50"),
         price=Price("84.2731"),
-        shares=Shares("0.444982"),
+        shares=Shares("0.444981"),
         fee_rate=Rate("0.0075"),
     )
 
@@ -130,7 +142,7 @@ def test_a_pydantic_model_round_trips_through_json_as_decimal_strings() -> None:
     assert json.loads(sent) == {
         "dividend": "37.50",
         "price": "84.2731",
-        "shares": "0.444982",
+        "shares": "0.444981",
         "fee_rate": "0.0075",
     }
     assert Reinvestment.model_validate_json(sent) == reinvestment

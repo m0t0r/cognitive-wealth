@@ -13,6 +13,7 @@ share.
 """
 
 from decimal import (
+    ROUND_DOWN,
     ROUND_HALF_EVEN,
     Context,
     Decimal,
@@ -45,6 +46,11 @@ class RoundingRule(Enum):
 
     HALF_EVEN = ROUND_HALF_EVEN
     """For aggregates: a tie goes to the even digit, so ties don't drift up over many sums."""
+
+    DOWN = ROUND_DOWN
+    """For shares bought with cash: drop the extra digits (toward zero), so the shares never cost
+    more than the cash that bought them, as brokers do (docs/research/fractional-share-rounding.md).
+    """
 
 
 class _Exact:
