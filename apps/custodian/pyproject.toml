@@ -3,10 +3,26 @@ name = "custodian"
 version = "0.0.0"
 description = "Simulated custodian: the book of record for holdings (ADR 0009, 0011)."
 requires-python = ">=3.15,<3.16"
-dependencies = ["fastapi>=0.162.0", "pydantic>=2.14.1,<3", "uvicorn>=0.54.0"]
+dependencies = [
+  "alembic>=1.20.1",
+  "fastapi>=0.162.0",
+  "psycopg[binary]>=3.3.6",
+  "pydantic>=2.14.1,<3",
+  "sqlalchemy>=2.1.6",
+  "uvicorn>=0.54.0",
+]
 
 [dependency-groups]
-dev = ["httpx2>=2.16.0", "pyright>=1.1.414", "pytest>=9.1.1", "ruff>=0.17.2"]
+dev = [
+  "httpx2>=2.16.0",
+  "pyright>=1.1.414",
+  "pytest>=9.1.1",
+  "pytest-randomly>=5.0.0",
+  "pyyaml>=6.0.3",
+  "ruff>=0.17.2",
+  "testcontainers[postgres]>=4.15.0",
+  "types-pyyaml>=6.0.12.20260906",
+]
 
 [build-system]
 requires = ["uv_build>=0.13.5,<0.14"]
@@ -33,7 +49,7 @@ select = [
 [tool.pyright]
 typeCheckingMode = "strict"
 pythonVersion = "3.15"
-include = ["src", "tests"]
+include = ["src", "tests", "migrations"]
 venvPath = "."
 venv = ".venv"
 # An ignore comment that hides no error fails the check, so tests/typing_misuses.py proves each
@@ -43,3 +59,7 @@ reportUnnecessaryTypeIgnoreComment = "error"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = ["--strict-markers", "--strict-config"]
+
+[tool.alembic]
+# Run with `pnpm --filter custodian db:migrate`; migrations/env.py reads DATABASE_URL.
+script_location = "%(here)s/migrations"

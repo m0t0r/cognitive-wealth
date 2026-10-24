@@ -1,6 +1,7 @@
 # Local development: exposes Postgres, Redis and Mailpit's SMTP on the loopback interface for
-# `pnpm dev` and drizzle-kit (Mailpit's UI is already on http://127.0.0.1:8025).
-#   docker compose -f compose.yaml -f compose.dev.yaml up -d db migrate redis mailpit
+# `pnpm dev` and drizzle-kit (Mailpit's UI is already on http://127.0.0.1:8025), and the custodian's
+# Postgres on :5434 (apps/custodian/README.md).
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d db migrate redis mailpit custodian-db
 # Then in apps/web/.env.local:
 #   DATABASE_URL=postgres://app@localhost:5432/cognitive_wealth
 #   DATABASE_PASSWORD_FILE=../../.secrets/db_app_password
@@ -22,6 +23,13 @@ services:
     # Publishing a port needs a network with a route to the host, which also gives Postgres
     # outbound access. That's a dev-only trade-off; compose.yaml alone keeps `db` egress-free.
     networks: [data, host-access]
+
+  custodian-db:
+    ports:
+      # 5433 is compose.verify.yaml's `db`.
+      - "127.0.0.1:5434:5432"
+    # The same dev-only trade-off as `db`.
+    networks: [custodian-data, host-access]
 
   redis:
     ports:
