@@ -1,0 +1,18 @@
+flowchart LR
+  subgraph household["The Reyes Household"]
+    dana["Dana<br/>Primary, born 1978"]
+    jordan["Jordan<br/>Co-client, born 1980"]
+  end
+  subgraph managed["At the Custodian, managed by the Firm"]
+    joint["CW-000001<br/>Joint account, taxable"]
+    ira["CW-000002<br/>Dana's traditional IRA"]
+  end
+  subgraph away["Held away, known but not managed"]
+    k401["Jordan's 401(k)<br/>at Jordan's employer"]
+  end
+
+  dana -->|"joint owner"| joint
+  jordan -->|"joint owner"| joint
+  dana -->|"owner"| ira
+  jordan -.->|"beneficiary"| ira
+  jordan -->|"participant"| k401

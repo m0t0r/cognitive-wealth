@@ -105,6 +105,38 @@ A dated link between a Person and an Account that says how the Person is involve
 **Registration type**:
 The legal form of an Account, which sets its ownership and tax rules: individual, joint, traditional IRA, Roth IRA, custodial account for a minor, 529, and so on.
 
+**Taxable account**:
+An Account with no special tax treatment, registered as individual or joint: no limits on money in or out, and its dividends, interest and gains are taxed as they happen.
+_Avoid_: Brokerage account, non-qualified account
+
+**IRA**:
+Individual Retirement Arrangement: a retirement Account with a tax break, always owned by exactly one Person. Either a Traditional IRA or a Roth IRA.
+_Avoid_: Individual Retirement Account (fine in speech; the IRS says Arrangement)
+
+**Traditional IRA**:
+An IRA that takes money before tax, where it may be deductible, and taxes it as income when it comes out. Subject to RMDs.
+
+**Roth IRA**:
+An IRA that takes money after tax and pays it out tax-free in retirement, growth included. No RMDs while its owner is alive.
+
+**401(k)**:
+A retirement plan run through an employer, funded from each paycheck. Usually a Held-away asset, since it sits with the employer's plan rather than the Firm's Custodian.
+
+**Custodial account**:
+An Account that belongs to a child and is managed by an adult custodian until an age set by state law (UTMA or UGMA). The gift can't be taken back.
+
+**529 plan**:
+An Account that saves for a Beneficiary's education: growth is tax-free when spent on qualified education expenses.
+
+**Beneficiary**:
+The Person who receives an Account when its owner dies, or the student a 529 plan saves for. An Account role.
+
+**Rollover**:
+Moving retirement money from one plan or IRA to another without paying tax on the move, such as an old 401(k) into an IRA at the Custodian.
+
+**Roth conversion**:
+Moving money from a Traditional IRA to a Roth IRA on purpose, paying income tax on it now so that it comes out tax-free later.
+
 ## Holdings
 
 **Security**:
