@@ -621,6 +621,13 @@ Say the Custodian last closed on Friday 6 March and is next started on Monday 16
 | Skipped            | Sat 7, Sun 8, Sat 14, Sun 15 Mar: not Business days |
 | From then on       | a Close each evening, starting Mon 16 Mar           |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/catch-up.dark.svg">
+  <img alt="A timeline of Monday 2 to Friday 20 March 2026 in two rows. The laptop row: running and closing each evening from Monday 2 to Friday 6 March, switched off from Saturday 7 to Sunday 15 March, started again on Monday 16 March, when it catches up, then running and closing each evening to Friday 20 March. The Business days closed row: Monday 2 to Friday 6 March closed on the evening itself, Monday 9 to Friday 13 March closed on Monday 16 March in order, and Monday 16 to Friday 20 March closed on the evening itself. No Business day is left without a Close." src="../diagrams/catch-up.light.svg">
+</picture>
+
+The top row is when the laptop was on. The bottom row is when each Business day got its Close: on time, or late during the catch-up. The bottom row has no gaps except weekends.
+
 Each catch-up Close does what that evening's Close would have done: that day's prices, dividends, interest, and any money a Household puts in or takes out.
 
 Four rules make those filled-in days as trustworthy as if they had happened on time:
