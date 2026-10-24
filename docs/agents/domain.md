@@ -49,3 +49,7 @@ If the concept you need isn't in the glossary yet, that's a signal: either you'r
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
 > _Contradicts ADR-0007 (event-sourced orders), but worth reopening because…_
+
+## Worked numbers in ADRs and issue briefs
+
+When an ADR gives a worked example, name the rule that produces each rounded figure (which value rounds, to how many places, in which direction), and have the reviewer recompute it. An issue brief that copies a figure from an ADR cites that rule too, so its acceptance criterion can't be met by guessing one.
