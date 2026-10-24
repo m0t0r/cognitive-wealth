@@ -75,14 +75,17 @@ def test_downgrading_to_base_leaves_only_alembics_table(database: Database) -> N
 
 
 def test_rows_loaded_before_0004_get_the_id_world_load_gives_them(database: Database) -> None:
-    # A dev database loaded before Transactions had a public ID: its `id`s are the ledger
-    # fixture's row numbers, so row 2 gets TX-000000002, as a fresh `world:load` gives it.
+    # A dev database loaded before Transactions had a public ID. A `world:load` that failed and
+    # rolled back still used up ids 1 to 13 (Postgres never hands an identity value back), so the
+    # load that worked numbered its rows from 14. They still get TX-000000001 and TX-000000002,
+    # by their order in the Ledger, as `world:load` gives them in an empty database.
     with database.migrator.begin() as connection:
         command.downgrade(alembic_config(connection), "0003")
         connection.execute(
             text("""
                 insert into account (account_number, registration_type, opened_on)
                 values ('CW-000001', 'joint', '2026-02-26');
+                alter table "transaction" alter column id restart with 14;
                 insert into "transaction"
                     (account_id, kind, trade_date, settlement_date, posting_date, amount)
                 select id, 'contribution', '2026-02-26', '2026-02-26', '2026-02-26', 5000
@@ -96,4 +99,4 @@ def test_rows_loaded_before_0004_get_the_id_world_load_gives_them(database: Data
             text('select id, transaction_id from "transaction" order by id')
         ).all()
 
-    assert [tuple(row) for row in ids] == [(1, "TX-000000001"), (2, "TX-000000002")]
+    assert [tuple(row) for row in ids] == [(14, "TX-000000001"), (15, "TX-000000002")]

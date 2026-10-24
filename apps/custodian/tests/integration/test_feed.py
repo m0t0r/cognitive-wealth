@@ -20,6 +20,7 @@ from custodian.feed import write_delivery
 from custodian.feed_store import FeedStore, LocalFeedStore
 from custodian.ledger_fixture import LEDGER_V0_PATH, LedgerFixture, read_ledger_fixture
 from custodian.load import load
+from custodian.market_value import market_value_as_of
 from custodian.money import Shares
 from custodian.positions import positions_as_of
 from custodian.world import WORLD_V0_PATH, WorldFile, read_world
@@ -196,12 +197,23 @@ def test_positions_agree_with_positions_as_of_for_every_account(
         write_delivery(database.app, store, day)
 
         published: dict[str, dict[str, Shares]] = {}
+        values: dict[str, list[tuple[str, str, str]]] = {}
         for row in rows_of(store, f"{day.isoformat()}/positions.csv"):
-            published.setdefault(row["account_number"], {})[row["security"]] = Shares(row["shares"])
+            number = row["account_number"]
+            published.setdefault(number, {})[row["security"]] = Shares(row["shares"])
+            values.setdefault(number, []).append(
+                (row["security"], row["price"], row["market_value"])
+            )
         open_accounts = [row["account_number"] for row in rows_of(store, f"{day}/accounts.csv")]
         for number in open_accounts:
             # Known on the day itself: a Correction posted later changes only later Deliveries.
             assert published.get(number, {}) == positions_as_of(session, number, day, known_on=day)
+            # Every Position is priced in the fixture, so each line matches market_value_as_of's.
+            valued = market_value_as_of(session, number, day, known_on=day)
+            assert values.get(number, []) == [
+                (line.identifier, str(line.price), str(line.market_value))
+                for line in valued.positions
+            ]
         assert set(published) <= set(open_accounts)
         session.rollback()  # end the read, so the next day's sees the database afresh
 

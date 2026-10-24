@@ -49,7 +49,6 @@ from custodian.positions import CASH_SWEEP_PRICE, positions_as_of
 
 __all__ = [
     "DEFAULT_ROOT",
-    "FORMAT_VERSION",
     "AccountRow",
     "Manifest",
     "ManifestFile",
@@ -57,12 +56,10 @@ __all__ = [
     "PriceRow",
     "SecurityRow",
     "TransactionRow",
+    "delivery_key",
     "main",
     "write_delivery",
 ]
-
-FORMAT_VERSION = 1
-"""Raised when a file's columns or meaning change, so a reader can refuse a format it can't read."""
 
 DEFAULT_ROOT = Path(__file__).parents[4] / ".dev" / "custodian-feed"
 """Where `feed:write` puts Deliveries unless told otherwise: the checkout's gitignored `.dev/`."""
@@ -131,10 +128,17 @@ class ManifestFile(_Row):
 
 
 class Manifest(_Row):
-    format_version: Literal[1]
+    format_version: Literal[1] = 1
+    """Raised when a file's columns or meaning change, so a reader can refuse a format it can't
+    read. `Literal[1]`: the only value this version of the writer writes, or accepts."""
     as_of_date: date
     files: list[ManifestFile]
     """By name."""
+
+
+def delivery_key(as_of: date, name: str) -> str:
+    """Where a Delivery's file is kept in a FeedStore: `2026-03-02/positions.csv`."""
+    return f"{as_of.isoformat()}/{name}"
 
 
 def write_delivery(engine: Engine, store: FeedStore, as_of: date) -> Manifest:
@@ -147,36 +151,29 @@ def write_delivery(engine: Engine, store: FeedStore, as_of: date) -> Manifest:
     with Session(engine) as session, session.begin():
         session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
         accounts = _accounts(session, as_of)
-        files: dict[str, Sequence[_Row]] = {
-            "securities.csv": _securities(session),
-            "accounts.csv": accounts,
-            "transactions.csv": _transactions(session, as_of),
-            "positions.csv": _positions(session, accounts, as_of),
-            "prices.csv": _prices(session, as_of),
-        }
+        # Each file's name, its row model (whose fields give the header row, even with no rows),
+        # and its rows.
+        files: list[tuple[str, type[_Row], Sequence[_Row]]] = [
+            ("accounts.csv", AccountRow, accounts),
+            ("positions.csv", PositionRow, _positions(session, accounts, as_of)),
+            ("prices.csv", PriceRow, _prices(session, as_of)),
+            ("securities.csv", SecurityRow, _securities(session)),
+            ("transactions.csv", TransactionRow, _transactions(session, as_of)),
+        ]
 
     listed: list[ManifestFile] = []
-    for name, rows in sorted(files.items()):
-        content = _csv(rows, _columns[name])
-        store.put(f"{as_of.isoformat()}/{name}", content)
+    for name, model, rows in files:
+        content = _csv(rows, model)
+        store.put(delivery_key(as_of, name), content)
         listed.append(
             ManifestFile(name=name, rows=len(rows), sha256=hashlib.sha256(content).hexdigest())
         )
-    manifest = Manifest(format_version=FORMAT_VERSION, as_of_date=as_of, files=listed)
+    manifest = Manifest(as_of_date=as_of, files=listed)
+    # Last, so a reader that finds the Manifest finds every file it lists already complete.
     store.put(
-        f"{as_of.isoformat()}/manifest.json", (manifest.model_dump_json(indent=2) + "\n").encode()
+        delivery_key(as_of, "manifest.json"), (manifest.model_dump_json(indent=2) + "\n").encode()
     )
     return manifest
-
-
-_columns: dict[str, type[_Row]] = {
-    "securities.csv": SecurityRow,
-    "accounts.csv": AccountRow,
-    "transactions.csv": TransactionRow,
-    "positions.csv": PositionRow,
-    "prices.csv": PriceRow,
-}
-"""Each file's row model, whose fields give its header row even when it has no rows."""
 
 
 def _csv(rows: Sequence[_Row], model: type[_Row]) -> bytes:
@@ -215,30 +212,34 @@ def _accounts(session: Session, as_of: date) -> list[AccountRow]:
 
 
 def _transactions(session: Session, as_of: date) -> list[TransactionRow]:
+    # Each row's Transaction, with the keys the feed names things by instead of internal ids: its
+    # Account's number, the Transaction ID of the row a Reversal undoes, and the Security's
+    # identifier. The outer joins keep a row with no original (not a Reversal) or no Security.
     original = aliased(Transaction)
-    rows = [
-        TransactionRow(
-            transaction_id=transaction.transaction_id,
-            account_number=account_number,
-            kind=transaction.kind,
-            reverses=reverses,
-            security=security,
-            shares=transaction.shares,
-            amount=transaction.amount,
-            trade_date=transaction.trade_date,
-            settlement_date=transaction.settlement_date,
-            posting_date=transaction.posting_date,
-        )
-        for transaction, account_number, reverses, security in session.execute(
-            select(
-                Transaction, Account.account_number, original.transaction_id, Security.identifier
+    posted = (
+        select(Transaction, Account.account_number, original.transaction_id, Security.identifier)
+        .join(Transaction.account)
+        .outerjoin(original, Transaction.reverses.of_type(original))
+        .outerjoin(Transaction.security)
+        .where(Transaction.posting_date == as_of)
+    )
+    rows: list[TransactionRow] = []
+    for transaction, account_number, reverses, security in session.execute(posted):
+        rows.append(
+            TransactionRow(
+                transaction_id=transaction.transaction_id,
+                account_number=account_number,
+                kind=transaction.kind,
+                reverses=reverses,
+                security=security,
+                shares=transaction.shares,
+                amount=transaction.amount,
+                trade_date=transaction.trade_date,
+                settlement_date=transaction.settlement_date,
+                posting_date=transaction.posting_date,
             )
-            .join(Transaction.account)
-            .outerjoin(original, Transaction.reverses.of_type(original))
-            .outerjoin(Transaction.security)
-            .where(Transaction.posting_date == as_of)
         )
-    ]
+    # `key=` says what to sort by: a `lambda` is a one-line function, like `(row) => …`.
     return sorted(rows, key=lambda row: (row.account_number, row.transaction_id))
 
 
