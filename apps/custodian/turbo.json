@@ -10,7 +10,13 @@
     // need the host's Docker settings, and they run the image compose.yaml pins.
     "test:integration": {
       "passThroughEnv": ["DOCKER_*", "TESTCONTAINERS_*", "RYUK_*"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/compose.yaml", "$TURBO_ROOT$/world/**"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/compose.yaml",
+        "$TURBO_ROOT$/world/**",
+        // test_feed.py checks the hashes the feed primer quotes.
+        "$TURBO_ROOT$/docs/learn/03-custodian-feed-and-ingestion.md"
+      ]
     }
   }
 }

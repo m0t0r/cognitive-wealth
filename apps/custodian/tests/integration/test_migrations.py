@@ -72,3 +72,28 @@ def test_downgrading_to_base_leaves_only_alembics_table(database: Database) -> N
 
     assert tables == ["alembic_version"]
     assert types == []
+
+
+def test_rows_loaded_before_0004_get_the_id_world_load_gives_them(database: Database) -> None:
+    # A dev database loaded before Transactions had a public ID: its `id`s are the ledger
+    # fixture's row numbers, so row 2 gets TX-000000002, as a fresh `world:load` gives it.
+    with database.migrator.begin() as connection:
+        command.downgrade(alembic_config(connection), "0003")
+        connection.execute(
+            text("""
+                insert into account (account_number, registration_type, opened_on)
+                values ('CW-000001', 'joint', '2026-02-26');
+                insert into "transaction"
+                    (account_id, kind, trade_date, settlement_date, posting_date, amount)
+                select id, 'contribution', '2026-02-26', '2026-02-26', '2026-02-26', 5000
+                from account cross join generate_series(1, 2);
+            """)
+        )
+        command.upgrade(alembic_config(connection), "head")
+
+    with database.migrator.connect() as connection:
+        ids = connection.execute(
+            text('select id, transaction_id from "transaction" order by id')
+        ).all()
+
+    assert [tuple(row) for row in ids] == [(1, "TX-000000001"), (2, "TX-000000002")]
