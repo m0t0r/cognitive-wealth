@@ -243,7 +243,10 @@ for (const [a, group] of reviewed.toSorted((x, y) => areaChurn(y[1]) - areaChurn
     leaves(subFiles, "      ");
   }
 }
-if (files.some((f) => !vendored(f.area) && churn(f) > 0)) emit("churn", tree.join("\n"));
+// A one- or two-file change is a single tile and a single leaf; the Summary names the files (#99).
+const MIN_CHART_FILES = 3;
+const charted = files.filter((f) => !vendored(f.area) && churn(f) > 0);
+if (charted.length >= MIN_CHART_FILES) emit("churn", tree.join("\n"));
 
 // The changed files as a tree, each leaf carrying its change and line counts.
 const root = {};
@@ -277,7 +280,7 @@ const walk = (node, depth) => {
   }
 };
 walk(root, 1);
-if (files.length <= 60) emit("files", view.join("\n"));
+if (files.length >= MIN_CHART_FILES && files.length <= 60) emit("files", view.join("\n"));
 
 // Test cases per layer. One layer is one bar with nothing to compare it to, which the Evidence
 // section says better (#81), so the chart needs two. pytest counts `def test_` functions, not the
