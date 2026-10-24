@@ -7,7 +7,7 @@ By the end you'll know:
 - why one Household has several Accounts, not one
 - the three ways investment money can be taxed, and why it matters so much
 - what a Taxable account, a Traditional IRA, a Roth IRA, a 401(k), a Custodial account and a 529 plan are
-- how to choose between a Traditional IRA and a Roth IRA, with numbers
+- how to choose between a Traditional IRA and a Roth IRA, with numbers, and why inflation doesn't change the choice
 - the rules that come with a tax break: how much can go in, when money can come out, and when it must
 - who can own each kind of Account, and what happens when an owner dies
 - what Cognitive Wealth's code does with all this
@@ -355,6 +355,45 @@ When is that worth it? In a year when Dana's tax rate is unusually low, such as 
 
 A conversion has its own five-year rule: for an owner under 59½, converted money taken out of the Roth IRA within five years can trigger the 10% penalty ([IRS Publication 590-B](https://www.irs.gov/publications/p590b)).
 
+### Does inflation make a Roth IRA the better choice?
+
+**Short answer:** no, because inflation shrinks a Traditional IRA and a Roth IRA by the same share, so it adds nothing to the choice between them.
+
+_Inflation_ means prices rising over time, so the same dollar buys less later. If prices double in 20 years, a sandwich that costs $5 today costs $10 then, and $1,000 then buys what $500 buys today. To compare money from different years, divide the later amount by how much prices rose. The result is in _today's money_.
+
+It's tempting to think a Traditional IRA wins from this: its tax is paid decades later, with dollars that are worth less by then. That part is true. But the tax is a share of the whole amount, and the whole amount grew first.
+
+Think of a Traditional IRA as a business Dana owns with a silent partner, the government, which owns 20% of it from the first day. Whatever the business grows into, and whatever inflation does to the dollar, the partner's 20% and Dana's 80% change together. A Roth IRA pays the partner its 20% at the start, and Dana owns the other 80% alone. Either way, Dana ends up with 80% of what $1,000 grows into.
+
+**Example:** go back to Part 1's $1,000 of salary, with a 20% tax rate now and later, and investments that double over 20 years. Now add inflation: prices also double over those 20 years.
+
+| Step                       | Traditional IRA      | Roth IRA   |
+| -------------------------- | -------------------- | ---------- |
+| Tax today                  | none                 | 20%: −$200 |
+| Invested                   | $1,000               | $800       |
+| After 20 years             | $2,000               | $1,600     |
+| Tax on the way out         | 20% of it all: −$400 | none       |
+| **Dana keeps**             | **$1,600**           | **$1,600** |
+| **In today's money** (÷ 2) | **$800**             | **$800**   |
+
+Inflation took the same half from both.
+
+This works for any growth and any inflation, not just these. Both Accounts multiply the same three things, only in a different order:
+
+- **Traditional IRA:** salary × growth × (1 − the tax rate later)
+- **Roth IRA:** salary × (1 − the tax rate today) × growth
+
+The order of a multiplication doesn't change its result, and inflation divides both results by the same number at the end. So only the two tax rates can make them differ, which is Part 3's rule. (Like Part 3, this simplifies: the whole $1,000 is deductible, both Accounts hold the same investments, the money comes out on the same day with no penalty, and one tax rate applies to the whole withdrawal. Real withdrawals are taxed across several rates.)
+
+Inflation still matters in two other places:
+
+- **It doesn't, by itself, push you into a higher tax rate.** Tax rates rise with income in steps called _brackets_: the first dollars of income are taxed at one rate, the next dollars at a higher one. If prices and your pay both doubled while the brackets stayed put, you'd climb into higher brackets without being any better off. To prevent that, the law has the IRS publish new tax tables each year, "so that inflation will not result in tax increases" ([26 U.S.C. 1(f)](https://www.law.cornell.edu/uscode/text/26/1)). For 2026, [Rev. Proc. 2025-32](https://www.irs.gov/pub/irs-drop/rp-25-32.pdf) "sets forth inflation-adjusted items for 2026" (section 1), and section 4.01 has the new tables. Not every dollar amount in tax law is adjusted this way, but the brackets are. So the tax rate later depends mostly on your income in today's money and on future tax law, not on inflation.
+- **It costs a Taxable account extra.** A gain is "the difference between the adjusted basis in the asset and the amount you realized from the sale", and "Generally, an asset's basis is its cost to the owner" ([IRS Topic 409](https://www.irs.gov/taxtopics/tc409)). In plain words: the gain is what you sold for minus what you paid. The IRS's definition has no step for inflation. Say Dana buys shares for $1,000 in a Taxable account and sells them years later for $1,300, while prices have risen by 30%. In today's money Dana gained nothing, but the tax counts a $300 gain. Say the long-term rate is 15% (Part 2): that's $45 of tax. Dana ends with $1,255, which in today's money is $1,255 ÷ 1.3 = $965.38, less than the $1,000 put in. Inside a Traditional IRA or a Roth IRA, growth isn't taxed while the money stays in, so both avoid this, equally.
+
+So inflation is a reason to prefer either retirement Account over a Taxable account, not a Roth IRA over a Traditional IRA.
+
+A Roth IRA does have a different advantage, for people who save a lot. The yearly limit counts the dollars you put in: "For 2026, the total contributions you make each year to all of your traditional IRAs and Roth IRAs can't be more than" $7,500 for someone under 50 ([IRS, "IRA contribution limits"](https://www.irs.gov/retirement-plans/plan-participant-employee/retirement-topics-ira-contribution-limits)). $7,500 in a Roth IRA has already been taxed, so all of it, and all its growth, is Dana's. $7,500 in a Traditional IRA still owes tax: at a 20% rate later, only $6,000 of it is Dana's. Dana does get $1,500 of tax back this year, but if Dana has no other tax-advantaged room left, such as space in a 401(k), that $1,500 can only go into a Taxable account. So for someone who fills every limit, a Roth IRA lets more money grow untaxed.
+
 ### Which year does a contribution count for?
 
 **Short answer:** an IRA contribution can count for the year before, if it's made before that year's tax return is due, around mid-April.
@@ -425,7 +464,8 @@ A rule to remember for the code: **the Registration type decides the tax rules, 
 9. The tax break comes with rules: yearly limits ($7,500 for IRAs in 2026), earnings from work, a 10% penalty before 59½, and **RMDs** from 73 or 75. Roth IRAs have no RMDs for their owner.
 10. An IRA has exactly one owner. A spouse can be its **Beneficiary**. A joint account has two owners, and with right of survivorship, the survivor owns it all.
 11. A **Rollover** moves retirement money between plans without tax. A **Roth conversion** moves Traditional money to Roth and pays the tax now.
-12. In the code, the Registration type sets the tax rules, and the Account roles set the people. Managed Accounts count toward AUM; held-away ones count toward Net worth only.
+12. Inflation shrinks a Traditional IRA and a Roth IRA equally, so it doesn't change which is better. It does cost a Taxable account extra, because gains are taxed in dollars, not in what they can buy.
+13. In the code, the Registration type sets the tax rules, and the Account roles set the people. Managed Accounts count toward AUM; held-away ones count toward Net worth only.
 
 ## Check yourself
 
@@ -484,5 +524,12 @@ No. It's held at the employer's plan, not at the Firm's Custodian, and the Advis
 <summary>8. (Level 3) Dana converts $10,000 from the Traditional IRA to a Roth IRA, in a year when Dana's tax rate is 20%. What does it cost, and why might it be worth it?</summary>
 
 $2,000 of tax now, because the $10,000 counts as income this year. It's worth it if Dana's tax rate in retirement would have been higher than 20%: the money and its growth then come out tax-free instead.
+
+</details>
+
+<details>
+<summary>9. (Level 3) Prices double over 20 years. Jordan says the Traditional IRA wins, because its $400 of tax is paid later in cheaper dollars. Is Jordan right?</summary>
+
+No. The $400 is paid in cheaper dollars, but it's 20% of a pile that grew first. The government's 20% grew and shrank along with Dana's 80%, so both Accounts keep $1,600, which is $800 in today's money. Only the tax rates now and later decide which is better.
 
 </details>
