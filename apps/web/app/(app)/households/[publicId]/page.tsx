@@ -1,4 +1,5 @@
 import { getDb } from "@repo/db/client";
+import { cn } from "@repo/design-system/lib/utils";
 import { getHouseholdOverview } from "@repo/households";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -60,16 +61,17 @@ export default async function HouseholdPage({ params }: PageProps<"/households/[
         </p>
       </header>
 
-      {/* Hairlines from a 1px gap over the border colour, in two columns or four. */}
+      {/* Hairlines from a 1px gap over the border colour. In source order, so phones read the
+          headline facts (value, date) in the first row and the counts in the second. */}
       <dl className="grid grid-cols-2 gap-px border-b bg-border sm:grid-cols-4">
         <Figure term="Total value" note="Arrives with AUM">
           <span className="text-muted-foreground">—</span>
         </Figure>
-        <Figure term="Accounts">{household.accounts.length}</Figure>
-        <Figure term="Positions">{positions}</Figure>
         <Figure
           term="As of"
-          note={asOf === null ? "Nothing from the custodian yet" : "As the custodian reported it"}
+          note={asOf === null ? "Nothing from the custodian yet" : "From the custodian"}
+          // A date is metadata, not a figure: smaller on phones, and never split across lines.
+          valueClassName="text-base whitespace-nowrap sm:text-2xl"
         >
           {asOf === null ? (
             <span className="text-muted-foreground">—</span>
@@ -77,6 +79,8 @@ export default async function HouseholdPage({ params }: PageProps<"/households/[
             <time dateTime={asOf}>{formatIsoDate(asOf)}</time>
           )}
         </Figure>
+        <Figure term="Accounts">{household.accounts.length}</Figure>
+        <Figure term="Positions">{positions}</Figure>
       </dl>
 
       {household.accounts.length === 0 ? (
@@ -92,14 +96,20 @@ export default async function HouseholdPage({ params }: PageProps<"/households/[
   );
 }
 
-type FigureProps = { term: string; note?: string; children: ReactNode };
+type FigureProps = {
+  term: string;
+  note?: string;
+  /** Replaces the value's size, for a value that isn't a number. */
+  valueClassName?: string;
+  children: ReactNode;
+};
 
 /** One figure of the summary row, between hairlines. */
-function Figure({ term, note, children }: FigureProps) {
+function Figure({ term, note, valueClassName = "text-xl sm:text-2xl", children }: FigureProps) {
   return (
     <div className="flex flex-col gap-1 bg-background p-4 sm:p-5">
       <dt className="text-sm text-muted-foreground">{term}</dt>
-      <dd className="font-heading text-xl font-semibold tabular-nums sm:text-2xl">{children}</dd>
+      <dd className={cn("font-heading font-semibold tabular-nums", valueClassName)}>{children}</dd>
       {note === undefined ? null : <dd className="text-xs text-muted-foreground">{note}</dd>}
     </div>
   );
