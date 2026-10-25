@@ -4,17 +4,11 @@
  * `getAuth()` still builds the instance lazily, on the first request.
  */
 export async function register() {
-  // Not in the edge runtime (nothing there uses auth), and not while `next build` runs, which
-  // needs no auth settings.
-  if (process.env.NEXT_RUNTIME !== "nodejs" || process.env.NEXT_PHASE === "phase-production-build")
-    return;
-  const { authOptionsFromEnv, mailerFromEnv } = await import("@repo/auth/env");
-  try {
-    authOptionsFromEnv(process.env);
-    mailerFromEnv(process.env);
-  } catch (error) {
-    // Next logs an error thrown here and serves anyway; exit so the deploy fails instead.
-    console.error("Refusing to start:", error instanceof Error ? error.message : error);
-    process.exit(1);
+  // Not in the edge runtime (nothing there uses auth). The check lives in its own file, imported
+  // only inside this branch, so the edge bundle never sees its `process.exit` (an early return
+  // still left it there, and every build warned "Ecmascript file had an error", #148).
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { checkSettings } = await import("./instrumentation.node");
+    await checkSettings();
   }
 }
