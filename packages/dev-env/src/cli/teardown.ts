@@ -1,8 +1,8 @@
 // `pnpm dev:teardown [--worktree <path>]`: stops a worktree's `pnpm dev` and removes its database
-// and Redis keys, and stops and removes what its verifier-web runs left, to start a worktree over (the next `pnpm dev` sets it up again). Without
-// --worktree it tears down the worktree it runs in. A removed worktree's environment goes with
-// `pnpm dev:prune`, which the hooks run. Node runs this file directly (type stripping), so relative
-// imports keep their `.ts` extension.
+// and Redis keys, and stops and removes what its verifier-web runs left, to start a worktree over
+// (the next `pnpm dev` sets it up again). Without --worktree it tears down the worktree it runs in.
+// A removed worktree's environment goes with `pnpm dev:prune`, which the hooks run. Node runs this
+// file directly (type stripping), so relative imports keep their `.ts` extension.
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { checkoutAt, worktreeIdAt } from "../checkout.ts";

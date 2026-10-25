@@ -70,7 +70,9 @@ fi
 if [ -n "$ref" ] && [ ! -d "$app" ]; then
   git -C "$main" worktree add --detach "$app" "$sha" >/dev/null
 fi
-[ -z "$ref" ] || (cd "$app" && pnpm install --frozen-lockfile --prefer-offline --silent)
+if [ -n "$ref" ]; then
+  (cd "$app" && pnpm install --frozen-lockfile --prefer-offline --silent)
+fi
 
 "${compose[@]}" up -d --wait db redis mailpit >/dev/null
 
@@ -103,6 +105,14 @@ cp -R "$web/public" "$standalone/public"
 if [ -n "$ours" ]; then
   kill "$ours"
   while kill -0 "$ours" 2>/dev/null; do sleep 0.2; done
+fi
+# Again, since the build took a while: a server that took the port meanwhile would answer the health
+# check below in place of ours.
+listener=$(lsof -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -1 || true)
+if [ -n "$listener" ]; then
+  cmd=$(ps -o command= -p "$listener" 2>/dev/null || true)
+  echo "Port $port was taken during the build (pid $listener: ${cmd:0:120}); pass --port with a free one." >&2
+  exit 1
 fi
 
 # The production container's environment (compose.yaml's `web`), pointed at the verify services.

@@ -2,9 +2,9 @@
 // whose worktree git no longer lists, however it went (a removal hook, the session exit prompt, a
 // subagent's cleanup, `rm -rf`). It finds them from the records and, so a lost record can't hide
 // anything, from the databases, Redis keys, verifier-web state and `--ref` checkouts named after a
-// worktree's token, and running `pnpm dev` processes themselves. Only
-// worktrees that are gone are touched, so it's safe to run at any time. Node runs the CLIs that
-// import this directly (type stripping), so relative imports keep their `.ts` extension.
+// worktree's token, and running `pnpm dev` processes themselves. Only worktrees that are gone are
+// touched, so it's safe to run at any time. Node runs the CLIs that import this directly (type
+// stripping), so relative imports keep their `.ts` extension.
 import { dirname } from "node:path";
 import { liveWorktrees } from "./checkout.ts";
 import {
