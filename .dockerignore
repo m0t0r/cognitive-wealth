@@ -13,6 +13,11 @@
 **/playwright-report
 **/test-results
 **/*.tsbuildinfo
+# The custodian's host virtualenv (macOS binaries) and Python caches; the image builds its own.
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
 .DS_Store
 
 .agents
