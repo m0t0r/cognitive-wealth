@@ -116,6 +116,31 @@ export interface OverviewPersonName {
 
 export interface OverviewPerson extends OverviewPersonName {
   householdRole: HouseholdRole;
+  /**
+   * The Accounts the Person is only named on, outside the Household's own `accounts`, by account
+   * number and then role. Kept apart from `accounts` so no figure or total counts them.
+   */
+  namedOnAccounts: NamedOnAccount[];
+}
+
+/** The Account roles that name a Person on an Account without making it theirs. */
+export type NamedOnRole = Exclude<AccountRoleKind, "owner" | "joint_owner">;
+
+/**
+ * GLOSSARY.md, "Named-on Account": an Account a Person holds a role on that gives no ownership
+ * (Beneficiary, custodian for a minor, power of attorney), owned outside the Person's Household.
+ * One per role, so a Person with two roles on an Account has two. Who it is and whose it is, never
+ * its Positions, value or the other People named on it.
+ */
+export interface NamedOnAccount {
+  publicId: string;
+  /** The account number's last four characters, as `OverviewAccount` gives them. */
+  accountNumberEnding: string;
+  /** Null until the Custodian feed has been ingested (ADR 0009). */
+  registrationType: RegistrationType | null;
+  role: NamedOnRole;
+  /** The Household of an owner or joint owner, or null when no owner is in one. */
+  owningHousehold: { publicId: string; name: string } | null;
 }
 
 export interface OverviewAccountRole {
@@ -187,11 +212,34 @@ export function toOverviewPersonName(row: PersonRow): OverviewPersonName {
 export function toOverviewPerson({
   row,
   householdRole,
+  namedOnAccounts,
 }: {
   row: PersonRow;
   householdRole: HouseholdRole;
+  namedOnAccounts: NamedOnAccount[];
 }): OverviewPerson {
-  return { ...toOverviewPersonName(row), householdRole };
+  return { ...toOverviewPersonName(row), householdRole, namedOnAccounts };
+}
+
+export function toNamedOnAccount({
+  row,
+  role,
+  owningHousehold,
+}: {
+  row: AccountRow;
+  role: NamedOnRole;
+  owningHousehold: HouseholdRow | null;
+}): NamedOnAccount {
+  return {
+    publicId: row.publicId,
+    accountNumberEnding: row.accountNumber.slice(-4),
+    registrationType: row.registrationType,
+    role,
+    owningHousehold:
+      owningHousehold === null
+        ? null
+        : { publicId: owningHousehold.publicId, name: owningHousehold.name },
+  };
 }
 
 export function toPublicPosition({

@@ -14,6 +14,7 @@ import {
 import { test } from "@repo/db/testing";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import type { HouseholdOverview } from "./dto";
 import { getHouseholdOverview } from "./overview";
 import { seedDevWorld } from "./seed";
 
@@ -134,13 +135,23 @@ async function householdOfGrace(
     .values({ firmId, householdId: hers!.id, personId: grace!.id, role: "primary" });
   const [ira] = await db
     .insert(custodialAccount)
-    .values({ firmId, accountNumber: "CW-000003" })
+    .values({ firmId, accountNumber: "CW-000003", registrationType: "traditional_ira" })
     .returning();
   await db.insert(accountRole).values([
     { firmId, personId: grace!.id, accountId: ira!.id, role: "owner", startsOn },
     { firmId, personId: jordan!.id, accountId: ira!.id, role: jordanRole, startsOn },
   ]);
   return hers!.publicId;
+}
+
+/** Every member's Named-on Accounts, one line each: "Jordan: 0003 beneficiary, <Household>". */
+function namedOn(overview: HouseholdOverview | null) {
+  return (overview?.people ?? []).flatMap(({ firstName, namedOnAccounts }) =>
+    namedOnAccounts.map(
+      ({ accountNumberEnding, role, owningHousehold }) =>
+        `${firstName}: ${accountNumberEnding} ${role}, ${owningHousehold?.name ?? "no Household"}`,
+    ),
+  );
 }
 
 describe("getHouseholdOverview", () => {
@@ -174,8 +185,9 @@ describe("getHouseholdOverview", () => {
       relationshipStatus: "client",
       asOf: "2026-03-06",
       people: [
-        { ...dana, householdRole: "primary" },
-        { ...jordan, householdRole: "co_client" },
+        // Jordan is the Beneficiary on Dana's IRA, which is in `accounts` already.
+        { ...dana, householdRole: "primary", namedOnAccounts: [] },
+        { ...jordan, householdRole: "co_client", namedOnAccounts: [] },
       ],
       accounts: [
         {
@@ -249,19 +261,47 @@ describe("getHouseholdOverview", () => {
 
   // docs/research/household-accounts.md: only an owner or joint owner role puts an Account in a
   // Household. Jordan Reyes named on his mother's IRA, in her own Household, doesn't make it the
-  // Reyes Household's, and her Household's overview still shows who is named on it.
+  // Reyes Household's: it's listed under Jordan as a Named-on Account, never in `accounts`
+  // (docs/research/related-accounts-on-platforms.md), and her Household's overview still shows
+  // who is named on it.
   test.for(["beneficiary", "power_of_attorney", "custodian"] as const)(
-    "a member who is only %s on another Household's Account doesn't bring it in",
+    "a member who is only %s on another Household's Account has it listed, not in accounts",
     async (role, { orm }) => {
       const { larkspur } = await seededFirms(orm);
       const reyes = await reyesPublicId(orm);
       const mothers = await householdOfGrace(orm, { firmId: larkspur, jordanRole: role });
 
-      const reyesAccounts = await getHouseholdOverview(orm, { firmId: larkspur, publicId: reyes });
-      expect(reyesAccounts?.accounts.map((a) => a.accountNumberEnding)).toEqual(["0001", "0002"]);
+      const ours = await getHouseholdOverview(orm, { firmId: larkspur, publicId: reyes });
+      expect(ours?.accounts.map((a) => a.accountNumberEnding)).toEqual(["0001", "0002"]);
+      expect(
+        ours?.people.map(({ firstName, namedOnAccounts }) => ({ firstName, namedOnAccounts })),
+      ).toEqual([
+        { firstName: "Dana", namedOnAccounts: [] },
+        {
+          firstName: "Jordan",
+          namedOnAccounts: [
+            {
+              publicId: UUID,
+              accountNumberEnding: "0003",
+              registrationType: "traditional_ira",
+              role,
+              owningHousehold: { publicId: mothers, name: "The Grace Reyes Household" },
+            },
+          ],
+        },
+      ]);
+      expect(JSON.stringify(ours)).not.toContain("CW-00000");
 
       const hers = await getHouseholdOverview(orm, { firmId: larkspur, publicId: mothers });
-      expect(hers?.people.map((p) => p.firstName)).toEqual(["Grace"]);
+      expect(hers?.people).toEqual([
+        {
+          publicId: UUID,
+          firstName: "Grace",
+          lastName: "Reyes",
+          householdRole: "primary",
+          namedOnAccounts: [],
+        },
+      ]);
       expect(
         hers?.accounts.map(({ accountNumberEnding, roles }) => ({
           accountNumberEnding,
@@ -286,6 +326,10 @@ describe("getHouseholdOverview", () => {
     const hers = await getHouseholdOverview(orm, { firmId: larkspur, publicId: mothers });
     expect(hers?.asOf).toBe("2026-03-06");
     expect(hers?.accounts).toEqual([]);
+    // Nor is Jordan named on it yet.
+    expect(namedOn(await getHouseholdOverview(orm, { firmId: larkspur, publicId: reyes }))).toEqual(
+      [],
+    );
 
     // Jordan becomes a joint owner of CW-000003 the Monday after: not on 6 March either.
     await orm.insert(accountRole).values({
@@ -302,6 +346,115 @@ describe("getHouseholdOverview", () => {
     });
     const ours = await getHouseholdOverview(orm, { firmId: larkspur, publicId: reyes });
     expect(ours?.accounts.map((a) => a.accountNumberEnding)).toEqual(["0001", "0002"]);
+  });
+
+  test("lists one Named-on Account per role, by account number and then role, with a null Household for an owner in none", async ({
+    orm,
+  }) => {
+    const { larkspur } = await seededFirms(orm);
+    const reyes = await reyesPublicId(orm);
+    await householdOfGrace(orm, { firmId: larkspur, jordanRole: "power_of_attorney" });
+    const [jordan] = await orm.select().from(person).where(eq(person.firstName, "Jordan"));
+    const [ira] = await orm
+      .select()
+      .from(custodialAccount)
+      .where(eq(custodialAccount.accountNumber, "CW-000003"));
+    // A custodial account owned by a minor the Firm has in no Household, Jordan its custodian.
+    const [minor] = await orm
+      .insert(person)
+      .values({ firmId: larkspur, firstName: "Sam", lastName: "Ortiz", bornOn: "2015-06-01" })
+      .returning();
+    const [utma] = await orm
+      .insert(custodialAccount)
+      .values({ firmId: larkspur, accountNumber: "CW-000004" })
+      .returning();
+    await orm.insert(accountRole).values([
+      // Inserted before the IRA's second role, so the order comes from the account number.
+      {
+        firmId: larkspur,
+        personId: minor!.id,
+        accountId: utma!.id,
+        role: "owner",
+        startsOn: "2020-01-02",
+      },
+      {
+        firmId: larkspur,
+        personId: jordan!.id,
+        accountId: utma!.id,
+        role: "custodian",
+        startsOn: "2020-01-02",
+      },
+      {
+        firmId: larkspur,
+        personId: jordan!.id,
+        accountId: ira!.id,
+        role: "beneficiary",
+        startsOn: "2020-01-02",
+      },
+    ]);
+
+    const ours = await getHouseholdOverview(orm, { firmId: larkspur, publicId: reyes });
+
+    expect(namedOn(ours)).toEqual([
+      "Jordan: 0003 beneficiary, The Grace Reyes Household",
+      "Jordan: 0003 power_of_attorney, The Grace Reyes Household",
+      "Jordan: 0004 custodian, no Household",
+    ]);
+    // Named on, never counted.
+    expect(ours?.accounts.map((a) => a.accountNumberEnding)).toEqual(["0001", "0002"]);
+  });
+
+  test("never lists another Firm's Account or Household", async ({ orm }) => {
+    const { larkspur, globex } = await seededFirms(orm);
+    const reyes = await reyesPublicId(orm);
+    await householdOfGrace(orm, { firmId: larkspur, jordanRole: "beneficiary" });
+    // Globex has an Account with the same number, in a Household of its own, naming one of its
+    // People who is in another Globex Household.
+    const [owners, named] = await orm
+      .insert(household)
+      .values([
+        { firmId: globex, name: "Globex Owners", relationshipStatus: "client" },
+        { firmId: globex, name: "Globex Named", relationshipStatus: "client" },
+      ])
+      .returning();
+    const [owner, beneficiary] = await orm
+      .insert(person)
+      .values([
+        { firmId: globex, firstName: "Olga", lastName: "Owner", bornOn: "1960-01-01" },
+        { firmId: globex, firstName: "Ben", lastName: "Named", bornOn: "1990-01-01" },
+      ])
+      .returning();
+    await orm.insert(householdMember).values([
+      { firmId: globex, householdId: owners!.id, personId: owner!.id, role: "primary" },
+      { firmId: globex, householdId: named!.id, personId: beneficiary!.id, role: "primary" },
+    ]);
+    const [account] = await orm
+      .insert(custodialAccount)
+      .values({ firmId: globex, accountNumber: "CW-000003" })
+      .returning();
+    await orm.insert(accountRole).values([
+      {
+        firmId: globex,
+        personId: owner!.id,
+        accountId: account!.id,
+        role: "owner",
+        startsOn: "2020-01-02",
+      },
+      {
+        firmId: globex,
+        personId: beneficiary!.id,
+        accountId: account!.id,
+        role: "beneficiary",
+        startsOn: "2020-01-02",
+      },
+    ]);
+
+    expect(namedOn(await getHouseholdOverview(orm, { firmId: larkspur, publicId: reyes }))).toEqual(
+      ["Jordan: 0003 beneficiary, The Grace Reyes Household"],
+    );
+    expect(
+      namedOn(await getHouseholdOverview(orm, { firmId: globex, publicId: named!.publicId })),
+    ).toEqual(["Ben: 0003 beneficiary, Globex Owners"]);
   });
 
   test("before any Delivery, counts the roles that have started by today", async ({ orm }) => {

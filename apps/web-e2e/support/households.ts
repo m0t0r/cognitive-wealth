@@ -2,7 +2,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Role } from "@repo/auth/access";
 import type { Database } from "@repo/db";
-import { household, member, organization } from "@repo/db/schema";
+import {
+  accountRole,
+  custodialAccount,
+  household,
+  householdMember,
+  member,
+  organization,
+  person,
+} from "@repo/db/schema";
 import { seedDevWorld } from "@repo/households/seed";
 import { ingestDelivery, localFeedSource } from "@repo/portfolio";
 import type { SeededUser } from "./seed";
@@ -52,4 +60,46 @@ export async function seedIngestedWorld(
     throw new Error(`Expected 1 seeded Household, not ${households.length}`);
   }
   return reyes.publicId;
+}
+
+/**
+ * After `seedIngestedWorld`, a second Larkspur Household, which the world file doesn't have: Jordan
+ * Reyes's mother Grace, owning a Traditional IRA (CW-000003) that names Jordan as its Beneficiary,
+ * so the Reyes overview has a Named-on Account to show. Returns her Household's `publicId`.
+ */
+export async function seedHouseholdOfGrace(db: Database): Promise<string> {
+  // The world file's People are all Larkspur's.
+  const people = await db
+    .select({ id: person.id, firmId: person.firmId, seedKey: person.seedKey })
+    .from(person);
+  const jordan = people.find((row) => row.seedKey === "jordan-reyes");
+  if (!jordan) throw new Error("Seed the world first: no Person 'jordan-reyes'");
+  const { firmId } = jordan;
+
+  const [hers] = await db
+    .insert(household)
+    .values({ firmId, name: "The Grace Reyes Household", relationshipStatus: "client" })
+    .returning();
+  const [grace] = await db
+    .insert(person)
+    .values({ firmId, firstName: "Grace", lastName: "Reyes", bornOn: "1952-01-20" })
+    .returning();
+  await db
+    .insert(householdMember)
+    .values({ firmId, householdId: hers!.id, personId: grace!.id, role: "primary" });
+  const [ira] = await db
+    .insert(custodialAccount)
+    .values({ firmId, accountNumber: "CW-000003", registrationType: "traditional_ira" })
+    .returning();
+  await db.insert(accountRole).values([
+    { firmId, personId: grace!.id, accountId: ira!.id, role: "owner", startsOn: "2020-01-02" },
+    {
+      firmId,
+      personId: jordan.id,
+      accountId: ira!.id,
+      role: "beneficiary",
+      startsOn: "2020-01-02",
+    },
+  ]);
+  return hers!.publicId;
 }
