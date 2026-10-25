@@ -1,0 +1,15 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    // The tests read the custodian's contract and its example Deliveries, which sit in
+    // apps/custodian, so a change there reruns them.
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/custodian/openapi.json",
+        "$TURBO_ROOT$/apps/custodian/fixtures/feed/**"
+      ]
+    }
+  }
+}
