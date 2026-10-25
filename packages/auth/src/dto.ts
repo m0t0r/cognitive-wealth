@@ -71,12 +71,14 @@ export function toPublicOrganization(row: OrganizationRow): PublicOrganization {
   return { publicId: row.publicId, name: row.name, slug: row.slug, logo: row.logo ?? null };
 }
 
-export function toPublicMember(row: {
+type ToPublicMemberArgs = {
   publicId: string;
   role: string;
   createdAt: Date;
   user: UserRow;
-}): PublicMember {
+};
+
+export function toPublicMember(row: ToPublicMemberArgs): PublicMember {
   return {
     publicId: row.publicId,
     role: toRole(row.role),
@@ -85,7 +87,7 @@ export function toPublicMember(row: {
   };
 }
 
-export function toPublicInvitation(row: {
+type ToPublicInvitationArgs = {
   publicId: string;
   email: string;
   role: string | null;
@@ -93,7 +95,9 @@ export function toPublicInvitation(row: {
   expiresAt: Date;
   organization: OrganizationRow;
   inviter: { name: string };
-}): PublicInvitation {
+};
+
+export function toPublicInvitation(row: ToPublicInvitationArgs): PublicInvitation {
   return {
     publicId: row.publicId,
     email: row.email,

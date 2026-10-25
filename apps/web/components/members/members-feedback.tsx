@@ -84,18 +84,20 @@ export function useMembersFeedback(): MembersFeedback {
   return context;
 }
 
-export function MembersFeedbackProvider({
-  email,
-  organizationPublicId,
-  organizationName,
-  children,
-}: {
+type MembersFeedbackProviderProps = {
   /** The viewer's own address, where the fresh sign-in link goes. */
   email: string;
   organizationPublicId: string;
   organizationName: string;
   children: React.ReactNode;
-}) {
+};
+
+export function MembersFeedbackProvider({
+  email,
+  organizationPublicId,
+  organizationName,
+  children,
+}: MembersFeedbackProviderProps) {
   const router = useRouter();
   const [reauth, setReauth] = useState({ open: false, key: 0 });
   const pendingFocus = useRef<RowFocus | null>(null);

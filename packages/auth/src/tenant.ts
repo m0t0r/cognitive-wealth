@@ -299,6 +299,13 @@ export async function listMyInvitations(auth: Auth, viewer: Viewer): Promise<Pub
   return rows.filter((row) => usable.has(row.publicId)).map(toPublicInvitation);
 }
 
+type InviteMemberArgs = {
+  headers: Headers;
+  organizationPublicId: string;
+  email: string;
+  role: Role;
+};
+
 /**
  * Invites `email` to the viewer's tenant (rate limited per inviter). Inviting an address again
  * replaces its pending invitations, expired ones included: Better Auth's
@@ -307,10 +314,7 @@ export async function listMyInvitations(auth: Auth, viewer: Viewer): Promise<Pub
  */
 export function inviteMember(
   auth: Auth,
-  {
-    headers,
-    ...input
-  }: { headers: Headers; organizationPublicId: string; email: string; role: Role },
+  { headers, ...input }: InviteMemberArgs,
 ): Promise<Result<PublicInvitation>> {
   return mutateTenant(auth, {
     headers,
@@ -402,12 +406,16 @@ export function inviteMember(
   });
 }
 
+type ChangeMemberRoleArgs = {
+  headers: Headers;
+  organizationPublicId: string;
+  memberPublicId: string;
+  role: Role;
+};
+
 export function changeMemberRole(
   auth: Auth,
-  {
-    headers,
-    ...input
-  }: { headers: Headers; organizationPublicId: string; memberPublicId: string; role: Role },
+  { headers, ...input }: ChangeMemberRoleArgs,
 ): Promise<Result<PublicMember>> {
   return mutateTenant(auth, {
     headers,
@@ -713,6 +721,13 @@ interface TenantMutation {
   recordAudit: (event: Omit<AuditEventInput, "actorUserId" | "organizationId">) => Promise<void>;
 }
 
+type MutateTenantArgs<T> = {
+  headers: Headers;
+  fresh: boolean;
+  organizationPublicId: string;
+  run: (mutation: TenantMutation) => Promise<Result<T>>;
+};
+
 /**
  * The shape every tenant mutation shares: resolve the viewer's tenant, refuse with
  * `tenant_changed` unless it is the workspace the caller's page showed (`organizationPublicId`),
@@ -722,17 +737,7 @@ interface TenantMutation {
  */
 async function mutateTenant<T>(
   auth: Auth,
-  {
-    headers,
-    fresh,
-    organizationPublicId,
-    run,
-  }: {
-    headers: Headers;
-    fresh: boolean;
-    organizationPublicId: string;
-    run: (mutation: TenantMutation) => Promise<Result<T>>;
-  },
+  { headers, fresh, organizationPublicId, run }: MutateTenantArgs<T>,
 ): Promise<Result<T>> {
   const viewer = await requireTenant(auth, headers);
   if (!viewer.ok) return viewer;

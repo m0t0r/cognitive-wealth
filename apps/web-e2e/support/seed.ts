@@ -76,6 +76,14 @@ export async function seedOrganization(
   return { ...org, members: rows };
 }
 
+type SeedInvitationArgs = {
+  organization: SeededOrganization;
+  email: string;
+  role: Role;
+  inviter: SeededUser;
+  expiresAt?: Date;
+};
+
 /** A pending invitation to `organization`, from `inviter`. */
 export async function seedInvitation(
   db: Database,
@@ -85,13 +93,7 @@ export async function seedInvitation(
     role,
     inviter,
     expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-  }: {
-    organization: SeededOrganization;
-    email: string;
-    role: Role;
-    inviter: SeededUser;
-    expiresAt?: Date;
-  },
+  }: SeedInvitationArgs,
 ): Promise<{ id: number; publicId: string }> {
   const [row] = await db
     .insert(invitation)

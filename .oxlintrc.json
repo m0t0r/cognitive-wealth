@@ -46,6 +46,8 @@
     "turbo/no-undeclared-env-vars": "error",
     // Named arguments (CLAUDE.md, "Code conventions"): at most `db` (or `auth`) and one object.
     "max-params": ["error", { "max": 2 }],
+    // ... and a parameter type of more than 3 members gets a name.
+    "repo/max-inline-param-type-members": ["error", { "max": 3 }],
     "typescript/no-floating-promises": "error",
     "typescript/no-misused-promises": "error",
     "jsx-a11y/alt-text": "error",
@@ -87,14 +89,6 @@
   },
   "overrides": [
     {
-      // Named arguments (CLAUDE.md, "Code conventions"): a parameter type of more than 3 members
-      // gets a name. Only here for now; the rest of the repo follows in a later issue.
-      "files": ["packages/portfolio/**"],
-      "rules": {
-        "repo/max-inline-param-type-members": ["error", { "max": 3 }]
-      }
-    },
-    {
       "files": ["apps/web/**"],
       "plugins": ["nextjs"]
     },
@@ -105,7 +99,8 @@
       // guardrails, and migrating them needs the user's approval first (#127).
       "rules": {
         "turbo/no-undeclared-env-vars": "off",
-        "max-params": "off"
+        "max-params": "off",
+        "repo/max-inline-param-type-members": "off"
       }
     },
     {

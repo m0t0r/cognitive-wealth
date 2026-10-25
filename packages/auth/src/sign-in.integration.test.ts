@@ -33,17 +33,19 @@ async function verifyCode({ t, email, otp }: { t: TestAuth; email: string; otp: 
 /** A code that differs from `code` in every digit. */
 const wrongCode = (code: string) => code.replace(/\d/g, (d) => String((Number(d) + 1) % 10));
 
+type SeedInvitationArgs = {
+  t: TestAuth;
+  email: string;
+  expiresAt?: Date;
+  status?: string;
+};
+
 async function seedInvitation({
   t,
   email,
   expiresAt = new Date(Date.now() + 86_400_000),
   status = "pending",
-}: {
-  t: TestAuth;
-  email: string;
-  expiresAt?: Date;
-  status?: string;
-}) {
+}: SeedInvitationArgs) {
   const inviter = await t.seedUser({ email: `inviter-${crypto.randomUUID()}@example.com` });
   const org = await t.seedOrganization({
     name: "Acme",
