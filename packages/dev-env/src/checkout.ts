@@ -14,7 +14,7 @@ export type Checkout = {
   worktreeId: string | undefined;
 };
 
-function git(dir: string, args: string[]) {
+function git({ dir, args }: { dir: string; args: string[] }) {
   return execFileSync("git", ["-C", dir, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -22,8 +22,8 @@ function git(dir: string, args: string[]) {
 }
 
 export function checkoutAt(dir: string): Checkout {
-  const top = git(dir, ["rev-parse", "--show-toplevel"]);
-  const common = git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  const top = git({ dir, args: ["rev-parse", "--show-toplevel"] });
+  const common = git({ dir, args: ["rev-parse", "--path-format=absolute", "--git-common-dir"] });
   return { top, mainCheckout: dirname(common), worktreeId: worktreeIdAt(top) };
 }
 
@@ -39,15 +39,13 @@ export function worktreeIdAt(path: string): string | undefined {
   return basename(gitdir);
 }
 
-/** The ids of the linked worktrees git still knows and that still exist on disk. */
-export function liveWorktreeIds(mainCheckout: string): Set<string> {
-  const blocks = git(mainCheckout, ["worktree", "list", "--porcelain"]).split(/\n\n+/);
-  const ids = new Set<string>();
-  for (const block of blocks) {
+/** The linked worktrees git still knows and that still exist on disk. */
+export function liveWorktrees(mainCheckout: string): Array<{ id: string; path: string }> {
+  const list = git({ dir: mainCheckout, args: ["worktree", "list", "--porcelain"] });
+  return list.split(/\n\n+/).flatMap((block) => {
     const path = /^worktree (.+)$/m.exec(block)?.[1];
-    if (!path || /^prunable\b/m.test(block)) continue;
+    if (!path || /^prunable\b/m.test(block)) return [];
     const id = worktreeIdAt(path);
-    if (id) ids.add(id);
-  }
-  return ids;
+    return id ? [{ id, path }] : [];
+  });
 }

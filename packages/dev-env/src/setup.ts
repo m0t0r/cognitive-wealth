@@ -9,7 +9,13 @@ import type { Checkout } from "./checkout.ts";
 import { VERIFY_PORTS, worktreeEnvFile } from "./env-file.ts";
 import { worktreeResources } from "./names.ts";
 import { type WorktreeRecord, readRecord, writeRecord } from "./registry.ts";
-import { assertSecrets, connectAdmin, secretsDir, startServices } from "./services.ts";
+import {
+  assertSecrets,
+  connectAdmin,
+  dropDatabase,
+  secretsDir,
+  startServices,
+} from "./services.ts";
 
 type RunArgs = { top: string; script: string[]; env: Record<string, string> };
 
@@ -40,21 +46,6 @@ async function createDatabase({
     await client.unsafe(`revoke all on database "${database}" from public`);
     await client.unsafe(`grant connect on database "${database}" to app`);
     return true;
-  } finally {
-    await close();
-  }
-}
-
-async function dropDatabase({
-  mainCheckout,
-  database,
-}: {
-  mainCheckout: string;
-  database: string;
-}) {
-  const { client, close } = connectAdmin(mainCheckout);
-  try {
-    await client.unsafe(`drop database if exists "${database}" with (force)`);
   } finally {
     await close();
   }
