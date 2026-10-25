@@ -23,12 +23,14 @@ From the repo root, through the package scripts (each calls `uv run`):
 | `pnpm --filter custodian db:migrate`       | Alembic migrations to head, as `DATABASE_URL` (+ `DATABASE_PASSWORD_FILE`)       |
 | `pnpm --filter custodian world:load`       | Loads `world/v0.json`'s custodian half and `fixtures/ledger-v0.json`; idempotent |
 | `pnpm --filter custodian world:schema`     | Regenerates `world/schema.json` from the world file's models                     |
+| `pnpm --filter custodian openapi:write`    | Regenerates `openapi.json`, the contract, from the app                           |
 | `pnpm --filter custodian feed:write`       | `--date 2026-03-02`: writes that day's Delivery to `.dev/custodian-feed/`        |
+| `pnpm --filter custodian feed:examples`    | Rewrites `fixtures/feed/` from a throwaway Postgres (Docker), never the dev one  |
 | `pnpm --filter custodian lint`             | Ruff lint                                                                        |
 | `pnpm --filter custodian format`           | Ruff format (`format:check` to check only)                                       |
 | `pnpm --filter custodian check-types`      | pyright, strict mode                                                             |
 
-The root `pnpm dev`, `lint`, `format:check`, `check-types`, `test` and `test:integration` include the custodian. A git worktree is served at `https://<branch>.custodian.cognitive-wealth.localhost`, and `PORTLESS=0` falls back to `http://127.0.0.1:8000`. FastAPI's interactive API docs are at `/docs` and the OpenAPI schema at `/openapi.json`.
+The root `pnpm dev`, `lint`, `format:check`, `check-types`, `test` and `test:integration` include the custodian. A git worktree is served at `https://<branch>.custodian.cognitive-wealth.localhost`, and `PORTLESS=0` falls back to `http://127.0.0.1:8000`. FastAPI's interactive API docs are at `/docs` (Swagger UI): the routes, and under **Schemas** every row of the Custodian feed and the Manifest, with each column's description and format. `/redoc` shows the same document, but lists only the schemas a route uses, so the feed's rows appear there once a route returns them. Both pages load their scripts from a CDN, so they need a network connection. The document itself is at `/openapi.json`, and committed as `openapi.json`: `@repo/custodian-client` generates Cognitive Wealth's `fetch` client and Zod schemas from it.
 
 ## Database
 

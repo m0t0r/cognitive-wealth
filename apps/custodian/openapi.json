@@ -1,0 +1,351 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Custodian",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccountRow": {
+        "additionalProperties": false,
+        "properties": {
+          "account_number": {
+            "title": "Account Number",
+            "type": "string"
+          },
+          "registration_type": {
+            "$ref": "#/components/schemas/RegistrationType"
+          },
+          "opened_on": {
+            "format": "date",
+            "title": "Opened On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_number",
+          "registration_type",
+          "opened_on"
+        ],
+        "title": "AccountRow",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse"
+      },
+      "Manifest": {
+        "additionalProperties": false,
+        "properties": {
+          "format_version": {
+            "const": 1,
+            "description": "Raised when a file's columns or meaning change, so a reader can refuse a format it can't\nread. `Literal[1]`: the only value this version of the writer writes, or accepts.",
+            "title": "Format Version",
+            "type": "integer"
+          },
+          "as_of_date": {
+            "format": "date",
+            "title": "As Of Date",
+            "type": "string"
+          },
+          "files": {
+            "description": "By name.",
+            "items": {
+              "$ref": "#/components/schemas/ManifestFile"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "format_version",
+          "as_of_date",
+          "files"
+        ],
+        "title": "Manifest",
+        "type": "object"
+      },
+      "ManifestFile": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rows": {
+            "description": "Not counting the header row.",
+            "title": "Rows",
+            "type": "integer"
+          },
+          "sha256": {
+            "description": "The Content hash of the file's exact bytes, in lowercase hex.",
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "rows",
+          "sha256"
+        ],
+        "title": "ManifestFile",
+        "type": "object"
+      },
+      "PositionRow": {
+        "additionalProperties": false,
+        "properties": {
+          "account_number": {
+            "title": "Account Number",
+            "type": "string"
+          },
+          "security": {
+            "title": "Security",
+            "type": "string"
+          },
+          "shares": {
+            "pattern": "^-?\\d+\\.\\d{6}$",
+            "title": "Shares",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "pattern": "^-?\\d+(\\.\\d+)?$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest price on or before the As-of date. Empty if the Security has none yet.",
+            "title": "Price"
+          },
+          "market_value": {
+            "anyOf": [
+              {
+                "pattern": "^-?\\d+\\.\\d{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`shares * price`, rounded to cents (half-even). Empty when `price` is.",
+            "title": "Market Value"
+          }
+        },
+        "required": [
+          "account_number",
+          "security",
+          "shares",
+          "price",
+          "market_value"
+        ],
+        "title": "PositionRow",
+        "type": "object"
+      },
+      "PriceRow": {
+        "additionalProperties": false,
+        "properties": {
+          "security": {
+            "title": "Security",
+            "type": "string"
+          },
+          "price": {
+            "pattern": "^-?\\d+(\\.\\d+)?$",
+            "title": "Price",
+            "type": "string"
+          }
+        },
+        "required": [
+          "security",
+          "price"
+        ],
+        "title": "PriceRow",
+        "type": "object"
+      },
+      "RegistrationType": {
+        "description": "The legal form of an Account, which sets its ownership and tax rules.",
+        "enum": [
+          "individual",
+          "joint",
+          "traditional_ira",
+          "roth_ira",
+          "custodial",
+          "529"
+        ],
+        "title": "RegistrationType",
+        "type": "string"
+      },
+      "SecurityKind": {
+        "enum": [
+          "stock",
+          "fund",
+          "bond",
+          "cash_sweep"
+        ],
+        "title": "SecurityKind",
+        "type": "string"
+      },
+      "SecurityRow": {
+        "additionalProperties": false,
+        "properties": {
+          "identifier": {
+            "title": "Identifier",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SecurityKind"
+          }
+        },
+        "required": [
+          "identifier",
+          "name",
+          "kind"
+        ],
+        "title": "SecurityRow",
+        "type": "object"
+      },
+      "TransactionKind": {
+        "description": "The eight kinds in docs/learn/01-ledger-positions-and-dates.md, and the Reversal of one.",
+        "enum": [
+          "contribution",
+          "withdrawal",
+          "buy",
+          "sell",
+          "dividend",
+          "interest",
+          "fee",
+          "transfer",
+          "reversal"
+        ],
+        "title": "TransactionKind",
+        "type": "string"
+      },
+      "TransactionRow": {
+        "additionalProperties": false,
+        "properties": {
+          "transaction_id": {
+            "description": "The Custodian's ID for the Transaction: opaque, unique, and never sent twice.",
+            "title": "Transaction Id",
+            "type": "string"
+          },
+          "account_number": {
+            "title": "Account Number",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TransactionKind"
+          },
+          "reverses": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For a Reversal, the `transaction_id` of the Transaction it undoes. Else empty.",
+            "title": "Reverses"
+          },
+          "security": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Empty for a cash-only Transaction, such as a contribution or a fee.",
+            "title": "Security"
+          },
+          "shares": {
+            "anyOf": [
+              {
+                "pattern": "^-?\\d+\\.\\d{6}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The change in shares, signed: a sell is negative. Empty if no shares moved.",
+            "title": "Shares"
+          },
+          "amount": {
+            "description": "The change in cash, signed: money out is negative.",
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "trade_date": {
+            "format": "date",
+            "title": "Trade Date",
+            "type": "string"
+          },
+          "settlement_date": {
+            "format": "date",
+            "title": "Settlement Date",
+            "type": "string"
+          },
+          "posting_date": {
+            "description": "The As-of date of the Delivery that carries it, even for a Correction to an earlier day.",
+            "format": "date",
+            "title": "Posting Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "account_number",
+          "kind",
+          "reverses",
+          "security",
+          "shares",
+          "amount",
+          "trade_date",
+          "settlement_date",
+          "posting_date"
+        ],
+        "title": "TransactionRow",
+        "type": "object"
+      }
+    }
+  }
+}

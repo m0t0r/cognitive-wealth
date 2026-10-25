@@ -65,12 +65,17 @@ DEFAULT_ROOT = Path(__file__).parents[4] / ".dev" / "custodian-feed"
 """Where `feed:write` puts Deliveries unless told otherwise: the checkout's gitignored `.dev/`."""
 
 
-# The row models: one per file, its fields the file's columns, in order. #38 publishes them in
-# the contract, so Ingestion checks every row against the same shapes.
+# The row models: one per file, its fields the file's columns, in order. contract.py publishes
+# them in openapi.json, so Ingestion checks every row against the same shapes.
 
 
 class _Row(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        # Each field's docstring becomes its description in the contract, shown at /docs.
+        use_attribute_docstrings=True,
+    )
 
 
 class SecurityRow(_Row):
@@ -128,7 +133,7 @@ class ManifestFile(_Row):
 
 
 class Manifest(_Row):
-    format_version: Literal[1] = 1
+    format_version: Literal[1]
     """Raised when a file's columns or meaning change, so a reader can refuse a format it can't
     read. `Literal[1]`: the only value this version of the writer writes, or accepts."""
     as_of_date: date
@@ -168,7 +173,7 @@ def write_delivery(engine: Engine, store: FeedStore, as_of: date) -> Manifest:
         listed.append(
             ManifestFile(name=name, rows=len(rows), sha256=hashlib.sha256(content).hexdigest())
         )
-    manifest = Manifest(as_of_date=as_of, files=listed)
+    manifest = Manifest(format_version=1, as_of_date=as_of, files=listed)
     # Last, so a reader that finds the Manifest finds every file it lists already complete.
     store.put(
         delivery_key(as_of, "manifest.json"), (manifest.model_dump_json(indent=2) + "\n").encode()

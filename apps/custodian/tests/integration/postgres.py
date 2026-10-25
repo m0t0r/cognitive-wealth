@@ -1,4 +1,5 @@
-"""The run's throwaway Postgres, for the fixtures in conftest.py and the tests that need its parts.
+"""The run's throwaway Postgres, for the fixtures in conftest.py, the tests that need its parts,
+and example_deliveries.py.
 
 One container per run, set up like Compose's `custodian-db`: the same image, the same roles script
 and scram-sha-256 passwords. It is never the dev database: its passwords are random, its data is
@@ -14,6 +15,7 @@ from typing import Literal
 from uuid import uuid4
 
 import yaml
+from alembic import command
 from alembic.config import Config
 from sqlalchemy import URL, Connection, Engine, create_engine, make_url, text
 from testcontainers.community.postgres import PostgresContainer
@@ -27,6 +29,8 @@ __all__ = [
     "PostgresServer",
     "Role",
     "alembic_config",
+    "migrated_database",
+    "start_migrated_postgres",
     "start_postgres",
 ]
 
@@ -162,3 +166,32 @@ def start_postgres() -> Generator[PostgresServer]:
             migrator_password=migrator_password,
             app_password=app_password,
         )
+
+
+@contextmanager
+def start_migrated_postgres() -> Generator[PostgresServer]:
+    """`start_postgres`, plus MIGRATED_DATABASE: a copy of EMPTY_DATABASE migrated to head."""
+    with start_postgres() as server:
+        server.create_database(EMPTY_DATABASE, name=MIGRATED_DATABASE)
+        # `alembic upgrade head`, as `pnpm --filter custodian db:migrate` runs it.
+        engine = create_engine(server.url_for(MIGRATED_DATABASE, "migrator"))
+        try:
+            with engine.begin() as connection:
+                command.upgrade(alembic_config(connection), "head")
+        finally:
+            engine.dispose()
+        yield server
+
+
+@contextmanager
+def migrated_database(server: PostgresServer) -> Generator[Database]:
+    """A fresh copy of MIGRATED_DATABASE with an engine per role, dropped when the block ends."""
+    name = server.create_database(MIGRATED_DATABASE)
+    app = create_engine(server.url_for(name, "app"))
+    migrator = create_engine(server.url_for(name, "migrator"))
+    try:
+        yield Database(name=name, app=app, migrator=migrator)
+    finally:
+        app.dispose()
+        migrator.dispose()
+        server.drop_database(name)

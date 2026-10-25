@@ -1,0 +1,4 @@
+transaction_id,account_number,kind,reverses,security,shares,amount,trade_date,settlement_date,posting_date
+TX-000000009,CW-000001,reversal,TX-000000005,LKBF,,-9.00,2026-03-03,2026-03-03,2026-03-06
+TX-000000010,CW-000001,dividend,,LKBF,,10.50,2026-03-03,2026-03-03,2026-03-06
+TX-000000011,CW-000001,interest,,,,1.15,2026-03-06,2026-03-06,2026-03-06

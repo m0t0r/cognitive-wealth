@@ -14,7 +14,9 @@
     "db:migrate": "uv run alembic upgrade head",
     "world:load": "uv run python -m custodian.load",
     "feed:write": "uv run python -m custodian.feed",
-    "world:schema": "uv run python -m custodian.world"
+    "feed:examples": "uv run python -m tests.integration.example_deliveries",
+    "world:schema": "uv run python -m custodian.world",
+    "openapi:write": "uv run python -m custodian.main"
   },
   "devDependencies": {
     "portless": "0.15.8"
