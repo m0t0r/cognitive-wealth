@@ -12,7 +12,7 @@ const WORLD_FILE = new URL("../../../../world/v0.json", import.meta.url);
 
 registerTsResolution();
 const { SEED_ORGANIZATIONS, SEED_USERS, assertSeedTarget } = await import("@repo/db/seed-data");
-const { seedDevWorld } = await import("../seed.ts");
+const { SeedConflict, seedDevWorld } = await import("../seed.ts");
 
 async function main() {
   const envFile = loadWebEnvFallback();
@@ -50,5 +50,12 @@ try {
   await main();
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
+  if (error instanceof SeedConflict) {
+    console.error(
+      "world/v0.json changed since this database was seeded, and the seed never overwrites. " +
+        "Nothing was written. To load the new world, start the database over " +
+        "(docs/dev-sign-in.md: `down -v`), migrate and seed again.",
+    );
+  }
   process.exitCode = 1;
 }
