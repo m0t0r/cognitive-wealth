@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { RedisContainer } from "@testcontainers/redis";
 import { openJanitor } from "@repo/testing/redis-janitor";
-import { REPO_ROOT, composeImage } from "./compose";
+import { REPO_ROOT, composeImage } from "@repo/testing/compose";
 
 /** compose.yaml's Redis entrypoint: it builds the ACL from the mounted secrets. */
 const ENTRYPOINT = join(REPO_ROOT, "docker/redis/entrypoint.sh");

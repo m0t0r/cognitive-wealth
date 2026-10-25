@@ -1,5 +1,5 @@
 import { GenericContainer, Wait } from "testcontainers";
-import { composeImage } from "./compose";
+import { composeImage } from "@repo/testing/compose";
 
 const UI_USER = "e2e";
 

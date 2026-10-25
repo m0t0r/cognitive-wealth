@@ -1,5 +1,3 @@
-export { REPO_ROOT, composeImage } from "@repo/testing/compose";
-
 /** A variable global setup exports to workers (they inherit its environment). */
 export function requiredEnv(name: `PLAYWRIGHT_${string}`): string {
   const value = process.env[name];
