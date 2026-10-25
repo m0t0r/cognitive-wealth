@@ -1,9 +1,9 @@
 import type { OverviewAccount, PublicPosition } from "@repo/households";
 import { render, screen, within } from "@repo/testing/react";
-import { AccountCard } from "./account-card";
+import { AccountSection } from "./account-section";
 
 // What the overview holds is owned by packages/households/src/overview.integration.test.ts; the
-// number formats by lib/format.test.ts. Here: what the card shows for each state of an Account.
+// number formats by lib/format.test.ts. Here: what the section shows for each state of an Account.
 
 const dana = { publicId: "p-dana", firstName: "Dana", lastName: "Reyes" };
 const jordan = { publicId: "p-jordan", firstName: "Jordan", lastName: "Reyes" };
@@ -29,23 +29,28 @@ const account = (overrides: Partial<OverviewAccount>): OverviewAccount => ({
   ...overrides,
 });
 
-describe("AccountCard", () => {
+describe("AccountSection", () => {
   it("names the Account by its Registration type and masked number, and labels its table", async () => {
-    const { container } = render(<AccountCard account={account({})} asOf="2026-03-06" />);
+    const { container } = render(<AccountSection account={account({})} asOf="2026-03-06" />);
 
-    expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent(
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
       "Traditional IRA ••••ending in 0002",
     );
-    expect(screen.getByText("Dana Reyes, Owner · Jordan Reyes, Beneficiary")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Traditional IRA ending in 0002" })).toBeVisible();
+    expect(
+      within(screen.getByRole("list", { name: "Account roles" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Dana Reyes · Owner", "Jordan Reyes · Beneficiary"]);
     const table = screen.getByRole("table", { name: "Traditional IRA ending in 0002" });
     const [, row] = within(table).getAllByRole("row");
-    expect(row).toHaveTextContent("Larkspur Stock FundLKSF30at $153.40$153.40$4,602.00");
+    expect(row).toHaveTextContent("Larkspur Stock Fund LKSF30at $153.40$153.40$4,602.00");
     await expect(container).toHaveNoA11yViolations();
   });
 
   it("shows no price, not $0.00, for a Security the Custodian hadn't priced", () => {
     render(
-      <AccountCard
+      <AccountSection
         account={account({ positions: [position({ price: null, marketValue: null })] })}
         asOf="2026-03-06"
       />,
@@ -57,7 +62,7 @@ describe("AccountCard", () => {
   });
 
   it("says when an Account held nothing on the As-of date", () => {
-    render(<AccountCard account={account({ positions: [] })} asOf="2026-03-06" />);
+    render(<AccountSection account={account({ positions: [] })} asOf="2026-03-06" />);
 
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByText("No positions on Mar 6, 2026.")).toBeInTheDocument();
@@ -65,13 +70,13 @@ describe("AccountCard", () => {
 
   it("before the first Delivery, has no Registration type and no Positions to show", () => {
     render(
-      <AccountCard account={account({ registrationType: null, positions: [] })} asOf={null} />,
+      <AccountSection account={account({ registrationType: null, positions: [] })} asOf={null} />,
     );
 
-    expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent(
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(
       "Account ••••ending in 0002",
     );
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(screen.queryByText(/No positions/)).not.toBeInTheDocument();
+    expect(screen.getByText("No positions to show yet.")).toBeInTheDocument();
   });
 });

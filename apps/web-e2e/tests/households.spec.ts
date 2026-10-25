@@ -32,20 +32,17 @@ test("an Advisor opens the Household from the sidebar and reads its Positions as
   await expect(page).toHaveURL(`/households/${publicId}`);
   await expect(page).toHaveTitle(/^The Reyes Household/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("The Reyes Household");
-  await expect(page.getByText("Client", { exact: true })).toBeVisible();
-  await expect(
-    page.getByText("Positions as of Mar 6, 2026, as reported by the custodian."),
-  ).toBeVisible();
+  await expect(page.getByText("Household · Client")).toBeVisible();
+  await expect(page.getByRole("definition").filter({ hasText: "Mar 6, 2026" })).toBeVisible();
 
-  const people = page.getByRole("region", { name: "People" }).getByRole("listitem");
-  await expect(people).toHaveText([/Dana Reyes\s*Primary/, /Jordan Reyes\s*Co-client/]);
+  await expect(page.getByText("Dana Reyes (Primary) and Jordan Reyes (Co-client)")).toBeVisible();
 
   // 6 March's Positions, as the Custodian's positions.csv has them, never 2 March's. The rendered
   // text: the phone-only price line is in the DOM but hidden at this width.
   const joint = page.getByRole("table", { name: "Joint ending in 0001" });
   await expect(joint.getByRole("row")).toHaveText(
     [
-      /Security\s*Shares\s*Price\s*Market value/,
+      /Security\s*Shares\s*Price\s*Market value/i,
       /Larkspur Bond Fund\s*LKBF\s*300\s*\$10\.02\s*\$3,006\.00/,
       /Larkspur Stock Fund\s*LKSF\s*30\s*\$153\.40\s*\$4,602\.00/,
       /Larkspur Bank Sweep\s*SWEEP\s*6,476\.65\s*\$1\.00\s*\$6,476\.65/,
@@ -55,13 +52,18 @@ test("an Advisor opens the Household from the sidebar and reads its Positions as
   const ira = page.getByRole("table", { name: "Traditional IRA ending in 0002" });
   await expect(ira.getByRole("row")).toHaveText(
     [
-      /Security\s*Shares\s*Price\s*Market value/,
+      /Security\s*Shares\s*Price\s*Market value/i,
       /Larkspur Stock Fund\s*LKSF\s*20\s*\$153\.40\s*\$3,068\.00/,
       /Larkspur Bank Sweep\s*SWEEP\s*2,995\s*\$1\.00\s*\$2,995\.00/,
     ],
     { useInnerText: true },
   );
-  await expect(page.getByText("Dana Reyes, Owner · Jordan Reyes, Beneficiary")).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Traditional IRA ending in 0002" })
+      .getByRole("list", { name: "Account roles" })
+      .getByRole("listitem"),
+  ).toHaveText(["Dana Reyes · Owner", "Jordan Reyes · Beneficiary"]);
 
   // The account numbers stay on the server, masked to their last four.
   expect(await page.content()).not.toContain("CW-00000");
