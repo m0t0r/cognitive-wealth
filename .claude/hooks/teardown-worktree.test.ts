@@ -63,6 +63,8 @@ const test = base.extend("layout", async ({}, { onCleanup }): Promise<Layout> =>
   const cli = join(main, "packages/dev-env/src/cli");
   mkdirSync(cli, { recursive: true });
   writeFileSync(join(cli, "prune.ts"), FAKE_PRUNE);
+  // An installed main checkout; SessionStart warns without it.
+  mkdirSync(join(main, "packages/dev-env/node_modules"));
   return { main, worktree, calls: join(root, "calls.log") };
 });
 
@@ -216,7 +218,45 @@ describe("at the edges of a session", () => {
     }
     expect(callsIn(layout.calls)).toEqual(sweptFromMain(layout));
   });
+
+  test("tells the next session when the sweep at a session's end failed", ({ layout }) => {
+    run({ layout, event: "SessionEnd", fail: true });
+    const { out } = run({ layout, event: "SessionStart" });
+    expect(contextOf(out)).toContain("failed to drop the database: permission denied");
+    expect(contextOf(out)).toContain("pnpm dev:prune");
+  });
+
+  test("records a failed background sweep for the next session", async ({ layout }) => {
+    run({ layout, event: "SessionStart", fail: true });
+    const recorded = join(layout.main, ".dev/worktree-env/sweep-failed.txt");
+    const deadline = Date.now() + 10_000;
+    while (!existsSync(recorded) && Date.now() < deadline) {
+      // oxlint-disable-next-line no-await-in-loop -- polling for the detached sweep
+      await sleep(50);
+    }
+    expect(readFileSync(recorded, "utf8")).toContain("permission denied");
+  });
+
+  test("forgets a failure once a sweep succeeds", ({ layout }) => {
+    run({ layout, event: "SessionEnd", fail: true });
+    run({ layout, event: "PostToolUse", tool: "ExitWorktree", input: { action: "remove" } });
+    expect(run({ layout, event: "SessionStart" }).out).toBe("");
+  });
+
+  test("says at once when the main checkout isn't installed", ({ layout }) => {
+    rmSync(join(layout.main, "packages/dev-env/node_modules"), { recursive: true });
+    const { out } = run({ layout, event: "SessionStart" });
+    expect(contextOf(out)).toContain(`pnpm -C ${layout.main} install --frozen-lockfile`);
+  });
 });
+
+/** The `additionalContext` a SessionStart hook printed. */
+function contextOf(out: string): string {
+  const parsed: { hookSpecificOutput: { hookEventName: string; additionalContext: string } } =
+    JSON.parse(out);
+  expect(parsed.hookSpecificOutput.hookEventName).toBe("SessionStart");
+  return parsed.hookSpecificOutput.additionalContext;
+}
 
 test("does nothing in a checkout without pnpm dev:prune yet", ({ layout }) => {
   rmSync(join(layout.main, "packages"), { recursive: true });
