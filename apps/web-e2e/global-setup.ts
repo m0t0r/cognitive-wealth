@@ -3,13 +3,17 @@ import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runMigrations } from "@repo/db/migrator";
-import { RYUK_IMAGE, databaseUrl, startPostgres } from "@repo/testing/postgres";
+import {
+  databaseUrl,
+  newPasswords,
+  pinReaperImage,
+  secret,
+  startPostgres,
+} from "@repo/testing/postgres";
 import { TEMPLATE_DATABASE } from "./support/database";
 import { startMailpit } from "./support/mailpit";
 import { startRedis } from "./support/redis";
 import { STANDALONE, WEB } from "./support/server";
-
-const secret = () => randomBytes(24).toString("hex");
 
 /**
  * Once per run: lay out the standalone server like the Docker image does, start a throwaway
@@ -23,14 +27,13 @@ export default async function globalSetup() {
   // Random credentials everywhere: Testcontainers defaults the superuser to test/test, and Docker
   // can publish the containers' ports on every host interface.
   const passwords = {
-    superuser: secret(),
-    migrator: secret(),
-    app: secret(),
+    ...newPasswords(),
     redisApp: secret(),
     redisJanitor: secret(),
     mailpitUi: secret(),
   };
-  process.env.RYUK_CONTAINER_IMAGE ??= RYUK_IMAGE;
+  // Before any container: Postgres, Redis and Mailpit start together, and any may start the reaper.
+  pinReaperImage();
 
   // The server reads the Redis password from a file, as in production (REDIS_PASSWORD_FILE).
   const secretsDir = await mkdtemp(join(tmpdir(), "cw-e2e-"));

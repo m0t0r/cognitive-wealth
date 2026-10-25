@@ -13,11 +13,19 @@ import { REPO_ROOT, composeImage } from "./compose";
  */
 
 // Testcontainers' reaper, pinned by digest like every other image (its default is tag-only).
-export const RYUK_IMAGE =
+const RYUK_IMAGE =
   "testcontainers/ryuk:0.14.0@sha256:7c1a8a9a47c780ed0f983770a662f80deb115d95cce3e2daa3d12115b8cd28f0";
 
+/**
+ * Pins Testcontainers' reaper image, unless the environment already names one. Call it before a
+ * run's first container starts: the reaper starts with that one, whichever it is.
+ */
+export function pinReaperImage() {
+  process.env.RYUK_CONTAINER_IMAGE ??= RYUK_IMAGE;
+}
+
 /** The role setup `compose.yaml` runs, so tests exercise the production grants. */
-export const ROLES_SCRIPT = join(REPO_ROOT, "packages/db/docker/initdb/01-roles.sh");
+const ROLES_SCRIPT = join(REPO_ROOT, "packages/db/docker/initdb/01-roles.sh");
 
 /** The container's own database: the roles script sets it up, global setup migrates it. */
 const TEMPLATE_DATABASE = "test_template";
@@ -38,14 +46,14 @@ declare module "vitest" {
   }
 }
 
-/** Random credentials: Testcontainers defaults to test/test, and Docker may publish the port. */
+/** A random password: Testcontainers defaults to test/test, and Docker may publish the port. */
+export const secret = () => randomBytes(24).toString("hex");
+
 export const newPasswords = (): PostgresPasswords => ({
   superuser: secret(),
   migrator: secret(),
   app: secret(),
 });
-
-const secret = () => randomBytes(24).toString("hex");
 
 /**
  * Starts compose.yaml's Postgres image with the production roles (`ROLES_SCRIPT`, scram-sha-256
@@ -58,7 +66,7 @@ export async function startPostgres({
   passwords: PostgresPasswords;
   database: string;
 }): Promise<StartedPostgreSqlContainer> {
-  process.env.RYUK_CONTAINER_IMAGE ??= RYUK_IMAGE;
+  pinReaperImage();
   return (
     new PostgreSqlContainer(composeImage("postgres"))
       .withDatabase(database)
@@ -118,7 +126,7 @@ export async function dropDatabase(admin: postgres.Sql, { name }: { name: string
 }
 
 /** A superuser connection to the server's maintenance database, for create and drop. */
-const adminClient = (serverUrl: string) =>
+export const adminClient = (serverUrl: string) =>
   postgres(databaseUrl({ serverUrl, database: "postgres" }), { max: 1, onnotice: () => {} });
 
 type PostgresGlobalSetupArgs = {
@@ -179,30 +187,32 @@ export type TestDatabase = { name: string; url: (role: Role) => string };
 export function createPostgresTest() {
   return test
     .extend(
-      "postgresAdmin",
+      "postgresServer",
       { scope: "worker" },
       // Vitest requires a destructuring pattern as the fixture's first argument.
       // oxlint-disable-next-line no-empty-pattern
-      async ({}, { onCleanup }) => {
-        const server = inject("postgresServer");
-        const admin = adminClient(server.url);
-        onCleanup(() => admin.end());
-        return { server, admin };
-      },
+      ({}) => inject("postgresServer"),
     )
-    .extend("database", async ({ postgresAdmin }, { onCleanup }): Promise<TestDatabase> => {
-      const { server, admin } = postgresAdmin;
-      const name = `${TEST_DATABASE_PREFIX}${randomUUID().replaceAll("-", "")}`;
-      await createDatabase(admin, { name, template: TEMPLATE_DATABASE });
-      onCleanup(() => dropDatabase(admin, { name }));
-      return {
-        name,
-        url: (role) =>
-          databaseUrl({
-            serverUrl: server.url,
-            database: name,
-            user: { name: role, password: server.passwords[role] },
-          }),
-      };
-    });
+    .extend("postgresAdmin", { scope: "worker" }, async ({ postgresServer }, { onCleanup }) => {
+      const admin = adminClient(postgresServer.url);
+      onCleanup(() => admin.end());
+      return admin;
+    })
+    .extend(
+      "database",
+      async ({ postgresServer, postgresAdmin }, { onCleanup }): Promise<TestDatabase> => {
+        const name = `${TEST_DATABASE_PREFIX}${randomUUID().replaceAll("-", "")}`;
+        await createDatabase(postgresAdmin, { name, template: TEMPLATE_DATABASE });
+        onCleanup(() => dropDatabase(postgresAdmin, { name }));
+        return {
+          name,
+          url: (role) =>
+            databaseUrl({
+              serverUrl: postgresServer.url,
+              database: name,
+              user: { name: role, password: postgresServer.passwords[role] },
+            }),
+        };
+      },
+    );
 }

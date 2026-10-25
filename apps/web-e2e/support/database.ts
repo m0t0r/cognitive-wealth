@@ -1,5 +1,5 @@
 import { connect } from "@repo/db/connect";
-import { createDatabase, databaseUrl, dropDatabase } from "@repo/testing/postgres";
+import { adminClient, createDatabase, databaseUrl, dropDatabase } from "@repo/testing/postgres";
 import { requiredEnv } from "./compose";
 
 /** Migrated once per run by global setup; every worker database is a copy of it. */
@@ -23,16 +23,12 @@ function assertSafeName(name: string) {
   if (!SAFE_NAME.test(name)) throw new Error(`Unsafe database name: ${name}`);
 }
 
-async function admin(run: (client: ReturnType<typeof connect>["client"]) => Promise<void>) {
-  const url = databaseUrl({
-    serverUrl: requiredEnv("PLAYWRIGHT_DATABASE_URL"),
-    database: "postgres",
-  });
-  const { client, close } = connect({ url }, { max: 1 });
+async function admin(run: (client: ReturnType<typeof adminClient>) => Promise<void>) {
+  const client = adminClient(requiredEnv("PLAYWRIGHT_DATABASE_URL"));
   try {
     await run(client);
   } finally {
-    await close();
+    await client.end();
   }
 }
 
