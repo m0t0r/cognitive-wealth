@@ -30,6 +30,7 @@ function createFakeRedis({ tick = 0 } = {}) {
       data.delete(key);
       return value;
     },
+    // oxlint-disable-next-line max-params -- `RedisCommands` mirrors node-redis's `set(key, value, options)`
     async set(key, value, options) {
       const ex = options?.expiration?.value;
       step(
@@ -50,6 +51,7 @@ function createFakeRedis({ tick = 0 } = {}) {
       data.set(key, { value: String(next), expiresAt: entry?.expiresAt ?? null });
       return next;
     },
+    // oxlint-disable-next-line max-params -- `RedisCommands` mirrors node-redis's `expire(key, seconds, mode)`
     async expire(key, seconds, mode) {
       step(`EXPIRE ${key} ${seconds}${mode ? ` ${mode}` : ""}`);
       const entry = live(key);

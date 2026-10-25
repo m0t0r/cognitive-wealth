@@ -11,7 +11,15 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const router = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
-function membership(name: string, role: PublicMembership["role"], isActive: boolean) {
+function membership({
+  name,
+  role,
+  isActive,
+}: {
+  name: string;
+  role: PublicMembership["role"];
+  isActive: boolean;
+}) {
   const publicId = `0192f0c4-0000-7000-8000-${String(name.length).padStart(12, "0")}`;
   return {
     organization: { publicId, name, slug: name.toLowerCase(), logo: null },
@@ -20,8 +28,8 @@ function membership(name: string, role: PublicMembership["role"], isActive: bool
   } satisfies PublicMembership;
 }
 
-const ACME = membership("Acme", "owner", true);
-const GLOBEX = membership("Globex", "member", false);
+const ACME = membership({ name: "Acme", role: "owner", isActive: true });
+const GLOBEX = membership({ name: "Globex", role: "member", isActive: false });
 
 beforeEach(() => {
   vi.mocked(switchWorkspace).mockResolvedValue({ ok: true });

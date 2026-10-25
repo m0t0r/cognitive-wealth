@@ -33,7 +33,15 @@ async function expectGradedHeaders(request: APIRequestContext, url: string) {
   expect(cspNonce(first)).not.toBe(cspNonce(second));
 }
 
-async function expectRendersWithinCsp(page: Page, route: Route, url: string) {
+async function expectRendersWithinCsp({
+  page,
+  route,
+  url,
+}: {
+  page: Page;
+  route: Route;
+  url: string;
+}) {
   const violations = await recordCspViolations(page);
   await page.goto(url);
   if (route.ready) await expect(route.ready(page)).toBeVisible();
@@ -48,7 +56,7 @@ for (const route of PUBLIC_ROUTES) {
   });
 
   test(`${route.name} renders without CSP violations`, async ({ page }) => {
-    await expectRendersWithinCsp(page, route, route.url);
+    await expectRendersWithinCsp({ page, route, url: route.url });
   });
 }
 
@@ -65,7 +73,7 @@ for (const route of SIGNED_IN_ROUTES) {
 
     // `page.request` shares the page's cookies, so it gets the signed-in page.
     await expectGradedHeaders(page.request, url);
-    await expectRendersWithinCsp(page, route, url);
+    await expectRendersWithinCsp({ page, route, url });
     await expect(page).toHaveURL(url);
   });
 }

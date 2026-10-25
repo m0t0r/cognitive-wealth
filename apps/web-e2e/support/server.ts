@@ -24,7 +24,15 @@ async function freePort(): Promise<number> {
   return address.port;
 }
 
-async function waitUntilHealthy(url: string, child: ChildProcess, deadline: number): Promise<void> {
+async function waitUntilHealthy({
+  url,
+  child,
+  deadline,
+}: {
+  url: string;
+  child: ChildProcess;
+  deadline: number;
+}): Promise<void> {
   if (child.exitCode !== null) throw new Error(`Server exited with code ${child.exitCode}`);
   if (Date.now() > deadline) throw new Error(`Server at ${url} was not healthy in time`);
   try {
@@ -33,7 +41,7 @@ async function waitUntilHealthy(url: string, child: ChildProcess, deadline: numb
     // Not listening yet.
   }
   await sleep(100);
-  return waitUntilHealthy(url, child, deadline);
+  return waitUntilHealthy({ url, child, deadline });
 }
 
 export interface ServerOptions {
@@ -84,7 +92,7 @@ export async function startServer({
   };
 
   try {
-    await waitUntilHealthy(url, child, Date.now() + 30_000);
+    await waitUntilHealthy({ url, child, deadline: Date.now() + 30_000 });
   } catch (error) {
     await stop();
     throw error;

@@ -58,15 +58,25 @@ export function toPublicAccount(row: AccountRow): PublicAccount {
   };
 }
 
-export function toPublicAccountRole(row: AccountRoleRow, account: AccountRow): PublicAccountRole {
+export function toPublicAccountRole({
+  row,
+  account,
+}: {
+  row: AccountRoleRow;
+  account: AccountRow;
+}): PublicAccountRole {
   return { account: toPublicAccount(account), role: row.role, startsOn: row.startsOn };
 }
 
-export function toPublicPerson(
-  row: PersonRow,
-  householdRole: HouseholdRole,
-  accountRoles: PublicAccountRole[],
-): PublicPerson {
+export function toPublicPerson({
+  row,
+  householdRole,
+  accountRoles,
+}: {
+  row: PersonRow;
+  householdRole: HouseholdRole;
+  accountRoles: PublicAccountRole[];
+}): PublicPerson {
   return {
     publicId: row.publicId,
     firstName: row.firstName,
@@ -77,7 +87,13 @@ export function toPublicPerson(
   };
 }
 
-export function toPublicHousehold(row: HouseholdRow, people: PublicPerson[]): PublicHousehold {
+export function toPublicHousehold({
+  row,
+  people,
+}: {
+  row: HouseholdRow;
+  people: PublicPerson[];
+}): PublicHousehold {
   return {
     publicId: row.publicId,
     name: row.name,

@@ -59,11 +59,15 @@ export async function loadSendHistory(email: string): Promise<SendHistory | unde
 }
 
 /** Stores `history` for `email`, dropping entries whose windows have all ended. Best effort. */
-export async function saveSendHistory(
-  email: string,
-  history: SendHistory,
+export async function saveSendHistory({
+  email,
+  history,
   now = Date.now(),
-): Promise<void> {
+}: {
+  email: string;
+  history: SendHistory;
+  now?: number;
+}): Promise<void> {
   try {
     const key = await storageKey(email);
     const kept = Object.fromEntries(

@@ -23,11 +23,15 @@ const TRUNCATE_ALL = `
   end $$`;
 
 /** A URL for `database` on the run's Postgres: the superuser's (from global setup) or `user`'s. */
-export function databaseUrl(
-  serverUrl: string,
-  database: string,
-  user?: { name: string; password: string },
-): string {
+export function databaseUrl({
+  serverUrl,
+  database,
+  user,
+}: {
+  serverUrl: string;
+  database: string;
+  user?: { name: string; password: string };
+}): string {
   const url = new URL(serverUrl);
   url.pathname = `/${database}`;
   if (user) {
@@ -42,7 +46,10 @@ function assertSafeName(name: string) {
 }
 
 async function admin(...statements: string[]) {
-  const url = databaseUrl(requiredEnv("PLAYWRIGHT_DATABASE_URL"), "postgres");
+  const url = databaseUrl({
+    serverUrl: requiredEnv("PLAYWRIGHT_DATABASE_URL"),
+    database: "postgres",
+  });
   const { client, close } = connect({ url }, { max: 1 });
   try {
     for (const statement of statements) {
@@ -69,12 +76,16 @@ export async function createWorkerDatabase(name: string) {
 
   const serverUrl = requiredEnv("PLAYWRIGHT_DATABASE_URL");
   // Seeding and resets run as the superuser; the app itself connects as the DML-only `app` role.
-  const connection = connect({ url: databaseUrl(serverUrl, name) }, { max: 1 });
+  const connection = connect({ url: databaseUrl({ serverUrl, database: name }) }, { max: 1 });
   return {
     db: connection.db,
-    appUrl: databaseUrl(serverUrl, name, {
-      name: "app",
-      password: requiredEnv("PLAYWRIGHT_DATABASE_APP_PASSWORD"),
+    appUrl: databaseUrl({
+      serverUrl,
+      database: name,
+      user: {
+        name: "app",
+        password: requiredEnv("PLAYWRIGHT_DATABASE_APP_PASSWORD"),
+      },
     }),
     truncateAll: () => connection.client.unsafe(TRUNCATE_ALL),
     dispose: async () => {

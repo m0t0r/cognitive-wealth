@@ -70,17 +70,20 @@ describe("consumeRateLimit", () => {
     const time = clock();
     const storage = createMemoryStorage(time);
     const rule = { window: 60, max: 2 };
-    expect(await consumeRateLimit(storage, "k", rule)).toEqual({ ok: true });
-    expect(await consumeRateLimit(storage, "k", rule)).toEqual({ ok: true });
-    expect(await consumeRateLimit(storage, "k", rule)).toEqual({ ok: false, retryAfter: 60 });
-    expect(await consumeRateLimit(storage, "other", rule)).toEqual({ ok: true });
+    expect(await consumeRateLimit({ storage, key: "k", rule })).toEqual({ ok: true });
+    expect(await consumeRateLimit({ storage, key: "k", rule })).toEqual({ ok: true });
+    expect(await consumeRateLimit({ storage, key: "k", rule })).toEqual({
+      ok: false,
+      retryAfter: 60,
+    });
+    expect(await consumeRateLimit({ storage, key: "other", rule })).toEqual({ ok: true });
     time.advance(60_000);
-    expect(await consumeRateLimit(storage, "k", rule)).toEqual({ ok: true });
+    expect(await consumeRateLimit({ storage, key: "k", rule })).toEqual({ ok: true });
   });
 
   it("namespaces its keys", async () => {
     const storage = createMemoryStorage();
-    await consumeRateLimit(storage, "k", { window: 60, max: 1 });
+    await consumeRateLimit({ storage, key: "k", rule: { window: 60, max: 1 } });
     expect(storage.keys()).toEqual(["rl:k"]);
   });
 });

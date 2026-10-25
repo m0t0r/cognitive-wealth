@@ -189,7 +189,7 @@ export function createMailpit(baseUrl: string): Mailpit {
 }
 
 /** The value of a `<label>: <value>` line, tolerating CRLF and surrounding whitespace. */
-function line(text: string, label: string, kind: string): string {
+function line({ text, label, kind }: { text: string; label: string; kind: string }): string {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const value = new RegExp(`^[ \\t]*${escaped}:[ \\t]*(\\S+)[ \\t]*\\r?$`, "m").exec(text)?.[1];
   if (!value) {
@@ -202,8 +202,8 @@ function line(text: string, label: string, kind: string): string {
 
 /** Reads the link and code from a sign-in email's plain text (docs/auth.md, "Email"). */
 export function parseSignInEmail(text: string): SignInEmail {
-  const url = line(text, "Sign-in link", "Sign-in");
-  const code = line(text, "Sign-in code", "Sign-in");
+  const url = line({ text, label: "Sign-in link", kind: "Sign-in" });
+  const code = line({ text, label: "Sign-in code", kind: "Sign-in" });
   if (!/^\d{6}$/.test(code)) throw new Error(`Sign-in code is not 6 digits: ${code}`);
 
   if (!URL.canParse(url)) throw new Error(`Sign-in link is not a URL: ${url}`);
@@ -215,7 +215,7 @@ export function parseSignInEmail(text: string): SignInEmail {
 
 /** Reads the accept link from an invitation email's plain text. */
 export function parseInvitationEmail(text: string): InvitationEmail {
-  const url = line(text, "Invitation link", "Invitation");
+  const url = line({ text, label: "Invitation link", kind: "Invitation" });
   if (!URL.canParse(url)) throw new Error(`Invitation link is not a URL: ${url}`);
   return { url };
 }

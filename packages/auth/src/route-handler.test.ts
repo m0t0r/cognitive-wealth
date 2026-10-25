@@ -105,18 +105,18 @@ describe("isSameOriginPost", () => {
 
 describe("mapAuthResponse", () => {
   it("replaces success bodies", () => {
-    expect(mapAuthResponse("sign-in", 200, undefined)).toEqual({
+    expect(mapAuthResponse({ route: "sign-in", status: 200 })).toEqual({
       status: 200,
       body: { status: true },
     });
     for (const route of ["verify", "otp", "sign-out"] as const) {
-      expect(mapAuthResponse(route, 200, undefined)).toEqual({ status: 200, body: { ok: true } });
+      expect(mapAuthResponse({ route, status: 200 })).toEqual({ status: 200, body: { ok: true } });
     }
   });
 
   it("turns verify's error redirect into invalid_or_expired", () => {
     for (const status of [302, 303, 307]) {
-      expect(mapAuthResponse("verify", status, undefined)).toEqual({
+      expect(mapAuthResponse({ route: "verify", status })).toEqual({
         status: 400,
         body: { ok: false, error: "invalid_or_expired" },
       });
@@ -130,7 +130,7 @@ describe("mapAuthResponse", () => {
       [400, "OTP_EXPIRED"],
       [403, "TOO_MANY_ATTEMPTS"],
     ] as const) {
-      expect(mapAuthResponse("otp", status, code)).toEqual({
+      expect(mapAuthResponse({ route: "otp", status, code })).toEqual({
         status: 400,
         body: { ok: false, error: "invalid_or_expired" },
       });
@@ -138,17 +138,21 @@ describe("mapAuthResponse", () => {
   });
 
   it("maps everything else to a fixed code", () => {
-    expect(mapAuthResponse("sign-in", 429, undefined)).toEqual({
+    expect(mapAuthResponse({ route: "sign-in", status: 429 })).toEqual({
       status: 429,
       body: { ok: false, error: "rate_limited" },
     });
-    expect(mapAuthResponse("sign-in", 403, "INVALID_ORIGIN").body.error).toBe("forbidden");
-    expect(mapAuthResponse("sign-in", 400, "INVALID_EMAIL").body.error).toBe("invalid_request");
-    expect(mapAuthResponse("otp", 500, undefined)).toEqual({
+    expect(
+      mapAuthResponse({ route: "sign-in", status: 403, code: "INVALID_ORIGIN" }).body.error,
+    ).toBe("forbidden");
+    expect(
+      mapAuthResponse({ route: "sign-in", status: 400, code: "INVALID_EMAIL" }).body.error,
+    ).toBe("invalid_request");
+    expect(mapAuthResponse({ route: "otp", status: 500 })).toEqual({
       status: 500,
       body: { ok: false, error: "unknown" },
     });
-    expect(mapAuthResponse("sign-in", 302, undefined).body.error).toBe("unknown");
+    expect(mapAuthResponse({ route: "sign-in", status: 302 }).body.error).toBe("unknown");
   });
 });
 
@@ -174,7 +178,15 @@ const browser = {
   origin: ORIGIN,
 };
 
-function leakyResponse(status: number, body: unknown, extra: Record<string, string> = {}) {
+function leakyResponse({
+  status,
+  body,
+  extra = {},
+}: {
+  status: number;
+  body: unknown;
+  extra?: Record<string, string>;
+}) {
   const headers = new Headers({
     "content-type": "application/json",
     "x-better-auth": "1",
@@ -189,7 +201,10 @@ function leakyResponse(status: number, body: unknown, extra: Record<string, stri
 describe("createAuthRouteHandler", () => {
   it("replaces the body and drops every header except Set-Cookie", async () => {
     const { GET } = fakeAuth(() =>
-      leakyResponse(200, { token: "secret", user: { id: "1", email: "ada@example.com" } }),
+      leakyResponse({
+        status: 200,
+        body: { token: "secret", user: { id: "1", email: "ada@example.com" } },
+      }),
     );
     const response = await GET(
       new Request(`${ORIGIN}/api/auth/magic-link/verify?token=abc`, { headers: browser }),
@@ -206,7 +221,7 @@ describe("createAuthRouteHandler", () => {
   });
 
   it("never passes a redirect on", async () => {
-    const { GET } = fakeAuth(() => leakyResponse(302, null));
+    const { GET } = fakeAuth(() => leakyResponse({ status: 302, body: null }));
     const response = await GET(
       new Request(`${ORIGIN}/api/auth/magic-link/verify?token=abc`, { headers: browser }),
     );
@@ -217,7 +232,11 @@ describe("createAuthRouteHandler", () => {
 
   it("replaces error messages with codes and keeps only a numeric Retry-After", async () => {
     const { POST } = fakeAuth(() =>
-      leakyResponse(429, { message: "Too many requests" }, { "x-retry-after": "42" }),
+      leakyResponse({
+        status: 429,
+        body: { message: "Too many requests" },
+        extra: { "x-retry-after": "42" },
+      }),
     );
     const response = await POST(
       new Request(`${ORIGIN}/api/auth/sign-in/magic-link`, {
@@ -233,7 +252,9 @@ describe("createAuthRouteHandler", () => {
   });
 
   it("forwards a request rebuilt from checked parts, against the configured origin", async () => {
-    const { POST, requests } = fakeAuth(() => leakyResponse(200, { status: true }));
+    const { POST, requests } = fakeAuth(() =>
+      leakyResponse({ status: 200, body: { status: true } }),
+    );
     await POST(
       new Request("http://10.0.0.5:3000/api/auth/sign-in/magic-link", {
         method: "POST",
@@ -253,7 +274,7 @@ describe("createAuthRouteHandler", () => {
   });
 
   it("forwards only the token on verify", async () => {
-    const { GET, requests } = fakeAuth(() => leakyResponse(200, {}));
+    const { GET, requests } = fakeAuth(() => leakyResponse({ status: 200, body: {} }));
     await GET(new Request(`${ORIGIN}/api/auth/magic-link/verify?token=abc`, { headers: browser }));
     expect(requests[0]!.url).toBe(`${ORIGIN}/api/auth/magic-link/verify?token=abc`);
   });
@@ -283,7 +304,7 @@ describe("createAuthRouteHandler", () => {
     ["no token on verify", `${ORIGIN}/api/auth/magic-link/verify`, "GET"],
     ["a malformed token", `${ORIGIN}/api/auth/magic-link/verify?token=a%20b`, "GET"],
   ] as const)("refuses %s without calling Better Auth", async ([, url, method]) => {
-    const { GET, POST, requests } = fakeAuth(() => leakyResponse(200, {}));
+    const { GET, POST, requests } = fakeAuth(() => leakyResponse({ status: 200, body: {} }));
     const response =
       method === "GET"
         ? await GET(new Request(url, { headers: browser }))
@@ -299,7 +320,7 @@ describe("createAuthRouteHandler", () => {
     ["a body that isn't JSON", "email=ada@example.com"],
     ["a JSON array", JSON.stringify(["ada@example.com"])],
   ] as const)("refuses a sign-in request with %s without calling Better Auth", async ([, body]) => {
-    const { POST, requests } = fakeAuth(() => leakyResponse(200, {}));
+    const { POST, requests } = fakeAuth(() => leakyResponse({ status: 200, body: {} }));
     const response = await POST(
       new Request(`${ORIGIN}/api/auth/sign-in/magic-link`, {
         method: "POST",
@@ -318,7 +339,7 @@ describe("createAuthRouteHandler", () => {
     ["a cross-site fetch", { "sec-fetch-site": "cross-site" }],
     ["Origin: null from another site", { origin: "null", "sec-fetch-site": "cross-site" }],
   ] as const)("forbids a sign-in request with %s without calling Better Auth", async ([, init]) => {
-    const { POST, requests } = fakeAuth(() => leakyResponse(200, {}));
+    const { POST, requests } = fakeAuth(() => leakyResponse({ status: 200, body: {} }));
     const headers = new Headers({ ...browser, "content-type": "application/json" });
     for (const [name, value] of Object.entries(init)) {
       if (value === null) headers.delete(name);
@@ -342,7 +363,7 @@ describe("createAuthRouteHandler", () => {
     ["a same-site fetch", { "sec-fetch-site": "same-site", "sec-fetch-mode": "cors" }],
     ["a no-cors subresource", { "sec-fetch-site": "same-origin", "sec-fetch-mode": "no-cors" }],
   ] as const)("forbids verify from %s without calling Better Auth", async ([, headers]) => {
-    const { GET, requests } = fakeAuth(() => leakyResponse(200, {}));
+    const { GET, requests } = fakeAuth(() => leakyResponse({ status: 200, body: {} }));
     const response = await GET(
       new Request(`${ORIGIN}/api/auth/magic-link/verify?token=abc`, { headers: { ...headers } }),
     );
@@ -351,7 +372,7 @@ describe("createAuthRouteHandler", () => {
   });
 
   it("refuses a form-encoded sign-in request without calling Better Auth", async () => {
-    const { POST, requests } = fakeAuth(() => leakyResponse(200, {}));
+    const { POST, requests } = fakeAuth(() => leakyResponse({ status: 200, body: {} }));
     const response = await POST(
       new Request(`${ORIGIN}/api/auth/sign-in/magic-link`, {
         method: "POST",
@@ -364,7 +385,7 @@ describe("createAuthRouteHandler", () => {
   });
 
   it("refuses an oversized body", async () => {
-    const { POST, requests } = fakeAuth(() => leakyResponse(200, {}));
+    const { POST, requests } = fakeAuth(() => leakyResponse({ status: 200, body: {} }));
     const response = await POST(
       new Request(`${ORIGIN}/api/auth/sign-in/magic-link`, {
         method: "POST",
@@ -392,7 +413,10 @@ describe("createAuthRouteHandler", () => {
   it("logs the route, status and code when it falls back to `unknown`, and nothing else", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const { GET } = fakeAuth(() =>
-      leakyResponse(500, { code: "FAILED_TO_CREATE_SESSION", message: "db detail", token: "t" }),
+      leakyResponse({
+        status: 500,
+        body: { code: "FAILED_TO_CREATE_SESSION", message: "db detail", token: "t" },
+      }),
     );
     const response = await GET(
       new Request(`${ORIGIN}/api/auth/magic-link/verify?token=s3cr3t`, { headers: browser }),
@@ -414,7 +438,7 @@ describe("createAuthRouteHandler", () => {
       [429, undefined],
       [403, "INVALID_ORIGIN"],
     ] as const) {
-      const { POST } = fakeAuth(() => leakyResponse(status, { code }));
+      const { POST } = fakeAuth(() => leakyResponse({ status, body: { code } }));
       // Sequential on purpose: each case checks the log afterwards.
       // oxlint-disable-next-line no-await-in-loop
       await POST(

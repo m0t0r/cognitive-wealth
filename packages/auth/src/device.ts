@@ -69,11 +69,15 @@ export async function readDeviceCookie(
 }
 
 /** (Re)issues the device cookie for `publicId`, keeping the device ID this browser already has. */
-export async function setDeviceCookie(
-  ctx: DeviceCookieContext,
-  publicId: string,
+export async function setDeviceCookie({
+  ctx,
+  publicId,
   now = Date.now(),
-): Promise<void> {
+}: {
+  ctx: DeviceCookieContext;
+  publicId: string;
+  now?: number;
+}): Promise<void> {
   const existing = await readDeviceCookie(ctx, now);
   const deviceId =
     existing?.publicId === publicId ? existing.deviceId : randomBytes(16).toString("base64url");

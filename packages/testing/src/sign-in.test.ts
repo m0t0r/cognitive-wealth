@@ -192,14 +192,14 @@ describe("parseSetCookies", () => {
 
   it("maps Domain, Path, Expires and SameSite", () => {
     expect(
-      parseSetCookies(
-        [
+      parseSetCookies({
+        headers: [
           "a=1; Domain=.App.localhost; Path=/app; Expires=Thu, 29 Oct 2026 12:00:00 GMT; SameSite=strict",
           "b=x=y",
         ],
-        url,
+        requestUrl: url,
         now,
-      ),
+      }),
     ).toEqual([
       {
         name: "a",
@@ -226,15 +226,15 @@ describe("parseSetCookies", () => {
   });
 
   it("prefers Max-Age over Expires and drops deleted cookies", () => {
-    const cookies = parseSetCookies(
-      [
+    const cookies = parseSetCookies({
+      headers: [
         "keep=1; Max-Age=60; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
         "gone=; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
         "zero=; Max-Age=0",
       ],
-      url,
+      requestUrl: url,
       now,
-    );
+    });
     expect(cookies.map(({ name, expires }) => ({ name, expires }))).toEqual([
       { name: "keep", expires: now / 1000 + 60 },
     ]);

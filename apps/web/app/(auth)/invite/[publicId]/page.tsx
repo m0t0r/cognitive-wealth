@@ -20,7 +20,10 @@ export const metadata: Metadata = { title: "Invitation" };
 export default async function InvitationPage({ params }: PageProps<"/invite/[publicId]">) {
   const { publicId } = await params;
   const viewer = await requireViewer();
-  const result = await getInvitation(getAuth(), await headers(), { invitationPublicId: publicId });
+  const result = await getInvitation(getAuth(), {
+    headers: await headers(),
+    invitationPublicId: publicId,
+  });
   const invitation = result.ok && isOpen(result.data) ? result.data : null;
   const hasWorkspace = viewer.tenant !== null;
 

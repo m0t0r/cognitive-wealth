@@ -34,7 +34,17 @@ export interface OtherBrowser {
 }
 
 /** The HTTP harness's sign-in, from `ip`, with the session cookies added to `context`. */
-async function signInto(context: BrowserContext, appUrl: string, ip: string, email: string) {
+async function signInto({
+  context,
+  appUrl,
+  ip,
+  email,
+}: {
+  context: BrowserContext;
+  appUrl: string;
+  ip: string;
+  email: string;
+}) {
   const { cookies } = await signIn({
     appUrl,
     email,
@@ -87,7 +97,7 @@ type WorkerFixtures = {
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   workerDatabase: [
     // Playwright requires a destructuring pattern as the fixture's first argument.
-    // oxlint-disable-next-line no-empty-pattern
+    // oxlint-disable-next-line no-empty-pattern, max-params -- Playwright's worker fixture `(fixtures, use, workerInfo)`
     async ({}, provide, workerInfo) => {
       const database = await createWorkerDatabase(
         `e2e_w${workerInfo.parallelIndex}_${randomUUID().slice(0, 8)}`,
@@ -99,14 +109,14 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   workerRedis: [
-    // oxlint-disable-next-line no-empty-pattern
+    // oxlint-disable-next-line no-empty-pattern, max-params -- Playwright's worker fixture `(fixtures, use, workerInfo)`
     async ({}, provide, workerInfo) => {
       const prefix = `cw:e2e_w${workerInfo.parallelIndex}_${randomUUID().slice(0, 8)}:`;
-      const janitor = await connectJanitor(
-        requiredEnv("PLAYWRIGHT_REDIS_URL"),
-        requiredEnv("PLAYWRIGHT_REDIS_JANITOR_PASSWORD"),
+      const janitor = await connectJanitor({
+        url: requiredEnv("PLAYWRIGHT_REDIS_URL"),
+        password: requiredEnv("PLAYWRIGHT_REDIS_JANITOR_PASSWORD"),
         prefix,
-      );
+      });
       await provide({ prefix, reset: janitor.reset });
       await janitor.reset();
       await janitor.close();
@@ -135,7 +145,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   ],
 
   clientIps: [
-    // oxlint-disable-next-line no-empty-pattern
+    // oxlint-disable-next-line no-empty-pattern, max-params -- Playwright's worker fixture `(fixtures, use, workerInfo)`
     async ({}, provide, workerInfo) => {
       // 10.<worker>.<hi>.<lo>: workerIndex is unique in the run (a restarted worker gets a new
       // one), and the counter lives in this fixture, not in module state.
@@ -188,7 +198,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   },
 
   signIn: async ({ app, context, clientIp }, provide) => {
-    await provide((email) => signInto(context, app.url, clientIp, email));
+    await provide((email) => signInto({ context, appUrl: app.url, ip: clientIp, email }));
   },
 
   openBrowser: async ({ app, browser, clientIps, colorScheme }, provide) => {
@@ -205,7 +215,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         context,
         page: await context.newPage(),
         clientIp,
-        signIn: (email) => signInto(context, app.url, clientIp, email),
+        signIn: (email) => signInto({ context, appUrl: app.url, ip: clientIp, email }),
       };
     });
     await Promise.all(contexts.map((context) => context.close()));

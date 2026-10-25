@@ -81,11 +81,15 @@ export function isSameOriginPost(headers: Headers, origin: string): boolean {
  * The status and body the browser sees for Better Auth's response to `route`. `code` is the
  * `code` field of Better Auth's error body, if any.
  */
-export function mapAuthResponse(
-  route: AuthRoute,
-  status: number,
-  code: string | undefined,
-): { status: number; body: Record<string, unknown> } {
+export function mapAuthResponse({
+  route,
+  status,
+  code,
+}: {
+  route: AuthRoute;
+  status: number;
+  code?: string;
+}): { status: number; body: Record<string, unknown> } {
   if (status >= 200 && status < 300) {
     return { status: 200, body: route === "sign-in" ? { status: true } : { ok: true } };
   }
@@ -138,7 +142,7 @@ export function createAuthRouteHandler(auth: Auth | (() => Auth)) {
 
     const instance = resolve();
     const origin = instance.$deps.baseURL;
-    const rebuilt = await rebuild(route, request, url, origin);
+    const rebuilt = await rebuild({ route, request, url, origin });
     if (typeof rebuilt === "string")
       return json(ERROR_STATUS[rebuilt], { ok: false, error: rebuilt });
     if (route === "otp" && !(await withinCodeBudget(instance, rebuilt.body))) {
@@ -167,7 +171,7 @@ export function createAuthRouteHandler(auth: Auth | (() => Auth)) {
     }
 
     const code = await errorCode(upstream);
-    const mapped = mapAuthResponse(route, upstream.status, code);
+    const mapped = mapAuthResponse({ route, status: upstream.status, code });
     if (mapped.body.error === "unknown") {
       // The browser only sees `unknown`; keep what Better Auth actually answered. Its error codes
       // are fixed identifiers; bodies, tokens and addresses stay out of the log.
@@ -203,15 +207,21 @@ async function withinCodeBudget(auth: Auth, body: Record<string, unknown> | unde
   const email = body?.email;
   if (typeof email !== "string") return false;
   const key = `sign-in-code:${normalizeEmail(email)}`;
-  return (await consumeRateLimit(auth.$deps.storage, key, SIGN_IN_CODE_LIMIT)).ok;
+  return (await consumeRateLimit({ storage: auth.$deps.storage, key, rule: SIGN_IN_CODE_LIMIT }))
+    .ok;
 }
 
-async function rebuild(
-  route: AuthRoute,
-  request: Request,
-  url: URL,
-  origin: string,
-): Promise<Rebuilt> {
+async function rebuild({
+  route,
+  request,
+  url,
+  origin,
+}: {
+  route: AuthRoute;
+  request: Request;
+  url: URL;
+  origin: string;
+}): Promise<Rebuilt> {
   if (route === "verify") {
     // Only `token`: callback params would make Better Auth redirect, and an attacker-chosen
     // `errorCallbackURL` is an open redirect waiting to happen.

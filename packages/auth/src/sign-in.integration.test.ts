@@ -25,7 +25,7 @@ async function verifyLink(t: TestAuth, token: string) {
   return { status: response.status, body: await response.json(), response };
 }
 
-async function verifyCode(t: TestAuth, email: string, otp: string) {
+async function verifyCode({ t, email, otp }: { t: TestAuth; email: string; otp: string }) {
   const response = await t.fetchAuth("/sign-in/email-otp", { body: { email, otp } });
   return { status: response.status, body: await response.json(), response };
 }
@@ -33,11 +33,17 @@ async function verifyCode(t: TestAuth, email: string, otp: string) {
 /** A code that differs from `code` in every digit. */
 const wrongCode = (code: string) => code.replace(/\d/g, (d) => String((Number(d) + 1) % 10));
 
-async function seedInvitation(
-  t: TestAuth,
-  email: string,
-  { expiresAt = new Date(Date.now() + 86_400_000), status = "pending" } = {},
-) {
+async function seedInvitation({
+  t,
+  email,
+  expiresAt = new Date(Date.now() + 86_400_000),
+  status = "pending",
+}: {
+  t: TestAuth;
+  email: string;
+  expiresAt?: Date;
+  status?: string;
+}) {
   const inviter = await t.seedUser({ email: `inviter-${crypto.randomUUID()}@example.com` });
   const org = await t.seedOrganization({
     name: "Acme",
@@ -73,7 +79,10 @@ describe("sign-in by link", () => {
     const { status, body, response } = await verifyLink(t, token);
     expect(status).toBe(200);
     expect(body).toEqual({ ok: true });
-    const cookies = parseSetCookies(response.headers.getSetCookie(), new URL(TEST_BASE_URL));
+    const cookies = parseSetCookies({
+      headers: response.headers.getSetCookie(),
+      requestUrl: new URL(TEST_BASE_URL),
+    });
     expect(cookies.map((cookie) => cookie.name)).toContain("cw.session_token");
     for (const cookie of cookies) {
       expect(cookie).toMatchObject({ httpOnly: true, sameSite: "Lax" });
@@ -129,7 +138,7 @@ describe("sign-in by link", () => {
       body: { email: "ada@example.com", callbackURL: "/invite/abc?x=1" },
     });
     expect(response.status).toBe(200);
-    const message = await t.waitForEmail("ada@example.com", before);
+    const message = await t.waitForEmail({ to: "ada@example.com", after: before });
     expect(message.text).toContain("#token=");
     expect(message.text).toContain("next=%2Finvite%2Fabc%3Fx%3D1");
   });
@@ -151,7 +160,7 @@ describe("sign-in by code", () => {
     await t.seedUser({ email: "ada@example.com" });
     const { code } = await t.requestSignIn("ada@example.com");
 
-    const { status, body, response } = await verifyCode(t, "ada@example.com", code);
+    const { status, body, response } = await verifyCode({ t, email: "ada@example.com", otp: code });
     expect(status).toBe(200);
     expect(body).toEqual({ ok: true });
     const session = await t.auth.api.getSession({ headers: t.sessionHeaders(response) });
@@ -161,9 +170,9 @@ describe("sign-in by code", () => {
   test("rejects a replayed code", async ({ t }) => {
     await t.seedUser({ email: "ada@example.com" });
     const { code } = await t.requestSignIn("ada@example.com");
-    expect((await verifyCode(t, "ada@example.com", code)).status).toBe(200);
+    expect((await verifyCode({ t, email: "ada@example.com", otp: code })).status).toBe(200);
 
-    expect(await verifyCode(t, "ada@example.com", code)).toMatchObject({
+    expect(await verifyCode({ t, email: "ada@example.com", otp: code })).toMatchObject({
       status: 400,
       body: { ok: false, error: "invalid_or_expired" },
     });
@@ -174,7 +183,7 @@ describe("sign-in by code", () => {
     const { code } = await t.requestSignIn("ada@example.com");
     await expireAllVerifications(t);
 
-    expect(await verifyCode(t, "ada@example.com", code)).toMatchObject({
+    expect(await verifyCode({ t, email: "ada@example.com", otp: code })).toMatchObject({
       status: 400,
       body: { ok: false, error: "invalid_or_expired" },
     });
@@ -186,13 +195,15 @@ describe("sign-in by code", () => {
     for (let i = 0; i < 3; i++) {
       // Sequential on purpose: each step depends on the ones before.
       // oxlint-disable-next-line no-await-in-loop
-      expect(await verifyCode(t, "ada@example.com", wrongCode(code))).toMatchObject({
-        status: 400,
-        body: { ok: false, error: "invalid_or_expired" },
-      });
+      expect(await verifyCode({ t, email: "ada@example.com", otp: wrongCode(code) })).toMatchObject(
+        {
+          status: 400,
+          body: { ok: false, error: "invalid_or_expired" },
+        },
+      );
     }
 
-    expect(await verifyCode(t, "ada@example.com", code)).toMatchObject({
+    expect(await verifyCode({ t, email: "ada@example.com", otp: code })).toMatchObject({
       status: 400,
       body: { ok: false, error: "invalid_or_expired" },
     });
@@ -211,7 +222,7 @@ describe("sign-in by code", () => {
       for (let i = 0; i < 5; i++) {
         // Sequential on purpose: each attempt counts against the code.
         // oxlint-disable-next-line no-await-in-loop
-        const { status, body } = await verifyCode(t, email, otp);
+        const { status, body } = await verifyCode({ t, email, otp });
         seen.push({ status, body });
       }
       return seen;
@@ -229,11 +240,11 @@ describe("sign-in by code", () => {
     for (let i = 0; i < 10; i++) {
       // Sequential on purpose: each attempt counts against the address's budget.
       // oxlint-disable-next-line no-await-in-loop
-      await verifyCode(t, "ada@example.com", "000000");
+      await verifyCode({ t, email: "ada@example.com", otp: "000000" });
     }
     const { code, token } = await t.requestSignIn("ada@example.com");
 
-    expect(await verifyCode(t, "ADA@example.com", code)).toMatchObject({
+    expect(await verifyCode({ t, email: "ADA@example.com", otp: code })).toMatchObject({
       status: 400,
       body: { ok: false, error: "invalid_or_expired" },
     });
@@ -247,12 +258,12 @@ describe("sign-in by code", () => {
     for (const otp of ["12345", "1234567", "abcdef"]) {
       // Sequential on purpose: each step depends on the ones before.
       // oxlint-disable-next-line no-await-in-loop
-      expect((await verifyCode(t, "ada@example.com", otp)).body).toEqual({
+      expect((await verifyCode({ t, email: "ada@example.com", otp })).body).toEqual({
         ok: false,
         error: "invalid_request",
       });
     }
-    expect((await verifyCode(t, "ada@example.com", code)).status).toBe(200);
+    expect((await verifyCode({ t, email: "ada@example.com", otp: code })).status).toBe(200);
   });
 });
 
@@ -262,7 +273,7 @@ describe("sibling credentials", () => {
     const { token, code } = await t.requestSignIn("ada@example.com");
     expect((await verifyLink(t, token)).status).toBe(200);
 
-    expect((await verifyCode(t, "ada@example.com", code)).body).toEqual({
+    expect((await verifyCode({ t, email: "ada@example.com", otp: code })).body).toEqual({
       ok: false,
       error: "invalid_or_expired",
     });
@@ -271,7 +282,7 @@ describe("sibling credentials", () => {
   test("signing in by code kills the link", async ({ t }) => {
     await t.seedUser({ email: "ada@example.com" });
     const { token, code } = await t.requestSignIn("ada@example.com");
-    expect((await verifyCode(t, "ada@example.com", code)).status).toBe(200);
+    expect((await verifyCode({ t, email: "ada@example.com", otp: code })).status).toBe(200);
 
     expect((await verifyLink(t, token)).body).toEqual({ ok: false, error: "invalid_or_expired" });
   });
@@ -319,7 +330,7 @@ describe("sibling credentials", () => {
     const grace = await t.requestSignIn("grace@example.com");
     expect((await verifyLink(t, ada.token)).status).toBe(200);
 
-    expect((await verifyCode(t, "grace@example.com", grace.code)).status).toBe(200);
+    expect((await verifyCode({ t, email: "grace@example.com", otp: grace.code })).status).toBe(200);
   });
 });
 
@@ -340,7 +351,7 @@ describe("eligibility", () => {
   });
 
   test("lets a pending invitee sign in, which creates their user", async ({ t }) => {
-    await seedInvitation(t, "grace@example.com");
+    await seedInvitation({ t, email: "grace@example.com" });
     const { token } = await t.requestSignIn("grace@example.com");
 
     expect((await verifyLink(t, token)).status).toBe(200);
@@ -352,13 +363,13 @@ describe("eligibility", () => {
   });
 
   test("lets a pending invitee sign in by code", async ({ t }) => {
-    await seedInvitation(t, "grace@example.com");
+    await seedInvitation({ t, email: "grace@example.com" });
     const { code } = await t.requestSignIn("grace@example.com");
-    expect((await verifyCode(t, "grace@example.com", code)).status).toBe(200);
+    expect((await verifyCode({ t, email: "grace@example.com", otp: code })).status).toBe(200);
   });
 
   test("ignores an expired invitation", async ({ t }) => {
-    await seedInvitation(t, "grace@example.com", { expiresAt: new Date(Date.now() - 1000) });
+    await seedInvitation({ t, email: "grace@example.com", expiresAt: new Date(Date.now() - 1000) });
     await t.fetchAuth("/sign-in/magic-link", { body: { email: "grace@example.com" } });
     await t.settle();
     expect(t.mailer.messages).toEqual([]);
@@ -366,7 +377,7 @@ describe("eligibility", () => {
   });
 
   test("ignores an invitation that is no longer pending", async ({ t }) => {
-    await seedInvitation(t, "grace@example.com", { status: "canceled" });
+    await seedInvitation({ t, email: "grace@example.com", status: "canceled" });
     await t.fetchAuth("/sign-in/magic-link", { body: { email: "grace@example.com" } });
     await t.settle();
     expect(t.mailer.messages).toEqual([]);
@@ -375,7 +386,7 @@ describe("eligibility", () => {
   test("refuses to create a user whose invitation lapsed after the email was sent", async ({
     t,
   }) => {
-    await seedInvitation(t, "grace@example.com");
+    await seedInvitation({ t, email: "grace@example.com" });
     const { token } = await t.requestSignIn("grace@example.com");
     await t.auth.$deps.db.update(invitation).set({ status: "canceled" });
 
@@ -387,14 +398,14 @@ describe("eligibility", () => {
     await t.seedUser({ email: "ada@example.com" });
     const before = t.mailer.messages.length;
     await t.fetchAuth("/sign-in/magic-link", { body: { email: "Ada@Example.COM" } });
-    const message = await t.waitForEmail("ada@example.com", before);
+    const message = await t.waitForEmail({ to: "ada@example.com", after: before });
     const code = /Sign-in code: (\d{6})/.exec(message.text)![1]!;
 
-    expect((await verifyCode(t, "ADA@example.com", code)).status).toBe(200);
+    expect((await verifyCode({ t, email: "ADA@example.com", otp: code })).status).toBe(200);
   });
 
   test("lets a mixed-case invitee sign in", async ({ t }) => {
-    await seedInvitation(t, "grace@example.com");
+    await seedInvitation({ t, email: "grace@example.com" });
     const { token } = await t.requestSignIn("Grace@Example.com");
     expect((await verifyLink(t, token)).status).toBe(200);
     expect(await t.auth.$deps.db.$count(user, eq(user.email, "grace@example.com"))).toBe(1);
@@ -487,7 +498,7 @@ describe("POST origin rules", () => {
     expect(await response.json()).toEqual({ ok: false, error: "forbidden" });
     expect(response.headers.getSetCookie()).toEqual([]);
     // Refused before Better Auth: the code wasn't spent.
-    expect((await verifyCode(t, "ada@example.com", code)).status).toBe(200);
+    expect((await verifyCode({ t, email: "ada@example.com", otp: code })).status).toBe(200);
   });
 
   // Kept although the rule is unit-tested: Better Auth runs an origin check of its own on the
@@ -501,7 +512,7 @@ describe("POST origin rules", () => {
       headers: { origin: "null" },
     });
     expect(response.status).toBe(200);
-    await t.waitForEmail("ada@example.com");
+    await t.waitForEmail({ to: "ada@example.com" });
   });
 });
 
@@ -554,7 +565,7 @@ describe("audit and sessions", () => {
   test("records sign-in by method and sign-out", async ({ t }) => {
     const ada = await t.seedUser({ email: "ada@example.com" });
     const { code } = await t.requestSignIn("ada@example.com");
-    const { response } = await verifyCode(t, "ada@example.com", code);
+    const { response } = await verifyCode({ t, email: "ada@example.com", otp: code });
     const headers = t.sessionHeaders(response);
     await t.fetchAuth("/sign-out", { body: {}, headers: { cookie: headers.get("cookie")! } });
     await t.signInAs("ada@example.com");
@@ -627,7 +638,7 @@ describe("audit and sessions", () => {
     });
     const first = await t.signInAs("ada@example.com");
     expect(
-      await switchOrganization(t.auth, first, { organizationPublicId: acme.publicId }),
+      await switchOrganization(t.auth, { headers: first, organizationPublicId: acme.publicId }),
     ).toEqual(expect.objectContaining({ ok: true }));
 
     // Globex is the newer membership, so only the remembered choice can make this Acme.
@@ -649,7 +660,7 @@ describe("audit and sessions", () => {
       members: [{ userId: ada.id, role: "member", createdAt: new Date("2026-06-01") }],
     });
     const first = await t.signInAs("ada@example.com");
-    await switchOrganization(t.auth, first, { organizationPublicId: acme.publicId });
+    await switchOrganization(t.auth, { headers: first, organizationPublicId: acme.publicId });
     await t.auth.$deps.db.delete(member).where(eq(member.organizationId, acme.id));
 
     const again = await t.signInAs("ada@example.com");

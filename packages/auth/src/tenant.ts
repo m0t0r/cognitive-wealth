@@ -205,8 +205,7 @@ export function listMemberships(viewer: Viewer): PublicMembership[] {
 
 export async function switchOrganization(
   auth: Auth,
-  headers: Headers,
-  input: { organizationPublicId: string },
+  { headers, ...input }: { headers: Headers; organizationPublicId: string },
 ): Promise<Result<PublicOrganization>> {
   const viewer = await getViewer(auth, headers);
   if (viewer === null) return fail("unauthenticated");
@@ -231,18 +230,23 @@ export async function switchOrganization(
     auth.api.setActiveOrganization({ headers, body: { organizationId: String(target.id) } }),
   );
   if (!called.ok) return called;
-  await audit(auth, headers, {
-    action: "org.switched",
-    actorUserId: viewer.internal.userId,
-    organizationId: target.id,
-    target: { type: "organization", publicId: target.publicId },
+  await audit(auth, {
+    headers,
+    event: {
+      action: "org.switched",
+      actorUserId: viewer.internal.userId,
+      organizationId: target.id,
+      target: { type: "organization", publicId: target.publicId },
+    },
   });
   return ok(toPublicOrganization(target));
 }
 
 /** Members of the viewer's tenant, longest-standing first. */
 export async function listMembers(auth: Auth, viewer: TenantViewer): Promise<PublicMember[]> {
-  const rows = await selectMembers(auth.$deps.db, viewer.internal.organizationId);
+  const rows = await selectMembers(auth.$deps.db, {
+    organizationId: viewer.internal.organizationId,
+  });
   return rows.map(toPublicMember);
 }
 
@@ -303,14 +307,16 @@ export async function listMyInvitations(auth: Auth, viewer: Viewer): Promise<Pub
  */
 export function inviteMember(
   auth: Auth,
-  headers: Headers,
-  input: { organizationPublicId: string; email: string; role: Role },
-): Promise<Result<PublicInvitation>> {
-  return mutateTenant(
-    auth,
+  {
     headers,
-    { fresh: false, organizationPublicId: input.organizationPublicId },
-    async ({ db, viewer, callApi, recordAudit }) => {
+    ...input
+  }: { headers: Headers; organizationPublicId: string; email: string; role: Role },
+): Promise<Result<PublicInvitation>> {
+  return mutateTenant(auth, {
+    headers,
+    fresh: false,
+    organizationPublicId: input.organizationPublicId,
+    run: async ({ db, viewer, callApi, recordAudit }) => {
       const email = emailSchema.safeParse(
         typeof input.email === "string" ? normalizeEmail(input.email) : input.email,
       );
@@ -331,12 +337,16 @@ export function inviteMember(
       // same fresh session: otherwise a stolen old session could invite a new owner, accept from
       // a fresh sign-in, and remove the real owners from there.
       if (role.data !== "member" && !viewer.session.isFresh) return fail("reauth_required");
-      if (await isMember(db, organizationId, email.data)) return fail("already_member");
+      if (await isMember(db, { organizationId, email: email.data })) return fail("already_member");
 
-      const limit = await consumeRateLimit(auth.$deps.storage, `invite:${userId}`, INVITE_LIMIT);
+      const limit = await consumeRateLimit({
+        storage: auth.$deps.storage,
+        key: `invite:${userId}`,
+        rule: INVITE_LIMIT,
+      });
       if (!limit.ok) return fail("rate_limited");
 
-      const replaced = await pendingInvitationsFor(db, organizationId, email.data);
+      const replaced = await pendingInvitationsFor(db, { organizationId, email: email.data });
       let emailSent = true;
       const created = await callApi(async () => {
         const tracked = await auth.$deps.trackInvitationEmail(() =>
@@ -363,7 +373,13 @@ export function inviteMember(
 
       // Better Auth has cancelled the unexpired one already; cancel what it skipped.
       const stillPending = new Set(
-        (await pendingInvitationsFor(db, organizationId, email.data, createdId)).map((i) => i.id),
+        (
+          await pendingInvitationsFor(db, {
+            organizationId,
+            email: email.data,
+            exceptId: createdId,
+          })
+        ).map((i) => i.id),
       );
       for (const old of replaced) {
         if (stillPending.has(old.id)) {
@@ -383,24 +399,29 @@ export function inviteMember(
       }
       return emailSent ? ok(toPublicInvitation(row)) : fail("email_failed");
     },
-  );
+  });
 }
 
 export function changeMemberRole(
   auth: Auth,
-  headers: Headers,
-  input: { organizationPublicId: string; memberPublicId: string; role: Role },
-): Promise<Result<PublicMember>> {
-  return mutateTenant(
-    auth,
+  {
     headers,
-    { fresh: true, organizationPublicId: input.organizationPublicId },
-    async ({ db, viewer, callApi, recordAudit }) => {
+    ...input
+  }: { headers: Headers; organizationPublicId: string; memberPublicId: string; role: Role },
+): Promise<Result<PublicMember>> {
+  return mutateTenant(auth, {
+    headers,
+    fresh: true,
+    organizationPublicId: input.organizationPublicId,
+    run: async ({ db, viewer, callApi, recordAudit }) => {
       const role = roleSchema.safeParse(input.role);
       if (!role.success) return fail("invalid_input");
       const { organizationId } = viewer.internal;
 
-      const target = await findMember(db, organizationId, input.memberPublicId);
+      const target = await findMember(db, {
+        organizationId,
+        memberPublicId: input.memberPublicId,
+      });
       if (target === undefined) return fail("not_found");
 
       const updated = await callApi(() =>
@@ -430,24 +451,26 @@ export function changeMemberRole(
           auth.api.cancelInvitation({ headers, body: { invitationId: String(invitationId) } }),
         reason: "inviter_role_changed",
       });
-      const [row] = await selectMembers(db, organizationId, target.id);
+      const [row] = await selectMembers(db, { organizationId, memberId: target.id });
       return row === undefined ? fail("not_found") : ok(toPublicMember(row));
     },
-  );
+  });
 }
 
 export function removeMember(
   auth: Auth,
-  headers: Headers,
-  input: { organizationPublicId: string; memberPublicId: string },
+  { headers, ...input }: { headers: Headers; organizationPublicId: string; memberPublicId: string },
 ): Promise<Result<null>> {
-  return mutateTenant(
-    auth,
+  return mutateTenant(auth, {
     headers,
-    { fresh: true, organizationPublicId: input.organizationPublicId },
-    async ({ db, viewer, callApi, recordAudit }) => {
+    fresh: true,
+    organizationPublicId: input.organizationPublicId,
+    run: async ({ db, viewer, callApi, recordAudit }) => {
       const { organizationId } = viewer.internal;
-      const target = await findMember(db, organizationId, input.memberPublicId);
+      const target = await findMember(db, {
+        organizationId,
+        memberPublicId: input.memberPublicId,
+      });
       if (target === undefined) return fail("not_found");
 
       const removed = await callApi(() =>
@@ -475,19 +498,21 @@ export function removeMember(
       });
       return ok(null);
     },
-  );
+  });
 }
 
 export function cancelInvitation(
   auth: Auth,
-  headers: Headers,
-  input: { organizationPublicId: string; invitationPublicId: string },
-): Promise<Result<null>> {
-  return mutateTenant(
-    auth,
+  {
     headers,
-    { fresh: true, organizationPublicId: input.organizationPublicId },
-    async ({ db, viewer, callApi, recordAudit }) => {
+    ...input
+  }: { headers: Headers; organizationPublicId: string; invitationPublicId: string },
+): Promise<Result<null>> {
+  return mutateTenant(auth, {
+    headers,
+    fresh: true,
+    organizationPublicId: input.organizationPublicId,
+    run: async ({ db, viewer, callApi, recordAudit }) => {
       if (!publicIdSchema.safeParse(input.invitationPublicId).success) return fail("not_found");
       const [target] = await db
         .select({ id: invitation.id, publicId: invitation.publicId })
@@ -513,7 +538,7 @@ export function cancelInvitation(
       });
       return ok(null);
     },
-  );
+  });
 }
 
 /**
@@ -523,10 +548,12 @@ export function cancelInvitation(
  */
 export async function getInvitation(
   auth: Auth,
-  headers: Headers,
-  input: { invitationPublicId: string },
+  { headers, ...input }: { headers: Headers; invitationPublicId: string },
 ): Promise<Result<PublicInvitation>> {
-  const found = await invitationForViewer(auth, headers, input.invitationPublicId);
+  const found = await invitationForViewer(auth, {
+    headers,
+    invitationPublicId: input.invitationPublicId,
+  });
   if (!found.ok) return found;
   const checked = await call(() =>
     auth.api.getInvitation({ headers, query: { id: String(found.data.invitationId) } }),
@@ -541,10 +568,12 @@ export async function getInvitation(
 
 export async function acceptInvitation(
   auth: Auth,
-  headers: Headers,
-  input: { invitationPublicId: string },
+  { headers, ...input }: { headers: Headers; invitationPublicId: string },
 ): Promise<Result<{ organization: PublicOrganization }>> {
-  const found = await invitationForViewer(auth, headers, input.invitationPublicId);
+  const found = await invitationForViewer(auth, {
+    headers,
+    invitationPublicId: input.invitationPublicId,
+  });
   if (!found.ok) return found;
   const { invitationId, organizationId, viewer } = found.data;
 
@@ -561,21 +590,26 @@ export async function acceptInvitation(
     .where(eq(organization.id, organizationId))
     .limit(1);
   if (org === undefined) return fail("not_found");
-  await audit(auth, headers, {
-    action: "org.invitation.accepted",
-    actorUserId: viewer.internal.userId,
-    organizationId,
-    target: { type: "invitation", publicId: input.invitationPublicId },
+  await audit(auth, {
+    headers,
+    event: {
+      action: "org.invitation.accepted",
+      actorUserId: viewer.internal.userId,
+      organizationId,
+      target: { type: "invitation", publicId: input.invitationPublicId },
+    },
   });
   return ok({ organization: toPublicOrganization(org) });
 }
 
 export async function declineInvitation(
   auth: Auth,
-  headers: Headers,
-  input: { invitationPublicId: string },
+  { headers, ...input }: { headers: Headers; invitationPublicId: string },
 ): Promise<Result<null>> {
-  const found = await invitationForViewer(auth, headers, input.invitationPublicId);
+  const found = await invitationForViewer(auth, {
+    headers,
+    invitationPublicId: input.invitationPublicId,
+  });
   if (!found.ok) return found;
   const { invitationId, organizationId, viewer } = found.data;
 
@@ -584,19 +618,21 @@ export async function declineInvitation(
   );
   if (!declined.ok) return declined;
 
-  await audit(auth, headers, {
-    action: "org.invitation.declined",
-    actorUserId: viewer.internal.userId,
-    organizationId,
-    target: { type: "invitation", publicId: input.invitationPublicId },
+  await audit(auth, {
+    headers,
+    event: {
+      action: "org.invitation.declined",
+      actorUserId: viewer.internal.userId,
+      organizationId,
+      target: { type: "invitation", publicId: input.invitationPublicId },
+    },
   });
   return ok(null);
 }
 
 export async function updateProfileName(
   auth: Auth,
-  headers: Headers,
-  input: { name: string },
+  { headers, ...input }: { headers: Headers; name: string },
 ): Promise<Result<PublicUser>> {
   const viewer = await getViewer(auth, headers);
   if (viewer === null) return fail("unauthenticated");
@@ -606,11 +642,14 @@ export async function updateProfileName(
   const updated = await call(() => auth.api.updateUser({ headers, body: { name: name.data } }));
   if (!updated.ok) return updated;
 
-  await audit(auth, headers, {
-    action: "user.profile_updated",
-    actorUserId: viewer.internal.userId,
-    target: { type: "user", publicId: viewer.user.publicId },
-    metadata: { fields: ["name"] },
+  await audit(auth, {
+    headers,
+    event: {
+      action: "user.profile_updated",
+      actorUserId: viewer.internal.userId,
+      target: { type: "user", publicId: viewer.user.publicId },
+      metadata: { fields: ["name"] },
+    },
   });
   return ok(toPublicUser(await publicUserRow(auth.$deps.db, viewer.internal.userId)));
 }
@@ -677,28 +716,37 @@ interface TenantMutation {
 /**
  * The shape every tenant mutation shares: resolve the viewer's tenant, refuse with
  * `tenant_changed` unless it is the workspace the caller's page showed (`organizationPublicId`),
- * require a fresh session when `fresh`, then run `fn`, which resolves its target within the
- * tenant, calls Better Auth and audits. The tenant check comes before every other check and side
- * effect (input validation, rate limits, emails, audit rows).
+ * require a fresh session when `fresh`, then `run` the mutation, which resolves its target within
+ * the tenant, calls Better Auth and audits. The tenant check comes before every other check and
+ * side effect (input validation, rate limits, emails, audit rows).
  */
 async function mutateTenant<T>(
   auth: Auth,
-  headers: Headers,
-  options: { fresh: boolean; organizationPublicId: string },
-  fn: (mutation: TenantMutation) => Promise<Result<T>>,
+  {
+    headers,
+    fresh,
+    organizationPublicId,
+    run,
+  }: {
+    headers: Headers;
+    fresh: boolean;
+    organizationPublicId: string;
+    run: (mutation: TenantMutation) => Promise<Result<T>>;
+  },
 ): Promise<Result<T>> {
   const viewer = await requireTenant(auth, headers);
   if (!viewer.ok) return viewer;
-  if (viewer.data.tenant.organization.publicId !== options.organizationPublicId) {
+  if (viewer.data.tenant.organization.publicId !== organizationPublicId) {
     return fail("tenant_changed");
   }
-  if (options.fresh && !viewer.data.session.isFresh) return fail("reauth_required");
+  if (fresh && !viewer.data.session.isFresh) return fail("reauth_required");
   const { userId, organizationId } = viewer.data.internal;
-  return fn({
+  return run({
     viewer: viewer.data,
     db: auth.$deps.db,
     callApi: (apiCall) => call(apiCall, viewer.data.tenant.role),
-    recordAudit: (event) => audit(auth, headers, { ...event, actorUserId: userId, organizationId }),
+    recordAudit: (event) =>
+      audit(auth, { headers, event: { ...event, actorUserId: userId, organizationId } }),
   });
 }
 
@@ -712,7 +760,10 @@ async function publicUserRow(db: Database, userId: number) {
   return row;
 }
 
-async function findMember(db: Database, organizationId: number, memberPublicId: string) {
+async function findMember(
+  db: Database,
+  { organizationId, memberPublicId }: { organizationId: number; memberPublicId: string },
+) {
   if (!publicIdSchema.safeParse(memberPublicId).success) return undefined;
   const [row] = await db
     .select({ id: member.id, publicId: member.publicId, role: member.role, userId: member.userId })
@@ -722,7 +773,10 @@ async function findMember(db: Database, organizationId: number, memberPublicId: 
   return row;
 }
 
-function selectMembers(db: Database, organizationId: number, memberId?: number) {
+function selectMembers(
+  db: Database,
+  { organizationId, memberId }: { organizationId: number; memberId?: number },
+) {
   return db
     .select({
       publicId: member.publicId,
@@ -744,9 +798,7 @@ function selectMembers(db: Database, organizationId: number, memberId?: number) 
 /** Pending invitations (expired ones included) for `email` in an organization. */
 function pendingInvitationsFor(
   db: Database,
-  organizationId: number,
-  email: string,
-  exceptId?: number,
+  { organizationId, email, exceptId }: { organizationId: number; email: string; exceptId?: number },
 ) {
   return db
     .select({ id: invitation.id, publicId: invitation.publicId })
@@ -808,7 +860,10 @@ function invitationFilter(where: InvitationWhere) {
 }
 
 /** Whether `email` (normalized) belongs to a member of the organization. */
-async function isMember(db: Database, organizationId: number, email: string): Promise<boolean> {
+async function isMember(
+  db: Database,
+  { organizationId, email }: { organizationId: number; email: string },
+): Promise<boolean> {
   const [row] = await db
     .select({ id: member.id })
     .from(member)
@@ -867,8 +922,7 @@ async function cancelUngrantableInvitations({
 /** Resolves an invitation publicId for the signed-in viewer (authorization is Better Auth's). */
 async function invitationForViewer(
   auth: Auth,
-  headers: Headers,
-  invitationPublicId: string,
+  { headers, invitationPublicId }: { headers: Headers; invitationPublicId: string },
 ): Promise<
   Result<{
     viewer: Viewer;
@@ -938,7 +992,10 @@ export function apiErrorCode(error: unknown, actorRole?: Role): TenantErrorCode 
   return "unknown";
 }
 
-async function audit(auth: Auth, headers: Headers, event: AuditEventInput): Promise<void> {
+async function audit(
+  auth: Auth,
+  { headers, event }: { headers: Headers; event: AuditEventInput },
+): Promise<void> {
   await writeAuditEvent(auth.$deps.db, {
     ipAddress: clientIp(auth, headers),
     userAgent: headers.get("user-agent"),

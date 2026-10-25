@@ -23,7 +23,7 @@ const test = dbTest.extend("deferred", ({ orm }) => {
   return { t, tasks, runTasks };
 });
 
-async function requestSignIn(t: TestAuth, email: string, ip?: string) {
+async function requestSignIn({ t, email, ip }: { t: TestAuth; email: string; ip?: string }) {
   const response = await t.fetchAuth("/sign-in/magic-link", {
     body: { email },
     ...(ip === undefined ? {} : { ip }),
@@ -60,14 +60,14 @@ describe("sign-in request timing", () => {
         for (let i = 0; i < 3; i++) {
           // Sequential on purpose: each request counts against the limits the next one sees.
           // oxlint-disable-next-line no-await-in-loop
-          await requestSignIn(t, ADA, ATTACKER);
+          await requestSignIn({ t, email: ADA, ip: ATTACKER });
         }
         await runTasks();
         await t.auth.$deps.db.delete(verification);
       }
       const before = await snapshot(t);
 
-      await requestSignIn(t, email, ATTACKER);
+      await requestSignIn({ t, email, ip: ATTACKER });
       // Only the plugin's own link insert, the same for every address, happened in-request.
       expect(tasks).toHaveLength(1);
       expect(await snapshot(t)).toEqual({ ...before, credentials: before.credentials + 1 });
@@ -94,7 +94,7 @@ describe("sign-in request timing", () => {
     // All four answered before any limit was counted; run in order, the fourth is refused.
     for (let i = 0; i < 4; i++) {
       // oxlint-disable-next-line no-await-in-loop
-      await requestSignIn(t, ADA, ATTACKER);
+      await requestSignIn({ t, email: ADA, ip: ATTACKER });
     }
     expect(t.mailer.messages).toHaveLength(0);
     await runTasks();
@@ -115,7 +115,7 @@ describe("background failures", () => {
     });
     await t.seedUser({ email: ADA });
 
-    await requestSignIn(t, ADA);
+    await requestSignIn({ t, email: ADA });
     await t.settle();
     expect(error).toHaveBeenCalledWith("Sign-in request failed", expect.any(Error));
     const { token } = parseSignInEmail(handed[0]!.text);
@@ -135,7 +135,7 @@ describe("background failures", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     await t.seedUser({ email: ADA });
 
-    await requestSignIn(t, ADA);
+    await requestSignIn({ t, email: ADA });
     expect(error).toHaveBeenCalledWith("Sign-in request failed", expect.any(Error));
     expect(await credentials(t)).toBe(0);
     expect(t.mailer.messages).toEqual([]);

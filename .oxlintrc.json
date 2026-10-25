@@ -44,6 +44,8 @@
       }
     ],
     "turbo/no-undeclared-env-vars": "error",
+    // Named arguments (CLAUDE.md, "Code conventions"): at most `db` (or `auth`) and one object.
+    "max-params": ["error", { "max": 2 }],
     "typescript/no-floating-promises": "error",
     "typescript/no-misused-promises": "error",
     "jsx-a11y/alt-text": "error",
@@ -91,16 +93,11 @@
     {
       // Agent hooks and skill scripts run under Claude Code, not as Turborepo tasks.
       "files": [".claude/**"],
+      // Named arguments aren't enforced there: hooks and skill scripts are the agent's own
+      // guardrails, and migrating them needs the user's approval first (#127).
       "rules": {
-        "turbo/no-undeclared-env-vars": "off"
-      }
-    },
-    {
-      // Named arguments (CLAUDE.md, "Code conventions"): at most `db` and one object. Only the
-      // packages that already follow it, until the rest are migrated (#127).
-      "files": ["packages/portfolio/**"],
-      "rules": {
-        "max-params": ["error", { "max": 2 }]
+        "turbo/no-undeclared-env-vars": "off",
+        "max-params": "off"
       }
     },
     {

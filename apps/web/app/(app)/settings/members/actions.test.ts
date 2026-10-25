@@ -87,7 +87,8 @@ describe("inviteMemberAction", () => {
     expect(
       await inviteMemberAction(inviteForm({ email: "  New@Example.COM ", role: "admin" })),
     ).toEqual({ ok: true });
-    expect(inviteMember).toHaveBeenCalledExactlyOnceWith(AUTH, HEADERS, {
+    expect(inviteMember).toHaveBeenCalledExactlyOnceWith(AUTH, {
+      headers: HEADERS,
       organizationPublicId: ORG,
       email: "new@example.com",
       role: "admin",
@@ -128,7 +129,8 @@ describe("changeRoleAction", () => {
     ).toEqual({
       ok: true,
     });
-    expect(changeMemberRole).toHaveBeenCalledExactlyOnceWith(AUTH, HEADERS, {
+    expect(changeMemberRole).toHaveBeenCalledExactlyOnceWith(AUTH, {
+      headers: HEADERS,
       organizationPublicId: ORG,
       memberPublicId: MEMBER,
       role: "member",
@@ -169,14 +171,16 @@ describe("removeMemberAction and cancelInvitationAction", () => {
     expect(await removeMemberAction({ organizationPublicId: ORG, memberPublicId: MEMBER })).toEqual(
       { ok: true },
     );
-    expect(removeMember).toHaveBeenCalledExactlyOnceWith(AUTH, HEADERS, {
+    expect(removeMember).toHaveBeenCalledExactlyOnceWith(AUTH, {
+      headers: HEADERS,
       organizationPublicId: ORG,
       memberPublicId: MEMBER,
     });
     expect(
       await cancelInvitationAction({ organizationPublicId: ORG, invitationPublicId: INVITATION }),
     ).toEqual({ ok: true });
-    expect(cancelInvitation).toHaveBeenCalledExactlyOnceWith(AUTH, HEADERS, {
+    expect(cancelInvitation).toHaveBeenCalledExactlyOnceWith(AUTH, {
+      headers: HEADERS,
       organizationPublicId: ORG,
       invitationPublicId: INVITATION,
     });
@@ -214,7 +218,8 @@ describe("resendInvitationAction", () => {
         role: "admin",
       }),
     ).toEqual({ ok: true });
-    expect(inviteMember).toHaveBeenCalledExactlyOnceWith(AUTH, HEADERS, {
+    expect(inviteMember).toHaveBeenCalledExactlyOnceWith(AUTH, {
+      headers: HEADERS,
       organizationPublicId: ORG,
       email: "new@example.com",
       role: "admin",

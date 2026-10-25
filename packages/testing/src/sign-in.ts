@@ -50,7 +50,7 @@ export class SignInError extends Error {
   readonly status: number;
   readonly body: string;
 
-  constructor(step: string, status: number, body: string) {
+  constructor({ step, status, body }: { step: string; status: number; body: string }) {
     super(`${step} failed with ${status}: ${body}`);
     this.name = "SignInError";
     this.status = status;
@@ -74,7 +74,15 @@ function browserFetchHeaders(ip: string | undefined): Record<string, string> {
   };
 }
 
-async function expectJson(step: string, response: Response, accept: (body: unknown) => boolean) {
+async function expectJson({
+  step,
+  response,
+  accept,
+}: {
+  step: string;
+  response: Response;
+  accept: (body: unknown) => boolean;
+}) {
   const text = await response.text();
   let body: unknown;
   try {
@@ -82,7 +90,8 @@ async function expectJson(step: string, response: Response, accept: (body: unkno
   } catch {
     body = undefined;
   }
-  if (!response.ok || !accept(body)) throw new SignInError(step, response.status, text);
+  if (!response.ok || !accept(body))
+    throw new SignInError({ step, status: response.status, body: text });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -110,11 +119,11 @@ export async function requestSignInEmail({
     redirect: "manual",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  await expectJson(
-    "POST /api/auth/sign-in/magic-link",
+  await expectJson({
+    step: "POST /api/auth/sign-in/magic-link",
     response,
-    (body) => isRecord(body) && body.status === true,
-  );
+    accept: (body) => isRecord(body) && body.status === true,
+  });
 }
 
 /**
@@ -143,15 +152,22 @@ export async function signIn({
     redirect: "manual",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
-  await expectJson(
-    "GET /api/auth/magic-link/verify",
+  await expectJson({
+    step: "GET /api/auth/magic-link/verify",
     response,
-    (body) => isRecord(body) && body.ok === true,
-  );
+    accept: (body) => isRecord(body) && body.ok === true,
+  });
 
-  const cookies = parseSetCookies(response.headers.getSetCookie(), verifyUrl);
+  const cookies = parseSetCookies({
+    headers: response.headers.getSetCookie(),
+    requestUrl: verifyUrl,
+  });
   if (cookies.length === 0) {
-    throw new SignInError("GET /api/auth/magic-link/verify", response.status, "no cookies set");
+    throw new SignInError({
+      step: "GET /api/auth/magic-link/verify",
+      status: response.status,
+      body: "no cookies set",
+    });
   }
   return { cookies, storageState: { cookies, origins: [] } };
 }
@@ -173,7 +189,15 @@ function isSameSite(value: string): value is keyof typeof SAME_SITE {
  * Parses `Set-Cookie` headers from a response to `requestUrl` into Playwright cookies. Cookies
  * the response deletes (`Max-Age<=0` or an `Expires` in the past) are left out.
  */
-export function parseSetCookies(headers: string[], requestUrl: URL, now = Date.now()): Cookie[] {
+export function parseSetCookies({
+  headers,
+  requestUrl,
+  now = Date.now(),
+}: {
+  headers: string[];
+  requestUrl: URL;
+  now?: number;
+}): Cookie[] {
   const cookies: Cookie[] = [];
   for (const header of headers) {
     const [pair = "", ...attributes] = header.split(";");
