@@ -77,6 +77,17 @@ updates:
       - dependency-name: python
         update-types: [version-update:semver-major, version-update:semver-minor]
 
+  # Testcontainers' reaper (Ryuk): a never-built Dockerfile that both test harnesses read
+  # (`reaperImage()` in @repo/testing, `reaper_image()` in the custodian's tests). A bump changes
+  # what runs beside every test container: check it with `pnpm test:integration` and `pnpm e2e`.
+  - package-ecosystem: docker
+    directory: /docker/testcontainers
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "build(docker)"
+
   - package-ecosystem: docker-compose
     directory: /
     schedule:

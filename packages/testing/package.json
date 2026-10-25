@@ -9,6 +9,7 @@
     "./pglite": "./src/pglite.ts",
     "./postgres": "./src/postgres.ts",
     "./compose": "./src/compose.ts",
+    "./reaper": "./src/reaper.ts",
     "./internal-ids": "./src/internal-ids.ts",
     "./mailpit": "./src/mailpit.ts",
     "./sign-in": "./src/sign-in.ts",

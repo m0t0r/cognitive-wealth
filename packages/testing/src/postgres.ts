@@ -5,24 +5,13 @@ import postgres from "postgres";
 import { inject, test } from "vitest";
 import type { TestProject } from "vitest/node";
 import { REPO_ROOT, composeImage } from "./compose";
+import { pinReaperImage } from "./reaper";
 
 /**
  * A real Postgres for tests that PGlite can't run: password logins as the production roles,
  * several connections, the app's postgres.js driver. One container per Vitest run (global setup),
  * migrated once into a template; each test gets its own copy, dropped afterwards.
  */
-
-// Testcontainers' reaper, pinned by digest like every other image (its default is tag-only).
-const RYUK_IMAGE =
-  "testcontainers/ryuk:0.14.0@sha256:7c1a8a9a47c780ed0f983770a662f80deb115d95cce3e2daa3d12115b8cd28f0";
-
-/**
- * Pins Testcontainers' reaper image, unless the environment already names one. Call it before a
- * run's first container starts: the reaper starts with that one, whichever it is.
- */
-export function pinReaperImage() {
-  process.env.RYUK_CONTAINER_IMAGE ??= RYUK_IMAGE;
-}
 
 /** The role setup `compose.yaml` runs, so tests exercise the production grants. */
 const ROLES_SCRIPT = join(REPO_ROOT, "packages/db/docker/initdb/01-roles.sh");
