@@ -1,5 +1,6 @@
+import { readFile } from "node:fs/promises";
 import { asc, count, eq } from "drizzle-orm";
-import { seedDevData } from "./cli/seed-data";
+import { WORLD_FIRM_SLUG, seedDevData } from "./cli/seed-data";
 import type { Database } from "./index";
 import { member, organization, user } from "./schema";
 import { test } from "./testing";
@@ -37,10 +38,10 @@ describe("seedDevData", () => {
       .innerJoin(organization, eq(member.organizationId, organization.id))
       .orderBy(asc(organization.slug), asc(user.email));
     expect(rows).toEqual([
-      { email: "admin@cognitive-wealth.test", slug: "acme", role: "admin" },
-      { email: "member@cognitive-wealth.test", slug: "acme", role: "member" },
-      { email: "owner@cognitive-wealth.test", slug: "acme", role: "owner" },
       { email: "owner@cognitive-wealth.test", slug: "globex", role: "owner" },
+      { email: "admin@cognitive-wealth.test", slug: "larkspur", role: "admin" },
+      { email: "member@cognitive-wealth.test", slug: "larkspur", role: "member" },
+      { email: "owner@cognitive-wealth.test", slug: "larkspur", role: "owner" },
     ]);
     expect(
       await orm
@@ -58,9 +59,23 @@ describe("seedDevData", () => {
         .from(organization)
         .orderBy(asc(organization.slug)),
     ).toEqual([
-      { name: "Acme", slug: "acme" },
       { name: "Globex", slug: "globex" },
+      { name: "Larkspur Wealth Partners", slug: "larkspur" },
     ]);
+  });
+
+  test("names the world file's Firm by its slug", async ({ orm }) => {
+    await seedDevData(orm);
+
+    const world: unknown = JSON.parse(
+      await readFile(new URL("../../../world/v0.json", import.meta.url), "utf8"),
+    );
+    const [firm] = await orm
+      .select({ name: organization.name })
+      .from(organization)
+      .where(eq(organization.slug, WORLD_FIRM_SLUG));
+    expect(firm).toBeDefined();
+    expect(world).toMatchObject({ crm: { firm: { name: firm!.name } } });
   });
 
   test("adds what's missing and leaves existing rows alone", async ({ orm }) => {
