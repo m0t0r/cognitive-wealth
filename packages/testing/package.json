@@ -9,7 +9,8 @@
     "./pglite": "./src/pglite.ts",
     "./internal-ids": "./src/internal-ids.ts",
     "./mailpit": "./src/mailpit.ts",
-    "./sign-in": "./src/sign-in.ts"
+    "./sign-in": "./src/sign-in.ts",
+    "./redis-janitor": "./src/redis-janitor.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",

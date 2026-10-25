@@ -14,7 +14,8 @@ Signs <email> in through the app's real sign-in flow, reading the email from Mai
   --link           Only request the email and print the confirm link and code.
   --state <file>   Where to save the session.
   --app <url>      App URL. Default: BETTER_AUTH_URL, PORTLESS_URL or https://cognitive-wealth.localhost.
-  --mailpit <url>  Mailpit URL. Default: MAILPIT_URL or http://127.0.0.1:8025.
+  --mailpit <url>  Mailpit URL. Default: MAILPIT_URL from the shell, then from apps/web/.env.local
+                   (a worktree's names the verification Mailpit), or http://127.0.0.1:8025.
   --ip <addr>      Send every request as from this client IP (x-forwarded-for), so each
                    session gets its own rate-limit bucket. Only an app that trusts
                    x-forwarded-for (AUTH_TRUSTED_IP_HEADER) uses it.
