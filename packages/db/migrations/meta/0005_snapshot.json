@@ -1,5 +1,5 @@
 {
-  "id": "02014798-157f-4323-a173-ac9f3ba2f1c3",
+  "id": "6bd7aac3-dd1b-4d2e-bb44-46fe08c505be",
   "prevId": "5a71f986-4155-4df6-9751-7cf2a8458002",
   "version": "7",
   "dialect": "postgresql",
@@ -734,7 +734,7 @@
             "firm_id",
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "custodial_position_security_fk": {
@@ -963,7 +963,7 @@
             "firm_id",
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "custodial_transaction_security_fk": {

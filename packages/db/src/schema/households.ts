@@ -137,7 +137,7 @@ export const custodialAccount = pgTable(
     publicId: publicId(),
     firmId: firmId(),
     accountNumber: text("account_number").notNull(),
-    // Null until the Custodian feed is ingested.
+    // Both null until the Custodian feed is ingested.
     registrationType: text("registration_type", { enum: REGISTRATION_TYPES }),
     openedOn: date("opened_on", { mode: "string" }),
     createdAt: createdAt(),

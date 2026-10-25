@@ -114,6 +114,31 @@ class Refusal extends Error {
  */
 export async function ingestDelivery(
   db: Database,
+  input: { firmId: number; asOf: string; source: FeedSource },
+): Promise<IngestionResult> {
+  try {
+    return await ingestOnce(db, input);
+  } catch (error) {
+    // Another run wrote this day's Delivery after this one checked. Run again: it now finds that
+    // Delivery and says `already_ingested` or refuses a Restatement, like any later run.
+    if (isDeliveryConflict(error)) return ingestOnce(db, input);
+    throw error;
+  }
+}
+
+/** The unique violation a second, concurrent run of the same day ends with. */
+function isDeliveryConflict(error: unknown): boolean {
+  const cause = error instanceof Error ? error.cause : undefined;
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "constraint_name" in cause &&
+    cause.constraint_name === "custodian_delivery_firm_id_as_of_date_unique"
+  );
+}
+
+async function ingestOnce(
+  db: Database,
   { firmId, asOf, source }: { firmId: number; asOf: string; source: FeedSource },
 ): Promise<IngestionResult> {
   try {
@@ -142,7 +167,7 @@ export async function ingestDelivery(
       const manifest = parseManifest(manifestBytes, asOf);
       const files = await checkedFiles(source, manifest);
       const rows = validRows(files, asOf);
-      const accountIds = await knownAccounts(tx, firmId, rows);
+      const accountIds = await requireKnownAccounts(tx, firmId, rows);
       await refuseRepeatedTransactions(tx, firmId, rows.transactions);
 
       const written = await write(tx, firmId, asOf, manifestSha256, rows, accountIds);
@@ -224,7 +249,7 @@ async function checkedFiles(
   if (problems.length > 0) {
     throw new Refusal(
       "incomplete",
-      `The Delivery for ${manifest.asOfDate} doesn't match its Manifest: ${list(problems)}`,
+      `The Delivery for ${manifest.asOfDate} doesn't match its Manifest: ${joinProblems(problems)}`,
     );
   }
   return new Map(
@@ -247,8 +272,8 @@ function csvRecords(bytes: Uint8Array): CsvRecord[] | string {
 }
 
 /**
- * Every row parsed with the contract's schema, refusing the Delivery if any row fails or names a
- * Security, Account or day its Delivery doesn't: each file is a complete snapshot, and
+ * Every row parsed with the contract's schema, refusing the Delivery if any row fails, names a
+ * Security its Security master doesn't list, or was posted on another day: each snapshot is complete, and
  * `transactions.csv` holds only the Transactions posted on the As-of date (ADR 0017).
  */
 function validRows(files: Map<FileName, CsvRecord[]>, asOf: string): Rows {
@@ -273,46 +298,43 @@ function validRows(files: Map<FileName, CsvRecord[]>, asOf: string): Rows {
   if (problems.length > 0) refuseRows(asOf, problems);
 
   const securities = new Set(rows.securities.map((row) => row.identifier));
-  const accounts = new Set(rows.accounts.map((row) => row.accountNumber));
-  const unlisted = (name: FileName, index: number, what: string, value: string | null) => {
-    if (value === null) return;
-    const listed = what === "Security" ? securities : accounts;
-    const listing = what === "Security" ? "securities.csv" : "accounts.csv";
-    if (!listed.has(value)) {
-      problems.push(`${name} row ${index + 2}: ${what} ${value} isn't in ${listing}`);
+  const unlistedSecurity = (name: FileName, index: number, identifier: string | null) => {
+    if (identifier !== null && !securities.has(identifier)) {
+      problems.push(`${name} row ${index + 2}: Security ${identifier} isn't in securities.csv`);
     }
   };
   rows.transactions.forEach((row, index) => {
-    unlisted("transactions.csv", index, "Account", row.accountNumber);
-    unlisted("transactions.csv", index, "Security", row.security);
+    unlistedSecurity("transactions.csv", index, row.security);
     if (row.postingDate !== asOf) {
       problems.push(
         `transactions.csv row ${index + 2}: posted on ${row.postingDate}, not on ${asOf}`,
       );
     }
   });
-  rows.positions.forEach((row, index) => {
-    unlisted("positions.csv", index, "Account", row.accountNumber);
-    unlisted("positions.csv", index, "Security", row.security);
-  });
-  rows.prices.forEach((row, index) => {
-    unlisted("prices.csv", index, "Security", row.security);
-  });
+  rows.positions.forEach((row, index) => unlistedSecurity("positions.csv", index, row.security));
+  rows.prices.forEach((row, index) => unlistedSecurity("prices.csv", index, row.security));
   if (problems.length > 0) refuseRows(asOf, problems);
 
   return rows;
 }
 
 function refuseRows(asOf: string, problems: string[]): never {
-  throw new Refusal("invalid_rows", `The Delivery for ${asOf} has invalid rows: ${list(problems)}`);
+  throw new Refusal(
+    "invalid_rows",
+    `The Delivery for ${asOf} has invalid rows: ${joinProblems(problems)}`,
+  );
 }
 
 /**
- * The Firm's Account id for each account number in `accounts.csv`, refusing the Delivery if any
+ * The Firm's Account id for each account number the Delivery names, in any file, refusing the Delivery if any
  * is unknown: every row must belong to an Account the Firm knows, so a person looks first.
  */
-async function knownAccounts(db: Database, firmId: number, rows: Rows) {
-  const numbers = rows.accounts.map((row) => row.accountNumber);
+async function requireKnownAccounts(db: Database, firmId: number, rows: Rows) {
+  const numbers = [
+    ...new Set(
+      [...rows.accounts, ...rows.transactions, ...rows.positions].map((row) => row.accountNumber),
+    ),
+  ];
   const found = numbers.length
     ? await db
         .select({ id: custodialAccount.id, accountNumber: custodialAccount.accountNumber })
@@ -329,7 +351,7 @@ async function knownAccounts(db: Database, firmId: number, rows: Rows) {
   if (unknown.length > 0) {
     throw new Refusal(
       "unknown_accounts",
-      `The Firm has no Account numbered ${list(unknown)}; add ${unknown.length === 1 ? "it" : "them"} ` +
+      `The Firm has no Account numbered ${joinProblems(unknown)}; add ${unknown.length === 1 ? "it" : "them"} ` +
         "to a Household before ingesting",
     );
   }
@@ -356,7 +378,7 @@ async function refuseRepeatedTransactions(
     throw new Refusal(
       "transactions_already_ingested",
       `An earlier Delivery already carried Transaction ` +
-        list(repeated.map((row) => row.transactionId).toSorted()),
+        joinProblems(repeated.map((row) => row.transactionId).toSorted()),
     );
   }
 }
@@ -422,7 +444,7 @@ async function write(
   const securityId = (identifier: string) => securityIds.get(identifier)!;
   const accountId = (number: string) => accountIds.get(number)!;
 
-  for (const batch of batches(
+  await inBatches(
     rows.transactions.map((row) => ({
       firmId,
       deliveryId,
@@ -437,12 +459,9 @@ async function write(
       settlementDate: row.settlementDate,
       postingDate: row.postingDate,
     })),
-  )) {
-    // One connection in a database transaction: the batches would queue one after another anyway.
-    // oxlint-disable-next-line no-await-in-loop
-    await db.insert(custodialTransaction).values(batch);
-  }
-  for (const batch of batches(
+    (batch) => db.insert(custodialTransaction).values(batch),
+  );
+  await inBatches(
     rows.positions.map((row) => ({
       firmId,
       deliveryId,
@@ -453,11 +472,9 @@ async function write(
       price: row.price,
       marketValue: row.marketValue,
     })),
-  )) {
-    // oxlint-disable-next-line no-await-in-loop
-    await db.insert(custodialPosition).values(batch);
-  }
-  for (const batch of batches(
+    (batch) => db.insert(custodialPosition).values(batch),
+  );
+  await inBatches(
     rows.prices.map((row) => ({
       firmId,
       deliveryId,
@@ -465,10 +482,8 @@ async function write(
       securityId: securityId(row.security),
       price: row.price,
     })),
-  )) {
-    // oxlint-disable-next-line no-await-in-loop
-    await db.insert(securityPrice).values(batch);
-  }
+    (batch) => db.insert(securityPrice).values(batch),
+  );
 
   return {
     securities: securities.length,
@@ -480,11 +495,14 @@ async function write(
 }
 
 // Postgres takes at most 65,535 parameters a statement, so a large file goes in batches.
-const BATCH = 1000;
+const ROWS_PER_INSERT = 1000;
 
-function* batches<T>(values: T[]): Generator<T[]> {
-  for (let start = 0; start < values.length; start += BATCH) {
-    yield values.slice(start, start + BATCH);
+/** `insert` called on `values` a batch at a time, one after another. */
+async function inBatches<T>(values: T[], insert: (batch: T[]) => PromiseLike<unknown>) {
+  for (let start = 0; start < values.length; start += ROWS_PER_INSERT) {
+    // One connection in a database transaction: the batches would queue one after another anyway.
+    // oxlint-disable-next-line no-await-in-loop
+    await insert(values.slice(start, start + ROWS_PER_INSERT));
   }
 }
 
@@ -501,7 +519,7 @@ function describeIssues(error: z.ZodError): string {
 }
 
 /** `problems` joined for a message, the first few named and the rest counted. */
-function list(problems: string[]): string {
+function joinProblems(problems: string[]): string {
   const shown = problems.slice(0, PROBLEMS_SHOWN).join("; ");
   const more = problems.length - PROBLEMS_SHOWN;
   return more > 0 ? `${shown}; and ${more} more` : shown;

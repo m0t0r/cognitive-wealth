@@ -434,6 +434,16 @@ describe("custodian feed", () => {
     ).rejects.toMatchObject(FOREIGN_KEY_VIOLATION);
   });
 
+  // A past report must be reproducible from the rows it used (ADR 0009).
+  test("keep an Account's history: it can't be deleted while it has any", async ({ orm }) => {
+    const feed = await createFeedFirm(orm, "larkspur");
+    await orm.insert(custodialTransaction).values(buy(feed));
+
+    await expect(
+      orm.delete(custodialAccount).where(eq(custodialAccount.id, feed.accountId)),
+    ).rejects.toMatchObject(FOREIGN_KEY_VIOLATION);
+  });
+
   // As with Registration types: the contract can grow, and the migrations froze the lists.
   test.for([
     { constraint: "security_kind_check", options: SecurityKind.options },
