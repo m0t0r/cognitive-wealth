@@ -7,6 +7,8 @@
     "./vitest": "./src/vitest.ts",
     "./react": "./src/react.tsx",
     "./pglite": "./src/pglite.ts",
+    "./postgres": "./src/postgres.ts",
+    "./compose": "./src/compose.ts",
     "./internal-ids": "./src/internal-ids.ts",
     "./mailpit": "./src/mailpit.ts",
     "./sign-in": "./src/sign-in.ts",
@@ -21,6 +23,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.11",
+    "@testcontainers/postgresql": "12.2.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
@@ -28,7 +31,8 @@
     "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.5",
     "axe-core": "^4.14.0",
-    "happy-dom": "^21.0.4"
+    "happy-dom": "^21.0.4",
+    "postgres": "3.4.9"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",

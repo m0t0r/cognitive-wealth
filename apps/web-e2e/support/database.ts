@@ -1,12 +1,9 @@
-import { join } from "node:path";
 import { connect } from "@repo/db/connect";
-import { REPO_ROOT, requiredEnv } from "./compose";
+import { createDatabase, databaseUrl, dropDatabase } from "@repo/testing/postgres";
+import { requiredEnv } from "./compose";
 
 /** Migrated once per run by global setup; every worker database is a copy of it. */
 export const TEMPLATE_DATABASE = "e2e_template";
-
-/** The same role setup `compose.yaml` runs, so e2e exercises the production grants. */
-export const ROLES_SCRIPT = join(REPO_ROOT, "packages/db/docker/initdb/01-roles.sh");
 
 const SAFE_NAME = /^[a-z0-9_]+$/;
 
@@ -22,41 +19,18 @@ const TRUNCATE_ALL = `
     end if;
   end $$`;
 
-/** A URL for `database` on the run's Postgres: the superuser's (from global setup) or `user`'s. */
-export function databaseUrl({
-  serverUrl,
-  database,
-  user,
-}: {
-  serverUrl: string;
-  database: string;
-  user?: { name: string; password: string };
-}): string {
-  const url = new URL(serverUrl);
-  url.pathname = `/${database}`;
-  if (user) {
-    url.username = user.name;
-    url.password = user.password;
-  }
-  return url.toString();
-}
-
 function assertSafeName(name: string) {
   if (!SAFE_NAME.test(name)) throw new Error(`Unsafe database name: ${name}`);
 }
 
-async function admin(...statements: string[]) {
+async function admin(run: (client: ReturnType<typeof connect>["client"]) => Promise<void>) {
   const url = databaseUrl({
     serverUrl: requiredEnv("PLAYWRIGHT_DATABASE_URL"),
     database: "postgres",
   });
   const { client, close } = connect({ url }, { max: 1 });
   try {
-    for (const statement of statements) {
-      // Sequential on purpose: each statement depends on the one before it.
-      // oxlint-disable-next-line no-await-in-loop
-      await client.unsafe(statement);
-    }
+    await run(client);
   } finally {
     await close();
   }
@@ -68,11 +42,7 @@ async function admin(...statements: string[]) {
  */
 export async function createWorkerDatabase(name: string) {
   assertSafeName(name);
-  await admin(
-    `create database "${name}" owner migrator template "${TEMPLATE_DATABASE}"`,
-    `revoke all on database "${name}" from public`,
-    `grant connect on database "${name}" to app`,
-  );
+  await admin((client) => createDatabase(client, { name, template: TEMPLATE_DATABASE }));
 
   const serverUrl = requiredEnv("PLAYWRIGHT_DATABASE_URL");
   // Seeding and resets run as the superuser; the app itself connects as the DML-only `app` role.
@@ -90,7 +60,7 @@ export async function createWorkerDatabase(name: string) {
     truncateAll: () => connection.client.unsafe(TRUNCATE_ALL),
     dispose: async () => {
       await connection.close();
-      await admin(`drop database if exists "${name}" with (force)`);
+      await admin((client) => dropDatabase(client, { name }));
     },
   };
 }

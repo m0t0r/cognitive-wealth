@@ -680,6 +680,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.5.11
         version: 0.5.11
+      '@testcontainers/postgresql':
+        specifier: 12.2.1
+        version: 12.2.1
       '@testing-library/dom':
         specifier: ^10.4.2
         version: 10.4.2
@@ -704,6 +707,9 @@ importers:
       happy-dom:
         specifier: ^21.0.4
         version: 21.0.4
+      postgres:
+        specifier: 3.4.9
+        version: 3.4.9
     devDependencies:
       '@repo/typescript-config':
         specifier: workspace:*

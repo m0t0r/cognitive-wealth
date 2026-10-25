@@ -3,41 +3,13 @@ import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runMigrations } from "@repo/db/migrator";
-import { PostgreSqlContainer } from "@testcontainers/postgresql";
-import { composeImage } from "./support/compose";
-import { ROLES_SCRIPT, TEMPLATE_DATABASE, databaseUrl } from "./support/database";
+import { RYUK_IMAGE, databaseUrl, startPostgres } from "@repo/testing/postgres";
+import { TEMPLATE_DATABASE } from "./support/database";
 import { startMailpit } from "./support/mailpit";
 import { startRedis } from "./support/redis";
 import { STANDALONE, WEB } from "./support/server";
 
-// Testcontainers' reaper, pinned by digest like every other image (its default is tag-only).
-const RYUK_IMAGE =
-  "testcontainers/ryuk:0.14.0@sha256:7c1a8a9a47c780ed0f983770a662f80deb115d95cce3e2daa3d12115b8cd28f0";
-
 const secret = () => randomBytes(24).toString("hex");
-
-async function startPostgres(passwords: { superuser: string; migrator: string; app: string }) {
-  return (
-    new PostgreSqlContainer(composeImage("postgres"))
-      .withDatabase(TEMPLATE_DATABASE)
-      .withUsername("postgres")
-      .withPassword(passwords.superuser)
-      .withEnvironment({
-        POSTGRES_INITDB_ARGS: "--auth-local=scram-sha-256 --auth-host=scram-sha-256",
-      })
-      .withCopyFilesToContainer([
-        { source: ROLES_SCRIPT, target: "/docker-entrypoint-initdb.d/01-roles.sh", mode: 0o755 },
-      ])
-      .withCopyContentToContainer([
-        { content: passwords.migrator, target: "/run/secrets/db_migrator_password", mode: 0o444 },
-        { content: passwords.app, target: "/run/secrets/db_app_password", mode: 0o444 },
-      ])
-      // Disposable data: keep it in memory and skip durability work.
-      .withTmpFs({ "/var/lib/postgresql": "rw" })
-      .withCommand(["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off"])
-      .start()
-  );
-}
 
 /**
  * Once per run: lay out the standalone server like the Docker image does, start a throwaway
@@ -67,7 +39,7 @@ export default async function globalSetup() {
 
   // If one fails, Testcontainers' reaper removes the others when this process exits.
   const [postgres, redis, mailpit] = await Promise.all([
-    startPostgres(passwords),
+    startPostgres({ passwords, database: TEMPLATE_DATABASE }),
     startRedis({ app: passwords.redisApp, janitor: passwords.redisJanitor }),
     startMailpit(passwords.mailpitUi),
   ]).catch(async (error: unknown) => {

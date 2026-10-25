@@ -11,8 +11,14 @@ const EXCLUDE = ["**/node_modules/**", "**/.next/**", "**/dist/**"];
  * - `ui`: `*.test.tsx` in happy-dom, for React Testing Library + user-event
  * - `integration`: `*.integration.test.{ts,tsx}` in Node (PGlite). Opt a file into the DOM
  *   with a `// @vitest-environment happy-dom` docblock.
+ *
+ * `integrationGlobalSetup` runs only for the integration project: a package whose tests need a
+ * real Postgres names its `postgresGlobalSetup` file there (`@repo/testing/postgres`).
  */
-export function defineVitestConfig(overrides: ViteUserConfig = {}): ViteUserConfig {
+export function defineVitestConfig({
+  integrationGlobalSetup,
+  ...overrides
+}: ViteUserConfig & { integrationGlobalSetup?: string } = {}): ViteUserConfig {
   return defineConfig({
     plugins: [react()],
     resolve: { tsconfigPaths: true },
@@ -63,6 +69,7 @@ export function defineVitestConfig(overrides: ViteUserConfig = {}): ViteUserConf
             include: [INTEGRATION],
             exclude: EXCLUDE,
             testTimeout: 15_000,
+            ...(integrationGlobalSetup && { globalSetup: [integrationGlobalSetup] }),
           },
         },
       ],
