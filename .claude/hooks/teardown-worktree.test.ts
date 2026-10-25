@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test as base } from "vitest";
@@ -79,7 +87,11 @@ type RunArgs = {
 function run({ layout, cwd, tool, input, fail = false }: RunArgs) {
   const out = execFileSync("node", [HOOK], {
     input: JSON.stringify({ tool_name: tool, tool_input: input, cwd }),
-    env: gitFreeEnv({ TEARDOWN_CALLS: layout.calls, ...(fail ? { TEARDOWN_FAIL: "1" } : {}) }),
+    env: gitFreeEnv({
+      CLAUDE_PROJECT_DIR: layout.main,
+      TEARDOWN_CALLS: layout.calls,
+      ...(fail ? { TEARDOWN_FAIL: "1" } : {}),
+    }),
     encoding: "utf8",
   });
   const calls = existsSync(layout.calls)
@@ -159,6 +171,18 @@ describe("git worktree remove", () => {
     expect(calls).toEqual([{ args: ["--worktree", layout.worktree], cwd: layout.main }]);
   });
 
+  test("never runs another repo's teardown", ({ layout }) => {
+    const other = join(layout.main, "..", "other");
+    git("init", "-q", "-b", "dev", other);
+    const cli = join(other, "packages/dev-env/src/cli");
+    mkdirSync(cli, { recursive: true });
+    writeFileSync(join(cli, "teardown.ts"), FAKE_TEARDOWN);
+    const command = `git -C ${other} worktree remove some-worktree`;
+    const { decision, calls } = run({ layout, cwd: layout.main, tool: "Bash", input: { command } });
+    expect(decision).toBe("allow");
+    expect(calls).toEqual([]);
+  });
+
   test("denies the removal when teardown fails", ({ layout }) => {
     const { decision } = run({
       layout,
@@ -173,7 +197,12 @@ describe("git worktree remove", () => {
   test.for(["git worktree list", "git worktree prune", "echo git worktree remove", "ls"])(
     "ignores %s",
     (command, { layout }) => {
-      const { decision, calls } = run({ layout, cwd: layout.main, tool: "Bash", input: { command } });
+      const { decision, calls } = run({
+        layout,
+        cwd: layout.main,
+        tool: "Bash",
+        input: { command },
+      });
       expect(decision).toBe("allow");
       expect(calls).toEqual([]);
     },

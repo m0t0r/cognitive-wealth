@@ -21,7 +21,7 @@ Today the platform is the foundation for the product: passwordless, invite-only 
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/packages.dark.svg">
-  <img alt="Runtime dependencies: web depends on @repo/auth, @repo/design-system and @repo/db; @repo/auth depends on @repo/db and @repo/email; @repo/households depends on @repo/db; @repo/portfolio depends on @repo/db and on @repo/custodian-client for the feed's rows and Manifest, and @repo/db on @repo/custodian-client for the Custodian's Registration types. Dev-only, dashed: web-e2e uses @repo/auth, @repo/db, @repo/email and @repo/testing. custodian, a Python FastAPI app, has no workspace dependencies; @repo/custodian-client is generated, dashed, from its openapi.json." src="diagrams/packages.light.svg">
+  <img alt="Runtime dependencies: web depends on @repo/auth, @repo/design-system and @repo/db; @repo/auth depends on @repo/db and @repo/email; @repo/households depends on @repo/db; @repo/portfolio depends on @repo/db and on @repo/custodian-client for the feed's rows and Manifest, and @repo/db on @repo/custodian-client for the Custodian's Registration types. Dev-only, dashed: web-e2e uses @repo/auth, @repo/db, @repo/email and @repo/testing, and web's pnpm dev runs @repo/dev-env, which uses @repo/db and @repo/testing. custodian, a Python FastAPI app, has no workspace dependencies; @repo/custodian-client is generated, dashed, from its openapi.json." src="diagrams/packages.light.svg">
 </picture>
 
 Solid arrows are runtime dependencies and dashed ones are dev-only. Every workspace also has `@repo/testing` and `@repo/typescript-config` as dev dependencies, left out of the diagram. So is `@repo/agent-hooks` (`.claude/hooks`), a workspace only so that `pnpm test` runs the agent hooks' tests, and `@repo/lint-rules`, the Oxlint plugin that the root `.oxlintrc.json` loads. Packages aren't built: consumers import their TypeScript source, and Next transpiles it. What each package exports is in [CLAUDE.md](../CLAUDE.md#architecture).
@@ -104,7 +104,7 @@ How sign-in, sessions and tenancy work today, with their own diagrams, is in [do
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/agent-sdlc.dark.svg">
-  <img alt="Agent workflow: a task enters a git worktree branched from origin/dev, which a hook enforces. Code, docs and tests change, then lint, format, type checks and tests run. A change that reaches apps/web is verified in a running production build. The pull request is written with pr-visual, friction is filed as issues, and the PR is reviewed and merged into dev." src="diagrams/agent-sdlc.light.svg">
+  <img alt="Agent workflow: a task enters a git worktree branched from origin/dev, which a hook enforces. Code, docs and tests change, with pnpm dev on the worktree's own database and Redis prefix, then lint, format, type checks and tests run. A change that reaches apps/web is verified in a running production build. The pull request is written with pr-visual, friction is filed as issues, and the PR is reviewed and merged into dev. Then the worktree is removed, and a second hook tears its dev environment down first, denying the removal if that fails." src="diagrams/agent-sdlc.light.svg">
 </picture>
 
 Coding agents follow this loop, defined in [CLAUDE.md](../CLAUDE.md#worktrees). Each step is a skill or a hook, so it doesn't depend on anyone remembering it. Pull requests target `dev`.

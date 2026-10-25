@@ -1,6 +1,6 @@
 flowchart TB
-  issue(["Task or issue<br/>ready-for-agent"]) --> wt["EnterWorktree<br/>branch from origin/dev,<br/>.env.local copied, pnpm install"]
-  wt --> code["Change code and docs<br/>tests at the owning layer"]
+  issue(["Task or issue<br/>ready-for-agent"]) --> wt["EnterWorktree<br/>branch from origin/dev,<br/>pnpm install"]
+  wt --> code["Change code and docs<br/>tests at the owning layer;<br/>pnpm dev on the worktree's<br/>own database and Redis prefix"]
   code --> checks["lint, format, check-types,<br/>test, test:integration, e2e"]
   checks --> verify{"reaches apps/web?"}
   verify -->|yes| vw["verifier-web<br/>production build, agent-browser,<br/>perf trace"]
@@ -8,5 +8,7 @@ flowchart TB
   vw --> pr["pr-visual<br/>diagrams, charts, screenshots"]
   pr --> fr["friction issues<br/>for what slowed the task"]
   fr --> review(["Review and merge into dev"])
+  review --> rm["Remove the worktree"]
 
   guard["require-worktree hook<br/>denies edits in the main checkout"] -.-> wt
+  teardown["teardown-worktree hook<br/>pnpm dev:teardown first;<br/>denies the removal if it fails"] -.-> rm
