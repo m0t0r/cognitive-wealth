@@ -60,6 +60,15 @@ SQL
     DATABASE_PASSWORD_FILE="$secrets/db_app_password" pnpm --silent db:seed >/dev/null &&
   pnpm exec turbo build --filter=web --output-logs=errors-only)
 
+# Lay the standalone server out as the Docker image does (and e2e's global setup): Next leaves the
+# client assets and public/ out of .next/standalone, so without them every /_next/static/* 404s.
+# A fresh copy each time, since a --ref checkout or a cached build never got one.
+web="$app/apps/web"
+standalone="$web/.next/standalone/apps/web"
+rm -rf "$standalone/.next/static" "$standalone/public"
+cp -R "$web/.next/static" "$standalone/.next/static"
+cp -R "$web/public" "$standalone/public"
+
 # Replace the server this script started on this port last time; refuse anything else there.
 pidfile="$out/server-$port.pid"
 if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
