@@ -33,6 +33,8 @@ if (process.env.PRUNE_FAIL) {
   console.error("Teardown of wt_task failed to drop the database: permission denied");
   process.exitCode = 1;
 }
+// A checkout that pulled a new dependency but never ran pnpm install fails to load it.
+if (process.env.PRUNE_UNINSTALLED) await import("@repo/db");
 `;
 
 // Each test gets its own repo, so none can see another's files. Vitest requires a destructuring
@@ -93,10 +95,19 @@ type RunArgs = {
   tool?: string;
   input?: Record<string, string>;
   fail?: boolean;
+  uninstalled?: boolean;
 };
 
 /** Runs the hook; returns what it printed and the sweeps it ran. */
-function run({ layout, event, cwd = layout.main, tool, input, fail = false }: RunArgs) {
+function run({
+  layout,
+  event,
+  cwd = layout.main,
+  tool,
+  input,
+  fail = false,
+  uninstalled = false,
+}: RunArgs) {
   const out = execFileSync("node", [HOOK], {
     input: JSON.stringify({
       hook_event_name: event,
@@ -108,6 +119,7 @@ function run({ layout, event, cwd = layout.main, tool, input, fail = false }: Ru
       CLAUDE_PROJECT_DIR: layout.main,
       PRUNE_CALLS: layout.calls,
       ...(fail ? { PRUNE_FAIL: "1" } : {}),
+      ...(uninstalled ? { PRUNE_UNINSTALLED: "1" } : {}),
     }),
     encoding: "utf8",
   });
@@ -152,6 +164,19 @@ describe("after ExitWorktree", () => {
     expect(JSON.parse(out)).toMatchObject({ decision: "block" });
     expect(out).toContain("failed to drop the database: permission denied");
     expect(out).toContain("pnpm dev:prune");
+  });
+
+  test("names the install when the main checkout's dependencies are missing", ({ layout }) => {
+    const { out } = run({
+      layout,
+      event: "PostToolUse",
+      cwd: layout.worktree,
+      tool: "ExitWorktree",
+      input: { action: "remove" },
+      uninstalled: true,
+    });
+    expect(JSON.parse(out)).toMatchObject({ decision: "block" });
+    expect(out).toContain(`pnpm -C ${layout.main} install --frozen-lockfile`);
   });
 });
 

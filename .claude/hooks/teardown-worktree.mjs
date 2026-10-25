@@ -105,6 +105,11 @@ try {
   process.stderr.write(out);
 } catch (error) {
   const report = [error.stderr, error.stdout].filter(Boolean).join("").trim() || error.message;
+  // The main checkout pulled a dependency it never installed (a fast-forward doesn't install).
+  const fix = /ERR_MODULE_NOT_FOUND/.test(report)
+    ? `The main checkout's dependencies aren't installed: ask the user to run ` +
+      `\`! pnpm -C ${main} install --frozen-lockfile\`, then run`
+    : "Fix the cause, then run";
   if (event === "PostToolUse") {
     // The removal already happened; `block` hands the reason to Claude so it retries the sweep.
     console.log(
@@ -112,11 +117,11 @@ try {
         decision: "block",
         reason:
           "The worktree is removed, but its dev environment couldn't be torn down, so its " +
-          `database or Redis keys are still there: ${report} Fix the cause, then run ` +
+          `database or Redis keys are still there: ${report} ${fix} ` +
           "`pnpm dev:prune` from the main checkout until it succeeds.",
       }),
     );
   } else {
-    process.stderr.write(`pnpm dev:prune failed: ${report}\n`);
+    process.stderr.write(`pnpm dev:prune failed: ${report}\n${fix} \`pnpm dev:prune\`.\n`);
   }
 }
