@@ -8,7 +8,12 @@ import {
   person,
 } from "@repo/db/schema";
 import { and, asc, eq } from "drizzle-orm";
-import { type PublicAccountRole, type PublicHousehold, toPublicAccount } from "./dto";
+import {
+  type PublicHousehold,
+  toPublicAccountRole,
+  toPublicHousehold,
+  toPublicPerson,
+} from "./dto";
 
 /**
  * The Firm `firmId`'s Households, by name, with their People and the Account roles each holds.
@@ -44,23 +49,20 @@ export async function listHouseholds(db: Database, firmId: number): Promise<Publ
   // The Primary first, then the Co-client, then the Dependents.
   const inRoleOrder = (rows: typeof members) =>
     HOUSEHOLD_ROLES.flatMap((role) => rows.filter((row) => row.role === role));
-  return households.map((h) => ({
-    publicId: h.publicId,
-    name: h.name,
-    relationshipStatus: h.relationshipStatus,
-    people: inRoleOrder(membersOf.get(h.id) ?? []).map(({ role, person: p }) => ({
-      publicId: p.publicId,
-      firstName: p.firstName,
-      lastName: p.lastName,
-      bornOn: p.bornOn,
-      householdRole: role,
-      accountRoles: (rolesOf.get(p.id) ?? []).map(({ role: r, account }): PublicAccountRole => ({
-        account: toPublicAccount(account),
-        role: r.role,
-        startsOn: r.startsOn,
-      })),
-    })),
-  }));
+  return households.map((row) =>
+    toPublicHousehold(
+      row,
+      inRoleOrder(membersOf.get(row.id) ?? []).map((member) =>
+        toPublicPerson(
+          member.person,
+          member.role,
+          (rolesOf.get(member.person.id) ?? []).map(({ role, account }) =>
+            toPublicAccountRole(role, account),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 // `Map.groupBy`, which the ES2022 lib the packages target doesn't have.
@@ -68,7 +70,9 @@ function groupBy<T, K>(items: readonly T[], keyOf: (item: T) => K): Map<K, T[]> 
   const groups = new Map<K, T[]>();
   for (const item of items) {
     const key = keyOf(item);
-    groups.set(key, [...(groups.get(key) ?? []), item]);
+    const group = groups.get(key);
+    if (group) group.push(item);
+    else groups.set(key, [item]);
   }
   return groups;
 }

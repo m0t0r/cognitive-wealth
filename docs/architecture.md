@@ -2,7 +2,7 @@
 
 The one-page view of the platform: what runs, how the code is split, how a request flows, and which decisions shape it. Each section is a diagram with a short caption and a link to the document that owns the detail. When this page and the linked document disagree, the linked document wins; fix this page.
 
-Today the platform is the foundation for the product, with no domain features yet: passwordless, invite-only sign-in, multi-tenant organizations with roles, an audit log, and the tooling to build on them safely. What the product will be, the synthetic world it runs on and the phases it is built in are in [product.md](product.md); its vocabulary is in [GLOSSARY.md](../GLOSSARY.md). A Firm is an `organization`.
+Today the platform is the foundation for the product: passwordless, invite-only sign-in, multi-tenant organizations with roles, an audit log, and the tooling to build on them safely. The first domain tables, Households and their People, Accounts and Account roles, are seeded from the world file; no page shows them yet. What the product will be, the synthetic world it runs on and the phases it is built in are in [product.md](product.md); its vocabulary is in [GLOSSARY.md](../GLOSSARY.md). A Firm is an `organization`.
 
 ## System context
 

@@ -8,7 +8,8 @@ import {
   person,
 } from "@repo/db/schema";
 import { type SeedResult, WORLD_FIRM_SLUG, seedDevData } from "@repo/db/seed-data";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { InvalidWorldError, type World, householdPeople, parseWorld } from "./world";
 
 export interface CrmSeedResult {
@@ -38,13 +39,14 @@ export async function seedDevWorld(
       .select({ id: organization.id, name: organization.name })
       .from(organization)
       .where(eq(organization.slug, WORLD_FIRM_SLUG));
-    if (firm!.name !== world.crm.firm.name) {
+    if (!firm) throw new Error(`The seed made no Firm with the slug '${WORLD_FIRM_SLUG}'.`);
+    if (firm.name !== world.crm.firm.name) {
       throw new InvalidWorldError(
         "crm.firm.name",
-        `'${world.crm.firm.name}' isn't the seeded Firm '${firm!.name}'`,
+        `'${world.crm.firm.name}' isn't the seeded Firm '${firm.name}'`,
       );
     }
-    return { devData, crm: await loadCrmHalf(tx, firm!.id, world) };
+    return { devData, crm: await loadCrmHalf(tx, firm.id, world) };
   });
 }
 
@@ -54,11 +56,7 @@ export async function seedDevWorld(
  * by number, and rows that already exist are left as they are. Accounts get only their number:
  * the rest comes from the Custodian (ADR 0009), so the custodian half is never copied.
  */
-export async function loadCrmHalf(
-  db: Database,
-  firmId: number,
-  world: World,
-): Promise<CrmSeedResult> {
+async function loadCrmHalf(db: Database, firmId: number, world: World): Promise<CrmSeedResult> {
   const { households } = world.crm;
   if (households.length === 0) {
     return {
@@ -66,21 +64,27 @@ export async function loadCrmHalf(
     };
   }
   // Every Household has a Primary, so from here on there are People too.
-  const people = households.flatMap((h) =>
-    [...householdPeople(h)].map(([, p, role]) => ({ h, p, role })),
+  const people = households.flatMap((home) =>
+    [...householdPeople(home)].map(([, worldPerson, role]) => ({
+      householdKey: home.key,
+      worldPerson,
+      role,
+    })),
   );
   const accountNumbers = [
-    ...new Set(people.flatMap(({ p }) => p.account_roles.map((r) => r.account_number))),
+    ...new Set(
+      people.flatMap(({ worldPerson }) => worldPerson.account_roles.map((r) => r.account_number)),
+    ),
   ];
 
   const addedHouseholds = await db
     .insert(household)
     .values(
-      households.map((h) => ({
+      households.map((home) => ({
         firmId,
-        seedKey: h.key,
-        name: h.name,
-        relationshipStatus: h.relationship_status,
+        seedKey: home.key,
+        name: home.name,
+        relationshipStatus: home.relationship_status,
       })),
     )
     .onConflictDoNothing({ target: [household.firmId, household.seedKey] })
@@ -88,12 +92,12 @@ export async function loadCrmHalf(
   const addedPeople = await db
     .insert(person)
     .values(
-      people.map(({ p }) => ({
+      people.map(({ worldPerson }) => ({
         firmId,
-        seedKey: p.key,
-        firstName: p.first_name,
-        lastName: p.last_name,
-        bornOn: p.born_on,
+        seedKey: worldPerson.key,
+        firstName: worldPerson.first_name,
+        lastName: worldPerson.last_name,
+        bornOn: worldPerson.born_on,
       })),
     )
     .onConflictDoNothing({ target: [person.firmId, person.seedKey] })
@@ -106,69 +110,45 @@ export async function loadCrmHalf(
         .returning({ id: custodialAccount.id })
     : [];
 
-  const householdIds = new Map(
-    (
-      await db
-        .select({ id: household.id, key: household.seedKey })
-        .from(household)
-        .where(
-          and(
-            eq(household.firmId, firmId),
-            inArray(
-              household.seedKey,
-              households.map((h) => h.key),
-            ),
-          ),
-        )
-    ).map((row) => [row.key, row.id]),
+  const householdIds = await idsByKey(
+    db,
+    household,
+    household.seedKey,
+    firmId,
+    households.map((home) => home.key),
   );
-  const personIds = new Map(
-    (
-      await db
-        .select({ id: person.id, key: person.seedKey })
-        .from(person)
-        .where(
-          and(
-            eq(person.firmId, firmId),
-            inArray(
-              person.seedKey,
-              people.map(({ p }) => p.key),
-            ),
-          ),
-        )
-    ).map((row) => [row.key, row.id]),
+  const personIds = await idsByKey(
+    db,
+    person,
+    person.seedKey,
+    firmId,
+    people.map(({ worldPerson }) => worldPerson.key),
   );
-  const accountIds = new Map(
-    (
-      await db
-        .select({ id: custodialAccount.id, number: custodialAccount.accountNumber })
-        .from(custodialAccount)
-        .where(
-          and(
-            eq(custodialAccount.firmId, firmId),
-            inArray(custodialAccount.accountNumber, accountNumbers),
-          ),
-        )
-    ).map((row) => [row.number, row.id]),
+  const accountIds = await idsByKey(
+    db,
+    custodialAccount,
+    custodialAccount.accountNumber,
+    firmId,
+    accountNumbers,
   );
 
   // No conflict target: a Household that already has a Primary or Co-client keeps them.
   const addedMembers = await db
     .insert(householdMember)
     .values(
-      people.map(({ h, p, role }) => ({
+      people.map(({ householdKey, worldPerson, role }) => ({
         firmId,
-        householdId: householdIds.get(h.key)!,
-        personId: personIds.get(p.key)!,
+        householdId: householdIds.get(householdKey)!,
+        personId: personIds.get(worldPerson.key)!,
         role,
       })),
     )
     .onConflictDoNothing()
     .returning({ id: householdMember.id });
-  const roles = people.flatMap(({ p }) =>
-    p.account_roles.map((r) => ({
+  const roles = people.flatMap(({ worldPerson }) =>
+    worldPerson.account_roles.map((r) => ({
       firmId,
-      personId: personIds.get(p.key)!,
+      personId: personIds.get(worldPerson.key)!,
       accountId: accountIds.get(r.account_number)!,
       role: r.role,
       startsOn: r.starts_on,
@@ -198,4 +178,19 @@ export async function loadCrmHalf(
       accountRoles: addedRoles.length,
     },
   };
+}
+
+/** The ids of the Firm's rows whose `key` column holds one of `keys`, by that key. */
+async function idsByKey(
+  db: Database,
+  table: typeof household | typeof person | typeof custodialAccount,
+  key: AnyPgColumn,
+  firmId: number,
+  keys: string[],
+): Promise<Map<string, number>> {
+  const rows = await db
+    .select({ id: table.id, key: sql<string>`${key}` })
+    .from(table)
+    .where(and(eq(table.firmId, firmId), inArray(key, keys)));
+  return new Map(rows.map((row) => [row.key, row.id]));
 }

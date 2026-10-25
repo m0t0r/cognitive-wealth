@@ -6,16 +6,19 @@
 import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import type {
-  ACCOUNT_ROLES,
-  HOUSEHOLD_ROLES,
-  REGISTRATION_TYPES,
-  RELATIONSHIP_STATUSES,
+  AccountRoleKind,
+  HouseholdRole,
+  RegistrationType,
+  RelationshipStatus,
 } from "@repo/db/schema/households";
 import schema from "../../../world/schema.json" with { type: "json" };
 
+// The parsed file's types, written by hand from `world/schema.json`. `world.test.ts` checks that
+// the schema's enums are the values the tables accept.
+
 export interface WorldAccountRole {
   account_number: string;
-  role: (typeof ACCOUNT_ROLES)[number];
+  role: AccountRoleKind;
   starts_on: string;
 }
 
@@ -30,7 +33,7 @@ export interface WorldPerson {
 export interface WorldHousehold {
   key: string;
   name: string;
-  relationship_status: (typeof RELATIONSHIP_STATUSES)[number];
+  relationship_status: RelationshipStatus;
   primary: WorldPerson;
   co_client: WorldPerson | null;
   dependents: WorldPerson[];
@@ -41,7 +44,7 @@ export interface World {
   custodian: {
     accounts: {
       account_number: string;
-      registration_type: (typeof REGISTRATION_TYPES)[number];
+      registration_type: RegistrationType;
       opened_on: string;
     }[];
   };
@@ -90,7 +93,7 @@ function schemaError({ instancePath, keyword, params, message }: ErrorObject): I
 /** Each Person in `household` with the path of their field, such as "co_client" or "dependents.0". */
 export function* householdPeople(
   household: WorldHousehold,
-): Generator<[field: string, person: WorldPerson, role: (typeof HOUSEHOLD_ROLES)[number]]> {
+): Generator<[field: string, person: WorldPerson, role: HouseholdRole]> {
   yield ["primary", household.primary, "primary"];
   if (household.co_client) yield ["co_client", household.co_client, "co_client"];
   for (const [index, dependent] of household.dependents.entries()) {

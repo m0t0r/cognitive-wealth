@@ -17,7 +17,7 @@ import {
 import { createdAt, id, publicId, updatedAt } from "./_helpers";
 import { organization } from "./organization";
 
-const oneOf = (column: unknown, values: readonly string[]) =>
+const knownValue = (column: unknown, values: readonly string[]) =>
   sql`${column} in (${sql.raw(values.map((value) => `'${value}'`).join(", "))})`;
 
 /** GLOSSARY.md, "Relationship status". */
@@ -41,6 +41,11 @@ export const ACCOUNT_ROLES = [
   "beneficiary",
   "power_of_attorney",
 ] as const;
+
+export type RelationshipStatus = (typeof RELATIONSHIP_STATUSES)[number];
+export type HouseholdRole = (typeof HOUSEHOLD_ROLES)[number];
+export type RegistrationType = (typeof REGISTRATION_TYPES)[number];
+export type AccountRoleKind = (typeof ACCOUNT_ROLES)[number];
 
 const firmId = () =>
   bigint("firm_id", { mode: "number" })
@@ -69,7 +74,7 @@ export const household = pgTable(
     unique("household_firm_id_seed_key_unique").on(t.firmId, t.seedKey),
     check(
       "household_relationship_status_check",
-      oneOf(t.relationshipStatus, RELATIONSHIP_STATUSES),
+      knownValue(t.relationshipStatus, RELATIONSHIP_STATUSES),
     ),
   ],
 );
@@ -122,7 +127,7 @@ export const householdMember = pgTable(
       .on(t.householdId, t.role)
       .where(sql`${t.role} <> 'dependent'`),
     index("household_member_person_id_idx").on(t.personId),
-    check("household_member_role_check", oneOf(t.role, HOUSEHOLD_ROLES)),
+    check("household_member_role_check", knownValue(t.role, HOUSEHOLD_ROLES)),
   ],
 );
 
@@ -151,7 +156,7 @@ export const custodialAccount = pgTable(
     unique("custodial_account_firm_id_account_number_unique").on(t.firmId, t.accountNumber),
     check(
       "custodial_account_registration_type_check",
-      oneOf(t.registrationType, REGISTRATION_TYPES),
+      knownValue(t.registrationType, REGISTRATION_TYPES),
     ),
   ],
 );
@@ -187,6 +192,6 @@ export const accountRole = pgTable(
       t.startsOn,
     ),
     index("account_role_account_id_idx").on(t.accountId),
-    check("account_role_role_check", oneOf(t.role, ACCOUNT_ROLES)),
+    check("account_role_role_check", knownValue(t.role, ACCOUNT_ROLES)),
   ],
 );
