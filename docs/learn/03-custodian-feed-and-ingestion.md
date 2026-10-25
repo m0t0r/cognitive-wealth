@@ -384,7 +384,7 @@ Here's every check, in the order it runs:
 
 Two rows in that table need explaining.
 
-**Accounts are matched, not written.** Cognitive Wealth already knows the Reyes Accounts, and whose they are, from the _world file_ (#39): the one file that describes the whole synthetic world, including who owns each Account. So Ingestion only checks that each account number in the Delivery is one it knows. An unknown number stops Ingestion and names it. Why stop? Every row must belong to a Household at one Firm. Without that, it can't be shown to anyone, or kept apart from other Firms' data, so a person has to look first.
+**Accounts are matched, not written.** Cognitive Wealth already knows the Reyes Accounts, and whose they are, from the _world file_ (#39): the one file that describes the whole synthetic world, including who owns each Account. So Ingestion only checks that each account number in the Delivery is one it knows. An unknown number stops Ingestion and names it. Why stop? Every row must belong to a Household at one Firm. Without that, it can't be shown to anyone, or kept apart from other Firms' data, so a person has to look first. A matched Account gets no new row, but Ingestion does fill in what only the Custodian knows about it, its Registration type and the day it opened, since the world file's CRM half names only the account number.
 
 **Each row remembers when it arrived.** Every row Ingestion writes is stamped with the moment it reached Cognitive Wealth. That's the third kind of time from the first primer (Part 6), and it's what lets a past report be rebuilt from exactly the data it was made from ([ADR 0009](../adr/0009-custodian-is-the-book-of-record.md)).
 
