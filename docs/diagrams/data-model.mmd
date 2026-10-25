@@ -8,6 +8,13 @@ erDiagram
   organization |o--o{ session : "is active in"
   user |o--o{ audit_event : "acts in"
   organization |o--o{ audit_event : "scopes"
+  organization ||--o{ household : "serves (firm_id)"
+  organization ||--o{ person : "knows (firm_id)"
+  organization ||--o{ custodial_account : "manages (firm_id)"
+  household ||--o{ household_member : "has"
+  person ||--o{ household_member : "belongs through"
+  person ||--o{ account_role : "holds"
+  custodial_account ||--o{ account_role : "is held through"
 
   user {
     bigint id PK
@@ -65,4 +72,45 @@ erDiagram
     text target_type
     text target_id
     jsonb metadata
+  }
+  household {
+    bigint id PK
+    uuid public_id UK
+    bigint firm_id FK
+    text seed_key "world file key"
+    text name
+    text relationship_status "prospect, client or former_client"
+  }
+  person {
+    bigint id PK
+    uuid public_id UK
+    bigint firm_id FK
+    text seed_key "world file key"
+    text first_name
+    text last_name
+    date born_on
+  }
+  household_member {
+    bigint id PK
+    uuid public_id UK
+    bigint firm_id FK
+    bigint household_id FK "same Firm"
+    bigint person_id FK "same Firm"
+    text role "one primary, at most one co_client"
+  }
+  custodial_account {
+    bigint id PK
+    uuid public_id UK
+    bigint firm_id FK
+    text account_number "unique per Firm"
+    text registration_type "null until ingested"
+  }
+  account_role {
+    bigint id PK
+    uuid public_id UK
+    bigint firm_id FK
+    bigint person_id FK "same Firm"
+    bigint account_id FK "same Firm"
+    text role "owner, joint_owner, ..."
+    date starts_on
   }

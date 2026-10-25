@@ -24,7 +24,7 @@ Sign-in is passwordless and invite-only ([ADR 0001](adr/0001-better-auth-passwor
    cp apps/web/.env.example apps/web/.env.local
    ```
 
-4. Add the dev users and organizations. It's idempotent, so run it again whenever you like:
+4. Add the dev users and organizations, and the world file's Households. It's idempotent, so run it again whenever you like:
 
    ```sh
    pnpm db:seed
@@ -37,6 +37,8 @@ Sign-in is passwordless and invite-only ([ADR 0001](adr/0001-better-auth-passwor
    | `member@cognitive-wealth.test` | Mia Member   | member of Larkspur Wealth Partners                 |
 
    Larkspur Wealth Partners (slug `larkspur`) is the world file's Firm, and `owner@` is its Advisor. Globex is the small second Firm that shows one Firm can't see another's data ([docs/product.md](product.md), "The synthetic world"). In the synthetic world the Advisor is the only User: `admin@` and `member@` exist only to try member management.
+
+   The seed also loads the CRM half of `world/v0.json` (its Households, People, Account roles and the Accounts they name) into Larkspur. It checks the file against `world/schema.json` and the cross-field rules first, and refuses before writing anything if the file is invalid or its Firm isn't Larkspur. Accounts get only their number: their registration type comes from the Custodian feed when it's ingested.
 
    The seed only adds what's missing, with one exception: in a database seeded when the world's Firm was Acme, it renames Acme (slug `acme`) to Larkspur, unless Larkspur already exists. Members, invitations, audit events and sessions stay with the renamed Firm, so the app opens Larkspur where it used to open Acme.
 
