@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-# (Dependabot doesn't track the syntax line; bump it by hand alongside the base images.)
+# (Dependabot doesn't track the syntax line; bump it by hand alongside the base images, and
+# apps/custodian/Dockerfile's with it.)
 
 # Build from the repo root: docker build -f apps/web/Dockerfile .
 # Targets: `web` (default, the Next.js server) and `migrate` (applies @repo/db migrations, then exits).

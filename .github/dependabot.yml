@@ -60,6 +60,7 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
 
+  # The custodian's base images and uv's, pinned the same way.
   - package-ecosystem: docker
     directory: /apps/custodian
     schedule:

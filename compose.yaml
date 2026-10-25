@@ -13,7 +13,7 @@
 # Cognitive Wealth's services join, and Cognitive Wealth's roles don't exist in it. A second server
 # rather than a second database: it costs about 30 MiB idle, and it initializes its own volume even
 # where `pgdata` already exists. The custodian's API, with its docs at /docs, is on
-# http://127.0.0.1:8000.
+# http://127.0.0.1:8000 (`CUSTODIAN_PORT` changes the host port).
 # Postgres, Redis and SMTP are only reachable from the stack. For `pnpm dev` on the host, also load
 # compose.dev.yaml.
 
@@ -87,6 +87,9 @@ services:
       context: .
       dockerfile: apps/custodian/Dockerfile
     command: [alembic, upgrade, head]
+    # The image's HEALTHCHECK probes the API, which this one-shot job doesn't serve.
+    healthcheck:
+      disable: true
     environment:
       DATABASE_URL: postgres://migrator@custodian-db:5432/custodian
       DATABASE_PASSWORD_FILE: /run/secrets/custodian_db_migrator_password
