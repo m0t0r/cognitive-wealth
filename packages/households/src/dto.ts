@@ -1,16 +1,17 @@
 // What leaves this package: plain objects with `publicId`s, never internal ids or the Firm's id
 // (ADR 0003).
 import type {
-  ACCOUNT_ROLES,
-  HOUSEHOLD_ROLES,
-  REGISTRATION_TYPES,
-  RELATIONSHIP_STATUSES,
+  AccountRoleKind,
+  HouseholdRole,
+  RegistrationType,
+  RelationshipStatus,
+  accountRole,
+  custodialAccount,
+  household,
+  person,
 } from "@repo/db/schema";
 
-export type RelationshipStatus = (typeof RELATIONSHIP_STATUSES)[number];
-export type HouseholdRole = (typeof HOUSEHOLD_ROLES)[number];
-export type RegistrationType = (typeof REGISTRATION_TYPES)[number];
-export type AccountRoleKind = (typeof ACCOUNT_ROLES)[number];
+export type { AccountRoleKind, HouseholdRole, RegistrationType, RelationshipStatus };
 
 export interface PublicAccount {
   publicId: string;
@@ -44,10 +45,43 @@ export interface PublicHousehold {
   people: PublicPerson[];
 }
 
-export function toPublicAccount(row: PublicAccount): PublicAccount {
+type HouseholdRow = typeof household.$inferSelect;
+type PersonRow = typeof person.$inferSelect;
+type AccountRow = typeof custodialAccount.$inferSelect;
+type AccountRoleRow = typeof accountRole.$inferSelect;
+
+export function toPublicAccount(row: AccountRow): PublicAccount {
   return {
     publicId: row.publicId,
     accountNumber: row.accountNumber,
     registrationType: row.registrationType,
+  };
+}
+
+export function toPublicAccountRole(row: AccountRoleRow, account: AccountRow): PublicAccountRole {
+  return { account: toPublicAccount(account), role: row.role, startsOn: row.startsOn };
+}
+
+export function toPublicPerson(
+  row: PersonRow,
+  householdRole: HouseholdRole,
+  accountRoles: PublicAccountRole[],
+): PublicPerson {
+  return {
+    publicId: row.publicId,
+    firstName: row.firstName,
+    lastName: row.lastName,
+    bornOn: row.bornOn,
+    householdRole,
+    accountRoles,
+  };
+}
+
+export function toPublicHousehold(row: HouseholdRow, people: PublicPerson[]): PublicHousehold {
+  return {
+    publicId: row.publicId,
+    name: row.name,
+    relationshipStatus: row.relationshipStatus,
+    people,
   };
 }

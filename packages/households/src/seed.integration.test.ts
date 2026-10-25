@@ -92,15 +92,19 @@ describe("seedDevWorld", () => {
     expect(new Set(rows.map((row) => row.firmId))).toEqual(new Set([firmId]));
   });
 
-  test("writes nothing when the world file fails the schema", async ({ orm }) => {
-    await expect(seedDevWorld(orm, readWorld("invalid/unknown-field.json"))).rejects.toThrow(
-      InvalidWorldError,
-    );
+  // One file the schema catches and one only the cross-field rules do (world/invalid/cases.json).
+  test.for(["unknown-field.json", "role-names-unknown-account.json"])(
+    "writes nothing when the world file is invalid (%s)",
+    async (file, { orm }) => {
+      await expect(seedDevWorld(orm, readWorld(`invalid/${file}`))).rejects.toThrow(
+        InvalidWorldError,
+      );
 
-    expect(await orm.$count(user)).toBe(0);
-    expect(await orm.$count(organization)).toBe(0);
-    expect(Object.values(await crmRows(orm)).flat()).toEqual([]);
-  });
+      expect(await orm.$count(user)).toBe(0);
+      expect(await orm.$count(organization)).toBe(0);
+      expect(Object.values(await crmRows(orm)).flat()).toEqual([]);
+    },
+  );
 
   test("writes nothing when the world's Firm isn't Larkspur", async ({ orm }) => {
     const world = parseWorld(readWorld());

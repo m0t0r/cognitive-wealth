@@ -1,8 +1,27 @@
 import { readFileSync } from "node:fs";
+import {
+  ACCOUNT_ROLES,
+  REGISTRATION_TYPES,
+  RELATIONSHIP_STATUSES,
+} from "@repo/db/schema/households";
+import { Ajv2020 } from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 import { InvalidWorldError, parseWorld } from "./world";
 
 const WORLD = new URL("../../../world/", import.meta.url);
 const readJson = (path: string): unknown => JSON.parse(readFileSync(new URL(path, WORLD), "utf8"));
+
+type Enum = { enum: string[] };
+const schema: {
+  $defs: {
+    RegistrationType: Enum;
+    Household: { properties: { relationship_status: Enum } };
+    AccountRole: { properties: { role: Enum } };
+  };
+} = JSON.parse(readFileSync(new URL("schema.json", WORLD), "utf8"));
+const ajv = new Ajv2020();
+addFormats(ajv, ["date"]);
+const schemaAlone = ajv.compile(schema);
 
 // Each file breaks one rule (world/invalid/cases.json); the custodian's tests read the same list.
 const cases: { file: string; field: string; caught_by: "schema" | "rules" }[] = JSON.parse(
@@ -17,7 +36,10 @@ describe("parseWorld", () => {
     expect(world.crm.households.map((h) => h.primary.key)).toEqual(["dana-reyes"]);
   });
 
-  it.each(cases)("rejects $file, naming $field ($caught_by)", ({ file, field }) => {
+  it.each(cases)("rejects $file, naming $field ($caught_by)", ({ file, field, caught_by }) => {
+    // The committed schema on its own lets exactly the "rules" cases through.
+    expect(schemaAlone(readJson(`invalid/${file}`))).toBe(caught_by === "rules");
+
     const parse = () => parseWorld(readJson(`invalid/${file}`));
 
     expect(parse).toThrow(InvalidWorldError);
@@ -27,6 +49,14 @@ describe("parseWorld", () => {
         message: expect.stringMatching(new RegExp(`^${field.replaceAll(".", "\\.")}: `)),
       }),
     );
+  });
+
+  it("allows the values the tables accept, and no others", () => {
+    const { $defs } = schema;
+
+    expect($defs.RegistrationType.enum).toEqual([...REGISTRATION_TYPES]);
+    expect($defs.Household.properties.relationship_status.enum).toEqual([...RELATIONSHIP_STATUSES]);
+    expect($defs.AccountRole.properties.role.enum).toEqual([...ACCOUNT_ROLES]);
   });
 
   it("fills in the defaults the schema gives", () => {
