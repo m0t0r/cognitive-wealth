@@ -30,14 +30,16 @@ export function runningServers(): Array<Server & { cwd: string }> {
       ? [{ pid: Number(match[1]), ppid: Number(match[2]), command: match[3] ?? "" }]
       : [];
   });
-  return rows
-    // The node process itself, not the `sh -c` pnpm runs it in, whose command line names it too.
-    .filter(({ command }) => /^\S*\bnode\s/.test(command) && command.includes(WRAPPER))
-    .flatMap(({ pid }) => {
-      const cwd = cwdOf(pid);
-      const next = rows.find((row) => row.ppid === pid && /\bnext\b/.test(row.command));
-      return cwd ? [{ pid, group: next?.pid, cwd }] : [];
-    });
+  return (
+    rows
+      // The node process itself, not the `sh -c` pnpm runs it in, whose command line names it too.
+      .filter(({ command }) => /^\S*\bnode\s/.test(command) && command.includes(WRAPPER))
+      .flatMap(({ pid }) => {
+        const cwd = cwdOf(pid);
+        const next = rows.find((row) => row.ppid === pid && /\bnext\b/.test(row.command));
+        return cwd ? [{ pid, group: next?.pid, cwd }] : [];
+      })
+  );
 }
 
 function cwdOf(pid: number): string | undefined {

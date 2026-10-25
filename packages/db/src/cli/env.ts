@@ -11,8 +11,9 @@ const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
  * password file is resolved against `apps/web`, as Next does, so any working directory works.
  * Returns the file it read, if any. An explicit `DATABASE_URL` skips the file entirely.
  *
- * A linked worktree is refused the fallback: its `.env.local` (copied by `.worktreeinclude`)
- * names the shared dev database, and a worktree's commands stay off it (#125).
+ * In a linked worktree it reads only the worktree's own database, the `wt_*` one on the
+ * verification Postgres that `pnpm dev` (`@repo/dev-env`) writes there, and refuses anything else:
+ * a worktree's commands stay off the shared dev database (#125, #137).
  */
 export function loadWebEnvFallback({
   env = process.env,
@@ -22,20 +23,30 @@ export function loadWebEnvFallback({
   const webDir = join(root, "apps/web");
   const file = join(webDir, ".env.local");
   if (!existsSync(file)) return undefined;
-  if (isLinkedWorktree(root)) {
+  const vars = parseEnv(readFileSync(file, "utf8"));
+  if (isLinkedWorktree(root) && !isWorktreeDatabase(vars.DATABASE_URL)) {
     throw new Error(
       "DATABASE_URL is not set, and this checkout is a git worktree, so apps/web/.env.local's " +
-        "database isn't used: it's the shared dev database. Set DATABASE_URL (and " +
-        "DATABASE_PASSWORD_FILE) to a database of this task's own, or run the command from the " +
-        "main checkout.",
+        "database isn't used: it isn't this worktree's own. Run `pnpm dev:env` to give the " +
+        "worktree its database (or set DATABASE_URL and DATABASE_PASSWORD_FILE), or run the " +
+        "command from the main checkout.",
     );
   }
-  const vars = parseEnv(readFileSync(file, "utf8"));
   if (vars.DATABASE_URL) env.DATABASE_URL = vars.DATABASE_URL;
   if (vars.DATABASE_PASSWORD_FILE && !env.DATABASE_PASSWORD_FILE) {
     env.DATABASE_PASSWORD_FILE = resolve(webDir, vars.DATABASE_PASSWORD_FILE);
   }
   return relative(root, file);
+}
+
+/**
+ * Whether `url` is a worktree's own database: `wt_<token>` on the verification Postgres (:5433),
+ * as `@repo/dev-env` names it. That package depends on this one, so the shape is repeated here.
+ */
+function isWorktreeDatabase(url: string | undefined): boolean {
+  if (!url || !URL.canParse(url)) return false;
+  const { port, pathname } = new URL(url);
+  return port === "5433" && /^\/wt_[a-z0-9_]+$/.test(pathname);
 }
 
 /** Whether `root` is a linked worktree rather than its repository's main checkout. */

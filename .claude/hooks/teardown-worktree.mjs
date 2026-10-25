@@ -1,22 +1,25 @@
 #!/usr/bin/env node
-// PreToolUse(ExitWorktree|Bash) hook: before a worktree is removed, tear down its dev environment
-// (`pnpm dev:teardown`: its `pnpm dev` server, its database and its Redis keys on the verification
-// services), so nothing outlives the worktree. It runs on
+// Sweeps away what removed worktrees left behind: runs `pnpm dev:prune`, which tears down the dev
+// environment (its `pnpm dev`, its database and Redis keys on the verification services) of every
+// worktree git no longer lists. The sweep only touches worktrees that are gone, so it's safe at
+// any time, and it runs at every point a worktree can have gone:
 //
-//   - ExitWorktree with `action: "remove"`, for the worktree the session is in
-//   - Bash `git [-C <dir>] worktree remove [<options>] <path>`
+//   - PostToolUse(ExitWorktree) with `action: "remove"`, and PostToolUse(Bash) after
+//     `git [-C <dir>] worktree remove|prune`. Post, not Pre: a removal that's declined or refused
+//     (uncommitted changes) keeps its data. A failed sweep is reported to Claude, to retry.
+//   - SessionEnd and SessionStart: Claude Code has no hook for the exit prompt's removal or a
+//     subagent worktree's cleanup, so the next session edge catches those, and `rm -rf` too.
+//     SessionStart sweeps in the background, so it never delays a session.
 //
-// When the teardown fails, it denies the removal with the teardown's own report, so a worktree
-// never disappears while its resources live on; fix the cause (or run `pnpm dev:teardown` by hand)
-// and remove it again. A checkout without `packages/dev-env` (before it merged) has nothing to tear
-// down. The teardown runs before the removal is approved, so a removal the user then declines
-// still loses its environment; the next `pnpm dev` there recreates it. `pnpm dev:prune` catches removals that bypass this (a manual `rm -rf`, a session's exit
-// prompt). Output goes to stderr: it's for the transcript, not the model.
-import { execFileSync } from "node:child_process";
+// Only this project's own `pnpm dev:prune` runs (from the main checkout, found through
+// CLAUDE_PROJECT_DIR), never a script named by the command. A checkout without
+// `packages/dev-env` (before it merged) has nothing to sweep. `pnpm dev` sweeps on start too.
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-const { tool_name: tool, tool_input: args = {}, cwd } = JSON.parse(readFileSync(0, "utf8"));
+const input = JSON.parse(readFileSync(0, "utf8"));
+const { hook_event_name: event, tool_name: tool, tool_input: args = {} } = input;
 
 const git = (dir, ...a) => {
   try {
@@ -29,15 +32,8 @@ const git = (dir, ...a) => {
   }
 };
 
-// The root of the linked worktree `dir` is in, or null in the main checkout or outside a repo.
-function linkedWorktree(dir) {
-  const gitDir = git(dir, "rev-parse", "--path-format=absolute", "--git-dir");
-  const common = git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir");
-  return gitDir && gitDir !== common ? git(dir, "rev-parse", "--show-toplevel") : null;
-}
-
 // Splits a shell command into words and the operators between commands, honouring quotes. Enough
-// for `git worktree remove` lines; anything fancier (variables, substitutions) isn't recognised.
+// to recognise `git worktree remove`; anything fancier (variables, substitutions) isn't.
 function tokenize(command) {
   const tokens = [];
   let word = null;
@@ -62,80 +58,65 @@ function tokenize(command) {
   return tokens;
 }
 
-// The absolute paths every `git worktree remove` in `command` removes.
-function removedWorktrees(command) {
+// Whether `command` runs `git [<options>] worktree remove|prune` as one of its commands.
+function removesWorktrees(command) {
   const segments = [[]];
   for (const token of tokenize(command)) {
     if (typeof token === "string") segments.at(-1).push(token);
     else segments.push([]);
   }
-  const paths = [];
-  for (const words of segments) {
-    if (words[0] !== "git") continue;
-    let base = cwd;
+  return segments.some((words) => {
+    if (words[0] !== "git") return false;
     let i = 1;
-    // git's own options: -C <dir> moves the base; -c <key=value> takes a value too.
+    // git's own options; -C <dir> and -c <key=value> take a value.
     for (; i < words.length && words[i].startsWith("-"); i++) {
-      if (words[i] === "-C") base = resolve(base, words[++i] ?? ".");
-      else if (words[i] === "-c") i++;
+      if (words[i] === "-C" || words[i] === "-c") i++;
     }
-    if (words[i] !== "worktree" || words[i + 1] !== "remove") continue;
-    const path = words.slice(i + 2).find((word) => !word.startsWith("-"));
-    if (path) paths.push({ path: resolve(base, path), base });
-  }
-  return paths;
+    return words[i] === "worktree" && ["remove", "prune"].includes(words[i + 1]);
+  });
 }
 
-let targets = [];
-if (tool === "ExitWorktree" && args.action === "remove") {
-  const top = linkedWorktree(cwd);
-  if (top) targets = [{ path: top, base: top }];
-} else if (tool === "Bash") {
-  targets = removedWorktrees(args.command ?? "");
-}
+const wanted =
+  event === "SessionStart" ||
+  event === "SessionEnd" ||
+  (event === "PostToolUse" && tool === "ExitWorktree" && args.action === "remove") ||
+  (event === "PostToolUse" && tool === "Bash" && removesWorktrees(args.command ?? ""));
+if (!wanted) process.exit(0);
 
-// Only this project's own teardown ever runs, and only for worktrees of this project's repo: a
-// `git -C /elsewhere worktree remove` mustn't make the hook execute some other checkout's code
-// before the command is even approved.
 const projectDir = process.env.CLAUDE_PROJECT_DIR ?? resolve(import.meta.dirname, "../..");
-const projectCommon = git(projectDir, "rev-parse", "--path-format=absolute", "--git-common-dir");
-const main = projectCommon && dirname(projectCommon);
-const script = main && join(main, "packages/dev-env/src/cli/teardown.ts");
+const common = git(projectDir, "rev-parse", "--path-format=absolute", "--git-common-dir");
+const main = common && dirname(common);
+const script = main && join(main, "packages/dev-env/src/cli/prune.ts");
+if (!script || !existsSync(script)) process.exit(0);
 
-const failures = [];
-for (const { path, base } of targets) {
-  if (!script || !existsSync(script)) break;
-  if (git(base, "rev-parse", "--path-format=absolute", "--git-common-dir") !== projectCommon) {
-    continue;
-  }
-  try {
-    const out = execFileSync("node", [script, "--worktree", path], {
-      cwd: main,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 50_000,
-    });
-    process.stderr.write(out);
-  } catch (error) {
-    const report = [error.stderr, error.stdout].filter(Boolean).join("").trim();
-    failures.push(`${path}: ${report || error.message}`);
-  }
+if (event === "SessionStart") {
+  // Detached and unwaited, so the session starts at once; the next session edge retries a failure.
+  spawn("node", [script], { cwd: main, detached: true, stdio: "ignore" }).unref();
+  process.exit(0);
 }
 
-if (failures.length > 0) {
-  const reason = [
-    "The worktree's dev environment couldn't be torn down, so it wasn't removed (its database or",
-    "Redis keys would outlive it).",
-    ...failures,
-    "Fix the cause, run `pnpm dev:teardown` in the worktree until it succeeds, then remove it again.",
-  ].join(" ");
-  console.log(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: reason,
-      },
-    }),
-  );
+try {
+  const out = execFileSync("node", [script], {
+    cwd: main,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 50_000,
+  });
+  process.stderr.write(out);
+} catch (error) {
+  const report = [error.stderr, error.stdout].filter(Boolean).join("").trim() || error.message;
+  if (event === "PostToolUse") {
+    // The removal already happened; `block` hands the reason to Claude so it retries the sweep.
+    console.log(
+      JSON.stringify({
+        decision: "block",
+        reason:
+          "The worktree is removed, but its dev environment couldn't be torn down, so its " +
+          `database or Redis keys are still there: ${report} Fix the cause, then run ` +
+          "`pnpm dev:prune` from the main checkout until it succeeds.",
+      }),
+    );
+  } else {
+    process.stderr.write(`pnpm dev:prune failed: ${report}\n`);
+  }
 }

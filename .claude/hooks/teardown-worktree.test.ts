@@ -10,25 +10,26 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { test as base } from "vitest";
 
 const HOOK = join(import.meta.dirname, "teardown-worktree.mjs");
 
 interface Layout {
-  /** The main checkout of a throwaway repo, with a stand-in `pnpm dev:teardown`. */
+  /** The main checkout of a throwaway repo, with a stand-in `pnpm dev:prune`. */
   main: string;
   /** A linked worktree of it, where the real ones live (`.claude/worktrees/<name>`). */
   worktree: string;
-  /** Where the stand-in teardown logs each call: its arguments and working directory. */
+  /** Where the stand-in sweep logs each call: its arguments and working directory. */
   calls: string;
 }
 
-// The stand-in for packages/dev-env/src/cli/teardown.ts: logs the call, then fails when the test
-// asks it to, the way the real one reports a step that failed.
-const FAKE_TEARDOWN = `
+// The stand-in for packages/dev-env/src/cli/prune.ts: logs the call, then fails when the test
+// asks it to, the way the real one reports a teardown that failed.
+const FAKE_PRUNE = `
 import { appendFileSync } from "node:fs";
-appendFileSync(process.env.TEARDOWN_CALLS, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }) + "\\n");
-if (process.env.TEARDOWN_FAIL) {
+appendFileSync(process.env.PRUNE_CALLS, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }) + "\\n");
+if (process.env.PRUNE_FAIL) {
   console.error("Teardown of wt_task failed to drop the database: permission denied");
   process.exitCode = 1;
 }
@@ -59,7 +60,7 @@ const test = base.extend("layout", async ({}, { onCleanup }): Promise<Layout> =>
   git("-C", main, "worktree", "add", "-q", "-b", "task", worktree);
   const cli = join(main, "packages/dev-env/src/cli");
   mkdirSync(cli, { recursive: true });
-  writeFileSync(join(cli, "teardown.ts"), FAKE_TEARDOWN);
+  writeFileSync(join(cli, "prune.ts"), FAKE_PRUNE);
   return { main, worktree, calls: join(root, "calls.log") };
 });
 
@@ -75,148 +76,131 @@ function git(...args: string[]) {
   execFileSync("git", args, { env: gitFreeEnv(), stdio: "ignore" });
 }
 
+type Call = { args: string[]; cwd: string };
+
+function callsIn(file: string): Call[] {
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8")
+    .trim()
+    .split("\n")
+    .map((line): Call => JSON.parse(line));
+}
+
 type RunArgs = {
   layout: Layout;
-  cwd: string;
-  tool: string;
-  input: Record<string, string>;
+  event: "PostToolUse" | "SessionStart" | "SessionEnd";
+  cwd?: string;
+  tool?: string;
+  input?: Record<string, string>;
   fail?: boolean;
 };
 
-/** Runs the hook; returns its decision and the teardown calls it made. */
-function run({ layout, cwd, tool, input, fail = false }: RunArgs) {
+/** Runs the hook; returns what it printed and the sweeps it ran. */
+function run({ layout, event, cwd = layout.main, tool, input, fail = false }: RunArgs) {
   const out = execFileSync("node", [HOOK], {
-    input: JSON.stringify({ tool_name: tool, tool_input: input, cwd }),
+    input: JSON.stringify({
+      hook_event_name: event,
+      tool_name: tool,
+      tool_input: input,
+      cwd,
+    }),
     env: gitFreeEnv({
       CLAUDE_PROJECT_DIR: layout.main,
-      TEARDOWN_CALLS: layout.calls,
-      ...(fail ? { TEARDOWN_FAIL: "1" } : {}),
+      PRUNE_CALLS: layout.calls,
+      ...(fail ? { PRUNE_FAIL: "1" } : {}),
     }),
     encoding: "utf8",
   });
-  const calls = existsSync(layout.calls)
-    ? readFileSync(layout.calls, "utf8")
-        .trim()
-        .split("\n")
-        .map((line): { args: string[]; cwd: string } => JSON.parse(line))
-    : [];
-  const decision = out.includes('"deny"') ? "deny" : "allow";
-  return { decision, calls, out };
+  return { out, calls: callsIn(layout.calls) };
 }
 
-describe("ExitWorktree", () => {
-  test("tears the worktree down before removing it", ({ layout }) => {
-    const { decision, calls } = run({
+const sweptFromMain = (layout: Layout): Call[] => [{ args: [], cwd: layout.main }];
+
+describe("after ExitWorktree", () => {
+  test("sweeps once the worktree is removed", ({ layout }) => {
+    const { out, calls } = run({
       layout,
+      event: "PostToolUse",
       cwd: layout.worktree,
       tool: "ExitWorktree",
       input: { action: "remove" },
     });
-    expect(decision).toBe("allow");
-    expect(calls).toEqual([{ args: ["--worktree", layout.worktree], cwd: layout.main }]);
+    expect(calls).toEqual(sweptFromMain(layout));
+    expect(out).toBe("");
   });
 
   test("leaves a kept worktree's environment alone", ({ layout }) => {
-    const { decision, calls } = run({
+    const { calls } = run({
       layout,
+      event: "PostToolUse",
       cwd: layout.worktree,
       tool: "ExitWorktree",
       input: { action: "keep" },
     });
-    expect(decision).toBe("allow");
     expect(calls).toEqual([]);
   });
 
-  test("does nothing in the main checkout", ({ layout }) => {
-    const { calls } = run({
+  test("tells Claude when the sweep fails, with what failed", ({ layout }) => {
+    const { out } = run({
       layout,
-      cwd: layout.main,
-      tool: "ExitWorktree",
-      input: { action: "remove" },
-    });
-    expect(calls).toEqual([]);
-  });
-
-  test("denies the removal when teardown fails, with what failed", ({ layout }) => {
-    const { decision, out } = run({
-      layout,
+      event: "PostToolUse",
       cwd: layout.worktree,
       tool: "ExitWorktree",
       input: { action: "remove" },
       fail: true,
     });
-    expect(decision).toBe("deny");
+    expect(JSON.parse(out)).toMatchObject({ decision: "block" });
     expect(out).toContain("failed to drop the database: permission denied");
-    expect(existsSync(layout.worktree)).toBe(true);
+    expect(out).toContain("pnpm dev:prune");
   });
 });
 
-describe("git worktree remove", () => {
+describe("after a git worktree command", () => {
   test.for([
     "git worktree remove .claude/worktrees/task",
     "git worktree remove --force .claude/worktrees/task",
-    "git worktree remove -f -f .claude/worktrees/task",
-    "git worktree remove '.claude/worktrees/task'",
+    "git -C /elsewhere worktree remove x",
     'git worktree remove ".claude/worktrees/task" && git branch -D task',
     "git worktree list; git worktree remove .claude/worktrees/task",
-  ])("tears the worktree down for %s", (command, { layout }) => {
-    const { decision, calls } = run({ layout, cwd: layout.main, tool: "Bash", input: { command } });
-    expect(decision).toBe("allow");
-    expect(calls).toEqual([{ args: ["--worktree", layout.worktree], cwd: layout.main }]);
+    "git worktree prune",
+  ])("sweeps after %s", (command, { layout }) => {
+    const { calls } = run({ layout, event: "PostToolUse", tool: "Bash", input: { command } });
+    expect(calls).toEqual(sweptFromMain(layout));
   });
 
-  test("resolves the path against git -C", ({ layout }) => {
-    const command = `git -C ${layout.main} worktree remove .claude/worktrees/task`;
-    const { calls } = run({ layout, cwd: layout.worktree, tool: "Bash", input: { command } });
-    expect(calls).toEqual([{ args: ["--worktree", layout.worktree], cwd: layout.main }]);
-  });
-
-  test("never runs another repo's teardown", ({ layout }) => {
-    const other = join(layout.main, "..", "other");
-    git("init", "-q", "-b", "dev", other);
-    const cli = join(other, "packages/dev-env/src/cli");
-    mkdirSync(cli, { recursive: true });
-    writeFileSync(join(cli, "teardown.ts"), FAKE_TEARDOWN);
-    const command = `git -C ${other} worktree remove some-worktree`;
-    const { decision, calls } = run({ layout, cwd: layout.main, tool: "Bash", input: { command } });
-    expect(decision).toBe("allow");
-    expect(calls).toEqual([]);
-  });
-
-  test("denies the removal when teardown fails", ({ layout }) => {
-    const { decision } = run({
-      layout,
-      cwd: layout.main,
-      tool: "Bash",
-      input: { command: "git worktree remove .claude/worktrees/task" },
-      fail: true,
-    });
-    expect(decision).toBe("deny");
-  });
-
-  test.for(["git worktree list", "git worktree prune", "echo git worktree remove", "ls"])(
-    "ignores %s",
+  test.for(["git worktree list", "git worktree add x", "echo git worktree remove", "ls"])(
+    "doesn't sweep after %s",
     (command, { layout }) => {
-      const { decision, calls } = run({
-        layout,
-        cwd: layout.main,
-        tool: "Bash",
-        input: { command },
-      });
-      expect(decision).toBe("allow");
+      const { calls } = run({ layout, event: "PostToolUse", tool: "Bash", input: { command } });
       expect(calls).toEqual([]);
     },
   );
 });
 
-test("allows the removal when the checkout has no pnpm dev:teardown yet", ({ layout }) => {
+describe("at the edges of a session", () => {
+  test("sweeps when a session ends, which catches the exit prompt's removal", ({ layout }) => {
+    expect(run({ layout, event: "SessionEnd" }).calls).toEqual(sweptFromMain(layout));
+  });
+
+  test("sweeps in the background when a session starts", async ({ layout }) => {
+    expect(run({ layout, event: "SessionStart" }).out).toBe("");
+    const deadline = Date.now() + 10_000;
+    while (callsIn(layout.calls).length === 0 && Date.now() < deadline) {
+      // oxlint-disable-next-line no-await-in-loop -- polling for the detached sweep
+      await sleep(50);
+    }
+    expect(callsIn(layout.calls)).toEqual(sweptFromMain(layout));
+  });
+});
+
+test("does nothing in a checkout without pnpm dev:prune yet", ({ layout }) => {
   rmSync(join(layout.main, "packages"), { recursive: true });
-  const { decision, calls } = run({
+  const { out, calls } = run({
     layout,
-    cwd: layout.worktree,
+    event: "PostToolUse",
     tool: "ExitWorktree",
     input: { action: "remove" },
   });
-  expect(decision).toBe("allow");
+  expect(out).toBe("");
   expect(calls).toEqual([]);
 });

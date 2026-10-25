@@ -3,6 +3,7 @@
 // does the same on every start. Node runs this file directly (type stripping), so relative imports
 // keep their `.ts` extension.
 import { checkoutAt } from "../checkout.ts";
+import { sweep } from "../prune.ts";
 import { setUpWorktree } from "../setup.ts";
 
 const checkout = checkoutAt(process.cwd());
@@ -13,6 +14,7 @@ if (!worktreeId) {
     "This is the main checkout: it uses the dev stack (apps/web/.env.example), not this.",
   );
 } else {
+  await sweep(checkout.mainCheckout);
   try {
     const { record, created } = await setUpWorktree({ ...checkout, worktreeId });
     console.log(

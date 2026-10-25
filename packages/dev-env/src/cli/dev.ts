@@ -4,11 +4,15 @@
 // (type stripping), so relative imports keep their `.ts` extension.
 import { spawn } from "node:child_process";
 import { checkoutAt } from "../checkout.ts";
+import { sweep } from "../prune.ts";
 import { readRecord, writeRecord } from "../registry.ts";
 import { setUpWorktree } from "../setup.ts";
 
 const checkout = checkoutAt(process.cwd());
 const { mainCheckout, worktreeId } = checkout;
+
+// Before anything else, clear what removed worktrees left behind, in the main checkout too.
+await sweep(mainCheckout);
 
 let token: string | undefined;
 if (worktreeId) {
