@@ -11,4 +11,5 @@ flowchart TB
   review --> rm["Remove the worktree"]
 
   guard["require-worktree hook<br/>denies edits in the main checkout"] -.-> wt
-  teardown["teardown-worktree hook<br/>pnpm dev:teardown first;<br/>denies the removal if it fails"] -.-> rm
+  rm --> sweep["pnpm dev:prune<br/>tears down the dev environment<br/>of every removed worktree"]
+  hook["teardown-worktree hook<br/>after a removal, and at every<br/>session's start and end"] -.-> sweep

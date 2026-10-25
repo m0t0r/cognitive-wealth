@@ -68,7 +68,13 @@ The steps above set up the main checkout, whose data is yours. A linked worktree
 pnpm dev:sign-in owner@cognitive-wealth.test --app https://<branch>.cognitive-wealth.localhost
 ```
 
-Removing the worktree tears all of it down: the `teardown-worktree` hook runs `pnpm dev:teardown` before `ExitWorktree` with `remove` or `git worktree remove`, which stops its `pnpm dev` and deletes its database and Redis keys, and refuses the removal if that fails. Run `pnpm dev:teardown` yourself to start a worktree over (the next `pnpm dev` sets it up again), and `pnpm dev:prune [--dry-run]` from anywhere to remove what's left of worktrees deleted some other way.
+Removing the worktree tears all of it down. `pnpm dev:prune` stops the `pnpm dev`, and deletes the database and Redis keys, of every worktree git no longer lists, and it runs at every point a worktree can have gone:
+
+- **After a removal:** the `teardown-worktree` hook runs it after `ExitWorktree` with `remove` and after `git worktree remove` or `prune`. It runs after, not before, so a removal that's declined or refused (uncommitted changes) keeps its data. A failed sweep is reported to Claude to retry.
+- **At every session's start and end:** Claude Code has no hook for the exit prompt's "remove" or for a subagent worktree's cleanup, so the next session edge catches those, and a hand-run `rm -rf` too.
+- **On every `pnpm dev` and `pnpm dev:env`**, in any checkout, for removals outside Claude Code.
+
+It finds what's left by name and by process as well as from the records setup keeps, so a lost record hides nothing. Run `pnpm dev:prune --dry-run` to see what it would remove, and `pnpm dev:teardown` to start a live worktree over (the next `pnpm dev` sets it up again).
 
 ## 2. Sign in as an agent
 

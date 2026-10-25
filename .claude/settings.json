@@ -13,16 +13,6 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/require-worktree.mjs\""
           }
         ]
-      },
-      {
-        "matcher": "ExitWorktree|Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/teardown-worktree.mjs\"",
-            "timeout": 60
-          }
-        ]
       }
     ],
     "PostToolUse": [
@@ -35,6 +25,16 @@
             "timeout": 300
           }
         ]
+      },
+      {
+        "matcher": "ExitWorktree|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/teardown-worktree.mjs\"",
+            "timeout": 60
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -44,6 +44,22 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/prepare-worktree.mjs\"",
             "timeout": 300
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/teardown-worktree.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/teardown-worktree.mjs\"",
+            "timeout": 60
           }
         ]
       }

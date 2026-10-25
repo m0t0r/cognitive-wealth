@@ -104,7 +104,7 @@ How sign-in, sessions and tenancy work today, with their own diagrams, is in [do
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/agent-sdlc.dark.svg">
-  <img alt="Agent workflow: a task enters a git worktree branched from origin/dev, which a hook enforces. Code, docs and tests change, with pnpm dev on the worktree's own database and Redis prefix, then lint, format, type checks and tests run. A change that reaches apps/web is verified in a running production build. The pull request is written with pr-visual, friction is filed as issues, and the PR is reviewed and merged into dev. Then the worktree is removed, and a second hook tears its dev environment down first, denying the removal if that fails." src="diagrams/agent-sdlc.light.svg">
+  <img alt="Agent workflow: a task enters a git worktree branched from origin/dev, which a hook enforces. Code, docs and tests change, with pnpm dev on the worktree's own database and Redis prefix, then lint, format, type checks and tests run. A change that reaches apps/web is verified in a running production build. The pull request is written with pr-visual, friction is filed as issues, and the PR is reviewed and merged into dev. Then the worktree is removed, and pnpm dev:prune tears down the dev environment of every removed worktree; a second hook runs it after a removal and at every session's start and end." src="diagrams/agent-sdlc.light.svg">
 </picture>
 
 Coding agents follow this loop, defined in [CLAUDE.md](../CLAUDE.md#worktrees). Each step is a skill or a hook, so it doesn't depend on anyone remembering it. Pull requests target `dev`.

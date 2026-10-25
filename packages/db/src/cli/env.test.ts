@@ -55,6 +55,30 @@ describe("loadWebEnvFallback", () => {
     expect(env).toEqual({});
   });
 
+  it("reads a worktree's own database, the one `pnpm dev` writes into its .env.local", () => {
+    writeFileSync(
+      join(worktree(), "apps/web/.env.local"),
+      "DATABASE_URL=postgres://app@localhost:5433/wt_task_0ebb429f\nDATABASE_PASSWORD_FILE=/repo/.secrets/pw\n",
+    );
+    const env: NodeJS.ProcessEnv = {};
+    expect(loadWebEnvFallback({ env, root: worktree() })).toBe("apps/web/.env.local");
+    expect(env).toEqual({
+      DATABASE_URL: "postgres://app@localhost:5433/wt_task_0ebb429f",
+      DATABASE_PASSWORD_FILE: "/repo/.secrets/pw",
+    });
+  });
+
+  it.each([
+    "postgres://app@localhost:5432/cognitive_wealth",
+    "postgres://app@localhost:5433/verify_3100",
+    "postgres://app@localhost:5432/wt_task_0ebb429f",
+  ])("refuses %s in a worktree's .env.local", (url) => {
+    writeFileSync(join(worktree(), "apps/web/.env.local"), `DATABASE_URL=${url}\n`);
+    const env: NodeJS.ProcessEnv = {};
+    expect(() => loadWebEnvFallback({ env, root: worktree() })).toThrow(/git worktree/);
+    expect(env).toEqual({});
+  });
+
   it("leaves an explicit DATABASE_URL alone, in a worktree too", () => {
     const env: NodeJS.ProcessEnv = { DATABASE_URL: "postgres://app@localhost:5499/task" };
     expect(loadWebEnvFallback({ env, root: worktree() })).toBeUndefined();
