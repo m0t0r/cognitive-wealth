@@ -127,6 +127,7 @@
     "!.claude/skills/verifier-web",
     "packages/design-system/src/components/**",
     "packages/design-system/src/hooks/**",
-    "packages/design-system/src/lib/highlighter.tsx"
+    "packages/design-system/src/lib/highlighter.tsx",
+    "packages/custodian-client/src/generated/**"
   ]
 }

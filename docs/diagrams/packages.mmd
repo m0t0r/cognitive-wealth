@@ -7,6 +7,7 @@ flowchart TB
   email["@repo/email<br/>React Email, mailers"]
   testing["@repo/testing<br/>Vitest config, PGlite, sign-in harness"]
   custodian["custodian<br/>FastAPI, Python, uv"]
+  client["@repo/custodian-client<br/>Orval fetch client, Zod schemas"]
 
   web --> auth
   web --> ds
@@ -18,3 +19,5 @@ flowchart TB
   e2e -.-> db
   e2e -.-> email
   e2e -.-> testing
+
+  client -.->|"generated from openapi.json"| custodian
