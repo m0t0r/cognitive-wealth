@@ -62,9 +62,10 @@ Do this for every change that renders. Run it on each route the change touches, 
 
 ```sh
 .claude/skills/verifier-web/stop-browser.sh   # closes the session and stops only the Chrome start-browser.sh started
-for p in .dev/verify/server-*.pid; do kill "$(cat "$p")"; rm "$p"; done
-git worktree remove --force .dev/worktrees/<sha>   # for each --ref you served
+.claude/skills/verifier-web/stop-app.sh       # stops the servers start-app.sh started and removes its --ref checkouts
 ```
+
+Both work from the main checkout or a worktree: they find their state in the main checkout's `.dev/verify/` and `.dev/worktrees/`.
 
 The verify Compose project can keep running between tasks. `docker compose -f compose.yaml -f compose.verify.yaml down` throws all its data away.
 
