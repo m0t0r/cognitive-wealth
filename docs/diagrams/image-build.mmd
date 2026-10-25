@@ -6,3 +6,10 @@ flowchart LR
   build --> web(["web target<br/>distroless nodejs24, non-root"])
   dbdeploy --> migrate(["migrate target<br/>distroless nodejs24, non-root"])
   dependabot["Dependabot<br/>bumps tag@digest pins"] -.-> base
+
+  python["python<br/>python 3.15 slim, pinned digest"] --> cbuild["build<br/>uv sync --locked --no-dev, bytecode"]
+  uv["uv<br/>pinned digest, binary only"] --> cbuild
+  cbuild --> custodian(["custodian image<br/>python 3.15 slim, non-root<br/>Uvicorn, or Alembic for custodian-migrate"])
+  python --> custodian
+  dependabot -.-> python
+  dependabot -.-> uv

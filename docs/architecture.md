@@ -66,10 +66,10 @@ How to start each one is in [CLAUDE.md](../CLAUDE.md#commands) and [docs/dev-sig
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/image-build.dark.svg">
-  <img alt="Dockerfile stages: base, then turbo prune, then pnpm install with a store cache. The build stage runs next build for the web target; the db-deploy stage deploys @repo/db for the migrate target. Both targets are distroless Node 24, non-root. Dependabot bumps the pinned image digests." src="diagrams/image-build.light.svg">
+  <img alt="Two Dockerfiles. The web one: base, then turbo prune, then pnpm install with a store cache. The build stage runs next build for the web target; the db-deploy stage deploys @repo/db for the migrate target. Both targets are distroless Node 24, non-root. The custodian one: a Python 3.15 slim stage and uv's binary feed a build stage that runs uv sync with the locked runtime dependencies and compiles bytecode; the custodian image is Python 3.15 slim, non-root, and runs Uvicorn, or Alembic for custodian-migrate. Dependabot bumps the pinned image digests of both." src="diagrams/image-build.light.svg">
 </picture>
 
-One Dockerfile (`apps/web/Dockerfile`) builds both images, pinned by `tag@digest`. Turborepo runs `build` and `check-types` after the same task in dependencies. There's no CI workflow and no deployment target yet: see [Open before the domain lands](#open-before-the-domain-lands).
+`apps/web/Dockerfile` builds the `web` and `migrate` images, and `apps/custodian/Dockerfile` one image that Compose runs as `custodian` (Uvicorn) and `custodian-migrate` (Alembic, then exits). Every base image is pinned by `tag@digest`. The custodian's runtime is Debian slim, not distroless: Google's distroless Python ships Debian's Python, older than the 3.15 the custodian pins. Turborepo runs `build` and `check-types` after the same task in dependencies. There's no CI workflow and no deployment target yet: see [Open before the domain lands](#open-before-the-domain-lands).
 
 ## Decisions
 
@@ -115,7 +115,6 @@ What the decisions so far leave open, each with where it was deferred:
 
 - **Tenant isolation in the database.** Every query is scoped in application code, so a missed filter leaks across tenants. Decided: every Firm-scoped domain table gets row-level security in phase 1, recorded then as an ADR that supersedes that part of [ADR 0002](adr/0002-tenant-is-the-sessions-active-organization.md).
 - **"Workspace" in the UI.** Screens call an organization a workspace; the glossary calls it a Firm. Phase 1 renames the copy.
-- **The second service.** The custodian simulator ([ADR 0011](adr/0011-custodian-simulator-in-python.md)) brings Python tooling, a second image and a second database into Compose, the worktree hook and Turborepo.
 - **CI.** Lint, types, tests and e2e run only locally. Only Dependabot runs on GitHub.
 - **Hosting.** The host must keep `after()` work alive and give a 10 to 30 second stop grace period ([ADR 0006](adr/0006-sign-in-email-sent-after-the-response.md)).
 - **Environment label.** The first multi-environment deployment adds `APP_ENV` as a label only ([ADR 0008](adr/0008-production-mode-everywhere.md)).

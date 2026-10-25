@@ -1,4 +1,5 @@
-# Production-like stack: Postgres 18, a one-shot migration job, Redis, Mailpit and the web app.
+# Production-like stack: Postgres 18, a one-shot migration job, Redis, Mailpit and the web app,
+# and the simulated custodian with its own Postgres and migration job.
 #   (umask 077 && mkdir -p .secrets) && for s in postgres_password db_migrator_password db_app_password \
 #     redis_password better_auth_secret custodian_postgres_password custodian_db_migrator_password \
 #     custodian_db_app_password; do
@@ -11,7 +12,8 @@
 # The custodian has a Postgres server of its own (`custodian-db`, ADR 0011) on a network none of
 # Cognitive Wealth's services join, and Cognitive Wealth's roles don't exist in it. A second server
 # rather than a second database: it costs about 30 MiB idle, and it initializes its own volume even
-# where `pgdata` already exists.
+# where `pgdata` already exists. The custodian's API, with its docs at /docs, is on
+# http://127.0.0.1:8000.
 # Postgres, Redis and SMTP are only reachable from the stack. For `pnpm dev` on the host, also load
 # compose.dev.yaml.
 
@@ -51,8 +53,8 @@ services:
     networks: [data]
     restart: unless-stopped
 
-  # The custodian's ledger, with the same roles split as `db` (apps/custodian/docker/initdb). Migrate
-  # it with `pnpm --filter custodian db:migrate` until the custodian gets a service of its own.
+  # The custodian's ledger, with the same roles split as `db` (apps/custodian/docker/initdb):
+  # `custodian-migrate` connects as `migrator`, `custodian` as `app`.
   custodian-db:
     <<: *hardening
     image: postgres:18.6-alpine@sha256:898c60cb390d1085bc97bdd6a1ae968757421df394b071848b52b1c09c89d6a5
@@ -76,6 +78,45 @@ services:
       timeout: 5s
       retries: 10
     networks: [custodian-data]
+    restart: unless-stopped
+
+  # One-shot: Alembic migrations to head, as the DDL-owning `migrator` role.
+  custodian-migrate:
+    <<: *hardening
+    build:
+      context: .
+      dockerfile: apps/custodian/Dockerfile
+    command: [alembic, upgrade, head]
+    environment:
+      DATABASE_URL: postgres://migrator@custodian-db:5432/custodian
+      DATABASE_PASSWORD_FILE: /run/secrets/custodian_db_migrator_password
+    secrets: [custodian_db_migrator_password]
+    depends_on:
+      custodian-db:
+        condition: service_healthy
+    networks: [custodian-data]
+    restart: "no"
+
+  custodian:
+    <<: *hardening
+    build:
+      context: .
+      dockerfile: apps/custodian/Dockerfile
+    environment:
+      DATABASE_URL: postgres://app@custodian-db:5432/custodian
+      DATABASE_PASSWORD_FILE: /run/secrets/custodian_db_app_password
+    secrets: [custodian_db_app_password]
+    tmpfs:
+      - /tmp:uid=65534,gid=65534,mode=1777
+    ports:
+      - "127.0.0.1:${CUSTODIAN_PORT:-8000}:8000"
+    depends_on:
+      custodian-migrate:
+        condition: service_completed_successfully
+    # Publishing the port needs a network with a route to the host, which also gives the custodian
+    # outbound access (it needs none). Only the custodian is on `custodian-edge`, so
+    # `custodian-data` stays internal and Cognitive Wealth's services reach neither.
+    networks: [custodian-data, custodian-edge]
     restart: unless-stopped
 
   redis:
@@ -214,6 +255,7 @@ networks:
   # The custodian's alone: no Cognitive Wealth service joins it.
   custodian-data:
     internal: true
+  custodian-edge: {}
   mail-ui: {}
   edge: {}
 

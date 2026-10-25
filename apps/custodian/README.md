@@ -45,7 +45,13 @@ DATABASE_URL=postgres://migrator@localhost:5434/custodian \
 
 Then load the world as `app` (`DATABASE_URL=postgres://app@localhost:5434/custodian` with `.secrets/custodian_db_app_password`) with `pnpm --filter custodian world:load`.
 
-`migrator` owns the schema and runs migrations; `app`, which the service will connect as, reads and writes rows but can only insert and read Transactions and prices. Both are created on the volume's first start by `docker/initdb/01-roles.sh`. Amounts are `numeric(19, 2)` and share counts `numeric(19, 6)`, read back as `Money` and `Shares` ([ADR 0013](../../docs/adr/0013-money-shares-prices-and-rates-are-separate-types.md)).
+`migrator` owns the schema and runs migrations; `app`, which the service connects as, reads and writes rows but can only insert and read Transactions and prices. Both are created on the volume's first start by `docker/initdb/01-roles.sh`. Amounts are `numeric(19, 2)` and share counts `numeric(19, 6)`, read back as `Money` and `Shares` ([ADR 0013](../../docs/adr/0013-money-shares-prices-and-rates-are-separate-types.md)).
+
+## Image
+
+`Dockerfile` builds one image from the repo root (`docker build -f apps/custodian/Dockerfile .`), which `docker compose up --build` runs twice: `custodian-migrate` applies the migrations as `migrator` and exits, then `custodian` serves the API as `app` on `http://127.0.0.1:8000` (`CUSTODIAN_PORT` changes the host port), with `/docs` there too. Load the world into that stack with `docker compose run --rm custodian python -m custodian.load`.
+
+The build stage installs `uv.lock`'s runtime dependencies only (`uv sync --locked --no-dev`) with uv's pinned binary, and compiles everything to bytecode. The image holds Python, the virtualenv and the code, all owned by root, and runs as `nobody` on a read-only filesystem, without uv, pytest, Ruff or pyright. The project keeps its place under `/app/apps/custodian/`, next to `/app/world/`, because `world.py` and `ledger_fixture.py` find their files by climbing from their own path. Its base is `python:3.15-slim`, not distroless like `web`'s: Google's distroless Python ships Debian's Python, older than 3.15. Dependabot bumps the image pins and the `uv.lock` dependencies weekly, but not the Python minor version, which moves with the version policy in [CLAUDE.md](CLAUDE.md).
 
 ## Layout
 
@@ -65,6 +71,7 @@ fixtures/ledger-v0.json    Dana's week from docs/learn/01, plus the IRA's first 
 ../../world/invalid/       world files that each break one rule, which both loaders must reject
 migrations/                Alembic: env.py and versions/
 docker/initdb/             the roles script custodian-db runs on its first start
+Dockerfile                 the image Compose runs as custodian and custodian-migrate
 tests/                     pytest tests (test_*.py), through FastAPI's TestClient
 tests/integration/         database tests: one Testcontainers Postgres, a database per test
 pyproject.toml             dependencies and Ruff, pyright, pytest and Alembic config

@@ -42,6 +42,40 @@ updates:
       - dependency-name: node
         update-types: [version-update:semver-major]
 
+  # The custodian's Python dependencies (pyproject.toml floors, uv.lock pins).
+  - package-ecosystem: uv
+    directory: /apps/custodian
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      # Groups can't split by dependency type for uv, so runtime and dev dependencies share one.
+      # Majors stay one PR per package, as for npm.
+      python:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /apps/custodian
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "build(docker)"
+    groups:
+      base-images:
+        patterns: ["*"]
+    ignore:
+      # A Python minor (3.15 → 3.16) moves on purpose, with `.python-version` and `requires-python`
+      # (apps/custodian/CLAUDE.md, "Version policy").
+      - dependency-name: python
+        update-types: [version-update:semver-major, version-update:semver-minor]
+
   - package-ecosystem: docker-compose
     directory: /
     schedule:
