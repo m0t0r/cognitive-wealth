@@ -40,9 +40,11 @@ This writes `facts.json` (totals, per-file change and lines, test cases added an
 Serve both sides with the verifier's isolated stack, each with its own fresh database:
 
 ```sh
-.claude/skills/verifier-web/start-app.sh                 # after: working tree on :3100
-.claude/skills/verifier-web/start-app.sh --ref <base>    # before: on :3101
+.claude/skills/verifier-web/start-app.sh                 # after: the working tree; prints its URL
+.claude/skills/verifier-web/start-app.sh --ref <base>    # before: on the next port
 ```
+
+Each checkout has its own port pair (the main checkout's is `:3100` and `:3101`), so use the URLs the script prints.
 
 - **Screenshots**: same persona, viewport, theme and state on both servers. For each user flow, capture the entry surface, the surface that opens or changes, and the resulting state; capture each role variant the change treats differently. Make full-page pairs equal height with the `before-and-after` skill's recipe. A purely additive surface gets an after-only "Preview".
 - **Perf**: trace each touched route on both servers (verifier-web step 4), then write `perf.mmd`:

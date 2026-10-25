@@ -31,6 +31,20 @@ mkdir -p "$VERIFY_DIR"
 
 [ -f "$state" ] || { echo "No session file $state; run: pnpm dev:sign-in $email --app $app --ip $ip" >&2; exit 1; }
 
+# Checking the owner and starting Chrome is one step: two worktrees starting at once would both find
+# 9222 free. mkdir is atomic, so it serves as the mutex; the trap frees it however the script ends.
+mutex="$VERIFY_DIR/chrome.starting"
+took=""
+for _ in $(seq 60); do
+  if mkdir "$mutex" 2>/dev/null; then took=1; break; fi
+  sleep 0.5
+done
+if [ -z "$took" ]; then
+  echo "Another start-browser.sh has been starting Chrome for 30 s. If none is running, remove $mutex and rerun." >&2
+  exit 1
+fi
+trap 'rmdir "$mutex" 2>/dev/null || true' EXIT
+
 # Reuse only the Chrome this script started, identified by its recorded pid. Anything else on 9222
 # (often an everyday Chrome with remote debugging on) would put the trace in a personal browser.
 listener=$(lsof -t -iTCP:9222 -sTCP:LISTEN 2>/dev/null | head -1 || true)
@@ -40,15 +54,21 @@ if [ -n "$listener" ]; then
     echo "Port 9222 is held by another process (pid $listener: ${cmd:0:120}). Ask the user to quit it, then rerun." >&2
     exit 1
   fi
-  owner=$(sed -n 1p "$VERIFY_CHROME_OWNER" 2>/dev/null || true)
-  owner_path=$(sed -n 2p "$VERIFY_CHROME_OWNER" 2>/dev/null || true)
+  # A Chrome an older start-browser.sh started has no owner: someone may still be tracing in it.
+  if [ ! -f "$VERIFY_CHROME_OWNER" ]; then
+    echo "The Chrome on 9222 (pid $listener) was started by an older start-browser.sh, which recorded no owner. Stop it with that checkout's stop-browser.sh, or ask the user." >&2
+    exit 1
+  fi
+  owner=$(sed -n 1p "$VERIFY_CHROME_OWNER")
+  owner_path=$(sed -n 2p "$VERIFY_CHROME_OWNER")
   if [ "$owner" != "$VERIFY_TOKEN" ]; then
-    if [ -n "$owner_path" ] && git -C "$main" worktree list --porcelain | grep -qxF "worktree $owner_path"; then
+    # Alive while git lists it and its directory is there (a deleted one awaits `git worktree prune`).
+    if [ -d "$owner_path" ] && git -C "$main" worktree list --porcelain | grep -qxF "worktree $owner_path"; then
       echo "The shared Chrome on 9222 is in use by $owner_path. Wait until its verification is done (its stop-browser.sh frees it), or ask the user." >&2
       exit 1
     fi
     # Its owner is gone: start over, so none of its cookies (shared by every localhost port) stay.
-    echo "Taking over the shared Chrome from ${owner_path:-a removed checkout}." >&2
+    echo "Taking over the shared Chrome from $owner_path, which is gone." >&2
     kill "$listener"
     for _ in $(seq 20); do kill -0 "$listener" 2>/dev/null || break; sleep 0.25; done
     profile=$(cat "$VERIFY_CHROME_PROFILE" 2>/dev/null || true)
