@@ -5,6 +5,7 @@ flowchart TB
   ds["@repo/design-system<br/>shadcn/ui on Base UI"]
   db["@repo/db<br/>Drizzle schema, migrations, CLIs"]
   email["@repo/email<br/>React Email, mailers"]
+  households["@repo/households<br/>Households, world file, seed, DTOs"]
   testing["@repo/testing<br/>Vitest config, PGlite, sign-in harness"]
   custodian["custodian<br/>FastAPI, Python, uv"]
   client["@repo/custodian-client<br/>Orval fetch client, Zod schemas"]
@@ -14,6 +15,7 @@ flowchart TB
   web --> db
   auth --> db
   auth --> email
+  households --> db
 
   e2e -.-> auth
   e2e -.-> db

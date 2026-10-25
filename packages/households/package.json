@@ -1,0 +1,33 @@
+{
+  "name": "@repo/households",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./world": "./src/world.ts",
+    "./seed": "./src/seed.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "db:seed": "node src/cli/seed.ts",
+    "test": "vitest run --project unit --project ui",
+    "test:integration": "vitest run --project integration",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@repo/db": "workspace:*",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "drizzle-orm": "0.45.4"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
+    "@repo/testing": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

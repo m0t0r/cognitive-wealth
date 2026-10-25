@@ -21,7 +21,7 @@ Today the platform is the foundation for the product, with no domain features ye
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/packages.dark.svg">
-  <img alt="Runtime dependencies: web depends on @repo/auth, @repo/design-system and @repo/db; @repo/auth depends on @repo/db and @repo/email. Dev-only, dashed: web-e2e uses @repo/auth, @repo/db, @repo/email and @repo/testing. custodian, a Python FastAPI app, has no workspace dependencies; @repo/custodian-client is generated, dashed, from its openapi.json." src="diagrams/packages.light.svg">
+  <img alt="Runtime dependencies: web depends on @repo/auth, @repo/design-system and @repo/db; @repo/auth depends on @repo/db and @repo/email; @repo/households depends on @repo/db. Dev-only, dashed: web-e2e uses @repo/auth, @repo/db, @repo/email and @repo/testing. custodian, a Python FastAPI app, has no workspace dependencies; @repo/custodian-client is generated, dashed, from its openapi.json." src="diagrams/packages.light.svg">
 </picture>
 
 Solid arrows are runtime dependencies and dashed ones are dev-only. Every workspace also has `@repo/testing` and `@repo/typescript-config` as dev dependencies, left out of the diagram. So is `@repo/agent-hooks` (`.claude/hooks`), a workspace only so that `pnpm test` runs the agent hooks' tests. Packages aren't built: consumers import their TypeScript source, and Next transpiles it. What each package exports is in [CLAUDE.md](../CLAUDE.md#architecture).
@@ -41,10 +41,10 @@ Solid arrows are runtime dependencies and dashed ones are dev-only. Every worksp
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/data-model.dark.svg">
-  <img alt="Entity relationships: a user has sessions, accounts and memberships; an organization has members and invitations; a session points at its active organization; invitations record their inviter; audit events reference an actor user and an organization. Verification rows stand alone. Tables people see carry a uuid public_id besides the bigint id." src="diagrams/data-model.light.svg">
+  <img alt="Entity relationships: a user has sessions, accounts and memberships; an organization has members and invitations; a session points at its active organization; invitations record their inviter; audit events reference an actor user and an organization. An organization (the Firm) has households, persons and custodial accounts through firm_id; household_member links a person to a household with their role, and account_role links a person to a custodial account, each only within one Firm. Verification rows stand alone. Tables people see carry a uuid public_id besides the bigint id." src="diagrams/data-model.light.svg">
 </picture>
 
-The diagram shows keys and the columns that carry rules, not every column: the schema is `packages/db/src/schema/`, and the rules it doesn't state are in [docs/auth.md](auth.md#data-model-rules). `audit_event` is append-only for the `app` role.
+The diagram shows keys and the columns that carry rules, not every column: the schema is `packages/db/src/schema/`, and the rules it doesn't state are in [docs/auth.md](auth.md#data-model-rules). `audit_event` is append-only for the `app` role. The Household tables (`household`, `person`, `household_member`, `custodial_account`, `account_role`) each carry their Firm in `firm_id`, and each link between them is a foreign key on `(firm_id, id)`, so a row can only point at its own Firm's rows; queries still filter by Firm, since there is no row-level security yet. `custodial_account` isn't `account` because Better Auth owns that name. `@repo/households` (`packages/households`) reads them: `listHouseholds(db, firmId)` returns `PublicHousehold` DTOs with `publicId`s only.
 
 ## Environments
 

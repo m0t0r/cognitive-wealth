@@ -1,10 +1,23 @@
 import { eq, sql } from "drizzle-orm";
 import type { Database } from "./index";
-import { auditEvent, invitation, member, organization, session, user } from "./schema";
+import {
+  accountRole,
+  auditEvent,
+  custodialAccount,
+  household,
+  householdMember,
+  invitation,
+  member,
+  organization,
+  person,
+  session,
+  user,
+} from "./schema";
 import { test } from "./testing";
 
 // Postgres SQLSTATEs, checked on the driver error Drizzle wraps as `cause`.
 const GENERATED_ALWAYS = { cause: { code: "428C9" } };
+const FOREIGN_KEY_VIOLATION = { cause: { code: "23503" } };
 const UNIQUE_VIOLATION = { cause: { code: "23505" } };
 const CHECK_VIOLATION = { cause: { code: "23514" } };
 
@@ -197,5 +210,107 @@ describe("deleting an organization", () => {
     expect(
       await orm.select({ organizationId: auditEvent.organizationId }).from(auditEvent),
     ).toEqual([{ organizationId: null }]);
+  });
+});
+
+async function createHousehold(db: Database, firmId: number) {
+  const [row] = await db
+    .insert(household)
+    .values({ firmId, name: "The Reyes Household", relationshipStatus: "client" })
+    .returning();
+  return row!;
+}
+
+async function createPerson(db: Database, firmId: number) {
+  const [row] = await db
+    .insert(person)
+    .values({ firmId, firstName: "Dana", lastName: "Reyes", bornOn: "1978-05-14" })
+    .returning();
+  return row!;
+}
+
+describe("households", () => {
+  test("can't link rows from different Firms", async ({ orm }) => {
+    const larkspur = await createOrganization(orm, "larkspur");
+    const globex = await createOrganization(orm, "globex");
+    const home = await createHousehold(orm, larkspur.id);
+    const stranger = await createPerson(orm, globex.id);
+    const [account] = await orm
+      .insert(custodialAccount)
+      .values({ firmId: larkspur.id, accountNumber: "CW-000001", registrationType: "joint" })
+      .returning();
+
+    await expect(
+      orm.insert(householdMember).values({
+        firmId: larkspur.id,
+        householdId: home.id,
+        personId: stranger.id,
+        role: "primary",
+      }),
+    ).rejects.toMatchObject(FOREIGN_KEY_VIOLATION);
+    await expect(
+      orm.insert(accountRole).values({
+        firmId: globex.id,
+        personId: stranger.id,
+        accountId: account!.id,
+        role: "owner",
+        startsOn: "2026-02-26",
+      }),
+    ).rejects.toMatchObject(FOREIGN_KEY_VIOLATION);
+  });
+
+  test("have one Primary, at most one Co-client and any number of Dependents", async ({ orm }) => {
+    const firm = await createOrganization(orm);
+    const home = await createHousehold(orm, firm.id);
+    const add = async (role: "primary" | "co_client" | "dependent") => {
+      const { id: personId } = await createPerson(orm, firm.id);
+      return orm
+        .insert(householdMember)
+        .values({ firmId: firm.id, householdId: home.id, personId, role });
+    };
+
+    await add("primary");
+    await add("co_client");
+    await add("dependent");
+    await add("dependent");
+    await expect(add("primary")).rejects.toMatchObject(UNIQUE_VIOLATION);
+    await expect(add("co_client")).rejects.toMatchObject(UNIQUE_VIOLATION);
+  });
+
+  test("hold only known statuses, registration types and roles", async ({ orm }) => {
+    const firm = await createOrganization(orm);
+    const { id: personId } = await createPerson(orm, firm.id);
+    const home = await createHousehold(orm, firm.id);
+    const [account] = await orm
+      .insert(custodialAccount)
+      .values({ firmId: firm.id, accountNumber: "CW-000001", registrationType: "joint" })
+      .returning();
+
+    const statements = [
+      sql`insert into household (firm_id, name, relationship_status) values (${firm.id}, 'X', 'lead')`,
+      sql`insert into custodial_account (firm_id, account_number, registration_type) values (${firm.id}, 'CW-2', '401k')`,
+      sql`insert into household_member (firm_id, household_id, person_id, role) values (${firm.id}, ${home.id}, ${personId}, 'spouse')`,
+      sql`insert into account_role (firm_id, person_id, account_id, role, starts_on) values (${firm.id}, ${personId}, ${account!.id}, 'trustee', '2026-01-01')`,
+    ];
+    await Promise.all(
+      statements.map((statement) =>
+        expect(orm.execute(statement)).rejects.toMatchObject(CHECK_VIOLATION),
+      ),
+    );
+  });
+
+  test("go when their Firm is deleted", async ({ orm }) => {
+    const firm = await createOrganization(orm);
+    const home = await createHousehold(orm, firm.id);
+    const { id: personId } = await createPerson(orm, firm.id);
+    await orm
+      .insert(householdMember)
+      .values({ firmId: firm.id, householdId: home.id, personId, role: "primary" });
+
+    await orm.delete(organization).where(eq(organization.id, firm.id));
+
+    expect(await orm.$count(household)).toBe(0);
+    expect(await orm.$count(person)).toBe(0);
+    expect(await orm.$count(householdMember)).toBe(0);
   });
 });

@@ -5,18 +5,21 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./cli/env": "./src/cli/env.ts",
+    "./cli/ts-resolution": "./src/cli/ts-resolution.ts",
     "./client": "./src/client.ts",
+    "./config": "./src/config.ts",
     "./connect": "./src/connect.ts",
     "./migrator": "./src/migrator.ts",
     "./schema": "./src/schema/index.ts",
     "./schema/*": "./src/schema/*.ts",
+    "./seed-data": "./src/cli/seed-data.ts",
     "./testing": "./src/testing.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node src/migrate.ts",
-    "db:seed": "node src/seed.ts",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run --project unit --project ui",
     "test:integration": "vitest run --project integration",
