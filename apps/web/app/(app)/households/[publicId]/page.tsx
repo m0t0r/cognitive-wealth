@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { cache } from "react";
 import { AccountSection } from "@/components/households/account-section";
+import { NamedOnSection } from "@/components/households/named-on-section";
 import { requireAppViewer } from "@/lib/auth/viewer";
 import { formatIsoDate } from "@/lib/format";
 import { HOUSEHOLD_ROLE_LABELS, RELATIONSHIP_STATUS_LABELS, personName } from "@/lib/households";
@@ -92,6 +93,8 @@ export default async function HouseholdPage({ params }: PageProps<"/households/[
           <AccountSection key={account.publicId} account={account} asOf={asOf} />
         ))
       )}
+      {/* After the figures and the Accounts they count, and kept out of both. */}
+      <NamedOnSection people={household.people} />
     </div>
   );
 }

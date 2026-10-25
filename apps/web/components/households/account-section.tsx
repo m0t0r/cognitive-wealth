@@ -59,14 +59,23 @@ export function AccountSection({ account, asOf }: AccountSectionProps) {
   );
 }
 
-/** "••••0001" on its own line under the Account's name, read out as "ending in 0001". */
+/** "••••0001" on its own line under the Account's name. */
 function MaskedAccountNumber({ ending }: { ending: string }) {
   return (
     <span className="mt-1 block text-sm font-normal text-muted-foreground tabular-nums">
+      <MaskedEnding ending={ending} />
+    </span>
+  );
+}
+
+/** "••••0001", read out as "ending in 0001". */
+export function MaskedEnding({ ending }: { ending: string }) {
+  return (
+    <>
       <span aria-hidden="true">••••</span>
       <span className="sr-only">ending in </span>
       {ending}
-    </span>
+    </>
   );
 }
 

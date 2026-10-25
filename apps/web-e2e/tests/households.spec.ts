@@ -1,6 +1,6 @@
 import { expect, test } from "../fixtures";
 import { recordCspViolations } from "../support/csp";
-import { seedIngestedWorld } from "../support/households";
+import { seedHouseholdOfGrace, seedIngestedWorld } from "../support/households";
 import { seedUser, uniqueEmail } from "../support/seed";
 
 // What the overview holds, and that another Firm's Household is unknown, is owned by
@@ -68,6 +68,40 @@ test("an Advisor opens the Household from the sidebar and reads its Positions as
   // The account numbers stay on the server, masked to their last four.
   expect(await page.content()).not.toContain("CW-00000");
   expect(violations).toEqual([]);
+});
+
+// Every role, dated roles, an owner in no Household and another Firm's data are owned by the
+// integration tests; here, one Beneficiary through the real stack.
+test("a member's Named-on Account is listed under them and never counted", async ({
+  page,
+  db,
+  signIn,
+}, testInfo) => {
+  const email = uniqueEmail(testInfo, "advisor");
+  const user = await seedUser(db, { email, name: "Ada Advisor" });
+  const publicId = await seedIngestedWorld(db, {
+    advisor: { user, firm: "larkspur", role: "member" },
+  });
+  await seedHouseholdOfGrace(db);
+  await signIn(email);
+
+  await page.goto(`/households/${publicId}`);
+
+  const section = page.getByRole("region", { name: "Also named on" });
+  await expect(section.getByRole("heading", { level: 3 })).toHaveText(["Jordan Reyes"]);
+  // Dana's IRA (CW-000002) names Jordan too, but it's the Household's own, so it isn't here.
+  await expect(
+    section.getByRole("list", { name: "Jordan Reyes is also named on" }).getByRole("listitem"),
+  ).toHaveText([
+    /^Traditional IRA ••••\s*ending in\s*0003\s*Beneficiary · The Grace Reyes Household$/,
+  ]);
+  await expect(
+    page
+      .getByRole("term")
+      .filter({ hasText: /^Accounts$/ })
+      .locator("xpath=following-sibling::dd[1]"),
+  ).toHaveText("2");
+  expect(await page.content()).not.toContain("CW-00000");
 });
 
 test("another Firm's Household and an unknown one are both not found", async ({

@@ -102,6 +102,10 @@ _Avoid_: Portfolio, login
 **Account role**:
 A dated link between a Person and an Account that says how the Person is involved: owner, joint owner, custodian for a minor, beneficiary, or power of attorney.
 
+**Named-on Account**:
+An Account a Person holds a role on that gives no ownership (Beneficiary, custodian for a minor, power of attorney) and that their Household doesn't own. It's listed under the Person, with the role and the owning Household, and never counted in the Household's Accounts, AUM, Billable value or Net worth ([research](docs/research/household-accounts.md), [platforms](docs/research/related-accounts-on-platforms.md)).
+_Avoid_: Related Account, associated Account
+
 **Registration type**:
 The legal form of an Account, which sets its ownership and tax rules: individual, joint, traditional IRA, Roth IRA, custodial account for a minor, 529, and so on.
 
