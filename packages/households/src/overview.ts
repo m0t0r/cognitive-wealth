@@ -37,8 +37,8 @@ const HOUSEHOLD_ACCOUNT_ROLES = ["owner", "joint_owner"] as const satisfies Acco
  * The other roles: the overview lists an Account a member holds one of under that member, as a
  * Named-on Account, and never counts it (docs/research/related-accounts-on-platforms.md).
  */
-const isNamedOnRole = (role: AccountRoleKind): role is NamedOnRole =>
-  !new Set<AccountRoleKind>(HOUSEHOLD_ACCOUNT_ROLES).has(role);
+const OWNING = new Set<AccountRoleKind>(HOUSEHOLD_ACCOUNT_ROLES);
+const isNamedOnRole = (role: AccountRoleKind): role is NamedOnRole => !OWNING.has(role);
 const NAMED_ON_ROLES = ACCOUNT_ROLES.filter(isNamedOnRole);
 
 /**
@@ -65,7 +65,7 @@ export async function getHouseholdOverview(
   const today = new Date().toISOString().slice(0, 10);
   const rolesOn = sql<string>`coalesce((${latestAsOf}), ${today}::date)`;
   const started = lte(accountRole.startsOn, rolesOn);
-  const [[found], members, owned, namedOn, [latest]] = await Promise.all([
+  const [[found], members, owned, membersRoles, [latest]] = await Promise.all([
     db.select().from(household).where(thisHousehold),
     db
       .select({ role: householdMember.role, person })
@@ -94,7 +94,7 @@ export async function getHouseholdOverview(
         ),
       )
       .orderBy(asc(custodialAccount.accountNumber)),
-    // Distinct, since the same role can start twice on one Account.
+    // The members' Named-on roles. Distinct, since the same role can start twice on one Account.
     db
       .selectDistinct({
         personId: accountRole.personId,
@@ -121,8 +121,9 @@ export async function getHouseholdOverview(
 
   const asOf = latest?.asOf ?? null;
   const accountIds = owned.map((row) => row.account.id);
-  // An Account the Household owns is in `accounts` already, with every role on it.
-  const namedOnly = namedOn
+  // An Account the Household owns is in `accounts` already, with every role on it. The SQL kept
+  // only the Named-on roles; `isNamedOnRole` tells TypeScript so.
+  const namedOnRows = membersRoles
     .flatMap(({ personId, role, account }) =>
       isNamedOnRole(role) && !accountIds.includes(account.id) ? [{ personId, role, account }] : [],
     )
@@ -131,7 +132,7 @@ export async function getHouseholdOverview(
         a.account.accountNumber.localeCompare(b.account.accountNumber) ||
         ACCOUNT_ROLES.indexOf(a.role) - ACCOUNT_ROLES.indexOf(b.role),
     );
-  const namedOnIds = [...new Set(namedOnly.map((row) => row.account.id))];
+  const namedOnIds = [...new Set(namedOnRows.map((row) => row.account.id))];
   const [roles, positions, owners] = await Promise.all([
     accountIds.length === 0
       ? []
@@ -206,7 +207,7 @@ export async function getHouseholdOverview(
   );
   const positionsOf = Map.groupBy(positions, (row) => row.position.accountId);
   const ownersOf = Map.groupBy(owners, (row) => row.accountId);
-  const namedOnOf = Map.groupBy(namedOnly, (row) => row.personId);
+  const namedOnOf = Map.groupBy(namedOnRows, (row) => row.personId);
 
   return {
     publicId: found.publicId,

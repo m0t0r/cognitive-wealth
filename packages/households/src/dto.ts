@@ -231,9 +231,7 @@ export function toNamedOnAccount({
   owningHousehold: HouseholdRow | null;
 }): NamedOnAccount {
   return {
-    publicId: row.publicId,
-    accountNumberEnding: row.accountNumber.slice(-4),
-    registrationType: row.registrationType,
+    ...toMaskedAccount(row),
     role,
     owningHousehold:
       owningHousehold === null
@@ -271,11 +269,14 @@ export function toOverviewAccount({
   roles: OverviewAccountRole[];
   positions: PublicPosition[];
 }): OverviewAccount {
+  return { ...toMaskedAccount(row), roles, positions };
+}
+
+/** What the overview says about any Account: never the full account number. */
+function toMaskedAccount(row: AccountRow) {
   return {
     publicId: row.publicId,
     accountNumberEnding: row.accountNumber.slice(-4),
     registrationType: row.registrationType,
-    roles,
-    positions,
   };
 }
