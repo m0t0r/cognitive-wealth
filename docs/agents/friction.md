@@ -37,4 +37,10 @@ If you're unsure whether something counts, report it.
    )"
    ```
 
+   Before writing a suggested fix, check it against `CLAUDE.md`'s hard rules (test isolation, worktrees, the auth ADRs) and against `origin/dev`: a fix that points a worktree at the shared dev database breaks isolation (#125), and one that adds a command may find it already exists, undocumented (#136).
+
 5. List the issues you filed or commented on in your final summary.
+
+## Fixing a report
+
+A report's "Suggested fix" is the reporter's hypothesis, not a spec. Re-check it the same way before building it (the hard rules, `origin/dev`), as for an issue's brief (`docs/agents/issue-tracker.md`), and fix the cause the report describes when the suggestion turns out wrong (#139).
