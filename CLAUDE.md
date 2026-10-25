@@ -74,6 +74,10 @@ Decisions and their reasons are in `docs/adr/` (0001 to 0008); how the system wo
 - Dev and test sign-in run the real email flow through the harness ([docs/dev-sign-in.md](docs/dev-sign-in.md)); the app has no backdoor, test-only route or bypass flag ([ADR 0007](docs/adr/0007-no-auth-backdoor.md)).
 - Sign-in emails are sent after the response, through Next's `after()` (`apps/web/lib/auth/server.ts`), so timing can't reveal who is a client. Hosting must support `after()` ([ADR 0006](docs/adr/0006-sign-in-email-sent-after-the-response.md)), or sign-in emails silently never send.
 
+## Code conventions
+
+- **Named arguments.** A function with two or more parameters, besides a leading `db` (or `tx`), takes them as one destructured object, so every call names what it passes: `write(db, { firmId, asOf, rows })`, `deliveryKey({ asOf, name })`, not `write(db, firmId, asOf, rows)`. This covers constructors and test helpers too. Callbacks whose arity an API dictates (`(row, index)`, Playwright fixtures, Better Auth's storage) are exempt. Oxlint's `max-params` (`max: 2`) enforces it in `packages/portfolio`; older code is migrated in #127, so follow the convention in new code even where the rule isn't on yet.
+
 ## Testing
 
 Each behaviour has one owning layer: test it there, and give other layers at most one representative case.

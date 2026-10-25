@@ -20,7 +20,7 @@ const FRIDAY = "2026-03-06";
 const MONDAY_MANIFEST_SHA256 = "20067846433cbe524c6aa4e5f748804f294f35e878fe318d0e6fd371e7f2b1d2";
 
 /** The database `pnpm db:seed` gives: world file v0's Households and Accounts in its Firm. */
-async function seededFirm(db: Database, slug = WORLD_FIRM_SLUG) {
+async function seededFirm(db: Database, { slug = WORLD_FIRM_SLUG }: { slug?: string } = {}) {
   await seedDevWorld(db, JSON.parse(readFileSync(WORLD, "utf8")));
   const [firm] = await db
     .select({ id: organization.id })
@@ -29,13 +29,15 @@ async function seededFirm(db: Database, slug = WORLD_FIRM_SLUG) {
   return firm!.id;
 }
 
-const ingest = (db: Database, firmId: number, asOf: string, source: FeedSource = FEED) =>
-  ingestDelivery(db, { firmId, asOf, source });
+const ingest = (
+  db: Database,
+  { firmId, asOf, source = FEED }: { firmId: number; asOf: string; source?: FeedSource },
+) => ingestDelivery(db, { firmId, asOf, source });
 
-/** Monday's `name` with `from` replaced by `to`, which must be in it. */
-async function mondaysWith(name: string, from: string, to: string) {
-  const text = await textOf(FEED, `${MONDAY}/${name}`);
-  if (!text.includes(from)) throw new Error(`${name} has no ${from}`);
+/** Monday's `file` with `from` replaced by `to`, which must be in it. */
+async function mondaysWith({ file, from, to }: { file: string; from: string; to: string }) {
+  const text = await textOf({ source: FEED, key: `${MONDAY}/${file}` });
+  if (!text.includes(from)) throw new Error(`${file} has no ${from}`);
   return text.replace(from, to);
 }
 
@@ -43,7 +45,7 @@ describe("ingestDelivery", () => {
   test("loads 2 March's Delivery for world file v0", async ({ orm }) => {
     const firmId = await seededFirm(orm);
 
-    const result = await ingest(orm, firmId, MONDAY);
+    const result = await ingest(orm, { firmId, asOf: MONDAY });
 
     expect(result).toEqual({
       status: "ingested",
@@ -80,7 +82,7 @@ describe("ingestDelivery", () => {
   test("keeps each Transaction's Trade, Settlement and Posting dates", async ({ orm }) => {
     const firmId = await seededFirm(orm);
 
-    await ingest(orm, firmId, MONDAY);
+    await ingest(orm, { firmId, asOf: MONDAY });
 
     const { transactions } = await feedRows(orm);
     // The buy settles the next Business day; the contribution the same day (primer 01, Part 5).
@@ -105,7 +107,7 @@ describe("ingestDelivery", () => {
     const firmId = await seededFirm(orm);
     const before = Date.now();
 
-    await ingest(orm, firmId, MONDAY);
+    await ingest(orm, { firmId, asOf: MONDAY });
 
     const { deliveries, transactions, positions, prices } = await feedRows(orm);
     const arrivals = new Set(
@@ -121,10 +123,10 @@ describe("ingestDelivery", () => {
 
   test("writes nothing the second time, and says so", async ({ orm }) => {
     const firmId = await seededFirm(orm);
-    await ingest(orm, firmId, MONDAY);
+    await ingest(orm, { firmId, asOf: MONDAY });
     const once = await feedRows(orm);
 
-    const again = await ingest(orm, firmId, MONDAY);
+    const again = await ingest(orm, { firmId, asOf: MONDAY });
 
     expect(again).toEqual({
       status: "already_ingested",
@@ -137,9 +139,9 @@ describe("ingestDelivery", () => {
 
   test("loads a later day's Delivery beside an earlier one", async ({ orm }) => {
     const firmId = await seededFirm(orm);
-    await ingest(orm, firmId, MONDAY);
+    await ingest(orm, { firmId, asOf: MONDAY });
 
-    const result = await ingest(orm, firmId, FRIDAY);
+    const result = await ingest(orm, { firmId, asOf: FRIDAY });
 
     // The Security master and the Accounts haven't changed since Monday, so they're left alone.
     expect(result).toMatchObject({
@@ -160,15 +162,19 @@ describe("ingestDelivery", () => {
 
   test("stores a Position with no price yet as empty, not zero", async ({ orm }) => {
     const firmId = await seededFirm(orm);
-    const source = await rewrittenDelivery(FEED, MONDAY, {
-      "positions.csv": await mondaysWith(
-        "positions.csv",
-        "LKBF,300.000000,10.00,3000.00",
-        "LKBF,300.000000,,",
-      ),
+    const source = await rewrittenDelivery({
+      base: FEED,
+      asOf: MONDAY,
+      files: {
+        "positions.csv": await mondaysWith({
+          file: "positions.csv",
+          from: "LKBF,300.000000,10.00,3000.00",
+          to: "LKBF,300.000000,,",
+        }),
+      },
     });
 
-    await ingest(orm, firmId, MONDAY, source);
+    await ingest(orm, { firmId, asOf: MONDAY, source });
 
     const { positions } = await feedRows(orm);
     expect(positions[0]).toMatchObject({ shares: "300.000000", price: null, marketValue: null });
@@ -179,7 +185,7 @@ describe("ingestDelivery", () => {
       const firmId = await seededFirm(orm);
       const before = await feedRows(orm);
 
-      const result = await ingest(orm, firmId, "2026-03-03");
+      const result = await ingest(orm, { firmId, asOf: "2026-03-03" });
 
       expect(result).toMatchObject({ status: "refused", reason: "not_delivered" });
       expect(await feedRows(orm)).toEqual(before);
@@ -189,11 +195,18 @@ describe("ingestDelivery", () => {
       const firmId = await seededFirm(orm);
       const before = await feedRows(orm);
       // The primer's Part 4: the IRA's 6000.00 became 600.00, so the row count still matches.
-      const source = editedFeedSource(FEED, {
-        [`${MONDAY}/transactions.csv`]: await mondaysWith("transactions.csv", "6000.00", "600.00"),
+      const source = editedFeedSource({
+        base: FEED,
+        edits: {
+          [`${MONDAY}/transactions.csv`]: await mondaysWith({
+            file: "transactions.csv",
+            from: "6000.00",
+            to: "600.00",
+          }),
+        },
       });
 
-      const result = await ingest(orm, firmId, MONDAY, source);
+      const result = await ingest(orm, { firmId, asOf: MONDAY, source });
 
       expect(result).toEqual({
         status: "refused",
@@ -209,13 +222,16 @@ describe("ingestDelivery", () => {
     test("a file cut short, naming the rows it's missing", async ({ orm }) => {
       const firmId = await seededFirm(orm);
       const before = await feedRows(orm);
-      const transactions = await textOf(FEED, `${MONDAY}/transactions.csv`);
-      const source = editedFeedSource(FEED, {
-        [`${MONDAY}/transactions.csv`]: transactions.split("\n").slice(0, 4).join("\n") + "\n",
-        [`${MONDAY}/prices.csv`]: null,
+      const transactions = await textOf({ source: FEED, key: `${MONDAY}/transactions.csv` });
+      const source = editedFeedSource({
+        base: FEED,
+        edits: {
+          [`${MONDAY}/transactions.csv`]: transactions.split("\n").slice(0, 4).join("\n") + "\n",
+          [`${MONDAY}/prices.csv`]: null,
+        },
       });
 
-      const result = await ingest(orm, firmId, MONDAY, source);
+      const result = await ingest(orm, { firmId, asOf: MONDAY, source });
 
       expect(result).toMatchObject({ status: "refused", reason: "incomplete" });
       expect(result.status === "refused" && result.message).toBe(
@@ -228,11 +244,19 @@ describe("ingestDelivery", () => {
     test("a file with one invalid row, naming it", async ({ orm }) => {
       const firmId = await seededFirm(orm);
       const before = await feedRows(orm);
-      const source = await rewrittenDelivery(FEED, MONDAY, {
-        "transactions.csv": await mondaysWith("transactions.csv", ",6000.00,", ',"6,000.00",'),
+      const source = await rewrittenDelivery({
+        base: FEED,
+        asOf: MONDAY,
+        files: {
+          "transactions.csv": await mondaysWith({
+            file: "transactions.csv",
+            from: ",6000.00,",
+            to: ',"6,000.00",',
+          }),
+        },
       });
 
-      const result = await ingest(orm, firmId, MONDAY, source);
+      const result = await ingest(orm, { firmId, asOf: MONDAY, source });
 
       expect(result).toMatchObject({ status: "refused", reason: "invalid_rows" });
       expect(result.status === "refused" && result.message).toMatch(
@@ -243,11 +267,15 @@ describe("ingestDelivery", () => {
 
     test("a row naming a Security the Security master doesn't list", async ({ orm }) => {
       const firmId = await seededFirm(orm);
-      const source = await rewrittenDelivery(FEED, MONDAY, {
-        "prices.csv": await mondaysWith("prices.csv", "LKBF,", "LKXX,"),
+      const source = await rewrittenDelivery({
+        base: FEED,
+        asOf: MONDAY,
+        files: {
+          "prices.csv": await mondaysWith({ file: "prices.csv", from: "LKBF,", to: "LKXX," }),
+        },
       });
 
-      const result = await ingest(orm, firmId, MONDAY, source);
+      const result = await ingest(orm, { firmId, asOf: MONDAY, source });
 
       expect(result).toMatchObject({
         status: "refused",
@@ -258,15 +286,19 @@ describe("ingestDelivery", () => {
 
     test("a Transaction posted on another day", async ({ orm }) => {
       const firmId = await seededFirm(orm);
-      const source = await rewrittenDelivery(FEED, MONDAY, {
-        "transactions.csv": await mondaysWith(
-          "transactions.csv",
-          "10000.00,2026-03-02,2026-03-02,2026-03-02",
-          "10000.00,2026-03-02,2026-03-02,2026-03-03",
-        ),
+      const source = await rewrittenDelivery({
+        base: FEED,
+        asOf: MONDAY,
+        files: {
+          "transactions.csv": await mondaysWith({
+            file: "transactions.csv",
+            from: "10000.00,2026-03-02,2026-03-02,2026-03-02",
+            to: "10000.00,2026-03-02,2026-03-02,2026-03-03",
+          }),
+        },
       });
 
-      const result = await ingest(orm, firmId, MONDAY, source);
+      const result = await ingest(orm, { firmId, asOf: MONDAY, source });
 
       expect(result).toMatchObject({
         status: "refused",
@@ -278,12 +310,14 @@ describe("ingestDelivery", () => {
     test("an account number the Firm has no Account for, naming it", async ({ orm }) => {
       const firmId = await seededFirm(orm);
       const before = await feedRows(orm);
-      const accounts = await textOf(FEED, `${MONDAY}/accounts.csv`);
-      const source = await rewrittenDelivery(FEED, MONDAY, {
-        "accounts.csv": `${accounts}CW-000099,individual,2026-03-02\n`,
+      const accounts = await textOf({ source: FEED, key: `${MONDAY}/accounts.csv` });
+      const source = await rewrittenDelivery({
+        base: FEED,
+        asOf: MONDAY,
+        files: { "accounts.csv": `${accounts}CW-000099,individual,2026-03-02\n` },
       });
 
-      const result = await ingest(orm, firmId, MONDAY, source);
+      const result = await ingest(orm, { firmId, asOf: MONDAY, source });
 
       expect(result).toEqual({
         status: "refused",
@@ -297,15 +331,19 @@ describe("ingestDelivery", () => {
 
     test("a Transaction for an account number the Firm has no Account for", async ({ orm }) => {
       const firmId = await seededFirm(orm);
-      const source = await rewrittenDelivery(FEED, MONDAY, {
-        "transactions.csv": await mondaysWith(
-          "transactions.csv",
-          "TX-000000012,CW-000002,",
-          "TX-000000012,CW-000077,",
-        ),
+      const source = await rewrittenDelivery({
+        base: FEED,
+        asOf: MONDAY,
+        files: {
+          "transactions.csv": await mondaysWith({
+            file: "transactions.csv",
+            from: "TX-000000012,CW-000002,",
+            to: "TX-000000012,CW-000077,",
+          }),
+        },
       });
 
-      const result = await ingest(orm, firmId, MONDAY, source);
+      const result = await ingest(orm, { firmId, asOf: MONDAY, source });
 
       expect(result).toMatchObject({
         status: "refused",
@@ -316,9 +354,9 @@ describe("ingestDelivery", () => {
 
     test("another Firm's Accounts", async ({ orm }) => {
       // Globex is seeded too, but the world's Accounts are Larkspur's.
-      const globex = await seededFirm(orm, "globex");
+      const globex = await seededFirm(orm, { slug: "globex" });
 
-      const result = await ingest(orm, globex, MONDAY);
+      const result = await ingest(orm, { firmId: globex, asOf: MONDAY });
 
       expect(result).toMatchObject({
         status: "refused",
@@ -329,13 +367,21 @@ describe("ingestDelivery", () => {
 
     test("a different Delivery for a day already ingested", async ({ orm }) => {
       const firmId = await seededFirm(orm);
-      await ingest(orm, firmId, MONDAY);
+      await ingest(orm, { firmId, asOf: MONDAY });
       const before = await feedRows(orm);
-      const restated = await rewrittenDelivery(FEED, MONDAY, {
-        "transactions.csv": await mondaysWith("transactions.csv", "6000.00", "6500.00"),
+      const restated = await rewrittenDelivery({
+        base: FEED,
+        asOf: MONDAY,
+        files: {
+          "transactions.csv": await mondaysWith({
+            file: "transactions.csv",
+            from: "6000.00",
+            to: "6500.00",
+          }),
+        },
       });
 
-      const result = await ingest(orm, firmId, MONDAY, restated);
+      const result = await ingest(orm, { firmId, asOf: MONDAY, source: restated });
 
       expect(result).toMatchObject({
         status: "refused",
@@ -349,14 +395,16 @@ describe("ingestDelivery", () => {
 
     test("a Transaction an earlier Delivery already carried", async ({ orm }) => {
       const firmId = await seededFirm(orm);
-      await ingest(orm, firmId, MONDAY);
+      await ingest(orm, { firmId, asOf: MONDAY });
       const before = await feedRows(orm);
-      const friday = await textOf(FEED, `${FRIDAY}/transactions.csv`);
-      const source = await rewrittenDelivery(FEED, FRIDAY, {
-        "transactions.csv": friday.replace("TX-000000011", "TX-000000003"),
+      const friday = await textOf({ source: FEED, key: `${FRIDAY}/transactions.csv` });
+      const source = await rewrittenDelivery({
+        base: FEED,
+        asOf: FRIDAY,
+        files: { "transactions.csv": friday.replace("TX-000000011", "TX-000000003") },
       });
 
-      const result = await ingest(orm, firmId, FRIDAY, source);
+      const result = await ingest(orm, { firmId, asOf: FRIDAY, source });
 
       expect(result).toEqual({
         status: "refused",
@@ -380,9 +428,13 @@ describe("ingestDelivery", () => {
       },
     ])("a Manifest with $what", async ({ change, message }, { orm }) => {
       const firmId = await seededFirm(orm);
-      const source = await rewrittenDelivery(FEED, MONDAY, {}, (json) => ({ ...json, ...change }));
+      const source = await rewrittenDelivery({
+        base: FEED,
+        asOf: MONDAY,
+        editManifest: (json) => ({ ...json, ...change }),
+      });
 
-      const result = await ingest(orm, firmId, MONDAY, source);
+      const result = await ingest(orm, { firmId, asOf: MONDAY, source });
 
       expect(result).toMatchObject({
         status: "refused",

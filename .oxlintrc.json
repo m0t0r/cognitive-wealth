@@ -96,6 +96,14 @@
       }
     },
     {
+      // Named arguments (CLAUDE.md, "Code conventions"): at most `db` and one object. Only the
+      // packages that already follow it, until the rest are migrated (#127).
+      "files": ["packages/portfolio/**"],
+      "rules": {
+        "max-params": ["error", { "max": 2 }]
+      }
+    },
+    {
       "files": ["apps/web-e2e/tests/**"],
       "rules": {
         "no-restricted-imports": [

@@ -15,7 +15,7 @@ export interface FeedSource {
 }
 
 /** A Delivery's key for one of its files, as the custodian's `delivery_key` makes it. */
-export const deliveryKey = (asOf: string, name: string) => `${asOf}/${name}`;
+export const deliveryKey = ({ asOf, name }: { asOf: string; name: string }) => `${asOf}/${name}`;
 
 /**
  * The feed in a local directory, as `LocalFeedStore` writes it: key `2026-03-02/prices.csv` is

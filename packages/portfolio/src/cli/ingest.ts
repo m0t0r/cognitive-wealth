@@ -61,10 +61,10 @@ async function main() {
         const { written } = result;
         console.log(
           `Ingested the Delivery for ${asOf} from ${join(root, asOf)} into ${target}: ` +
-            `${count(written.transactions, "Transaction")}, ` +
-            `${count(written.positions, "Position")} and ${count(written.prices, "price")}, and ` +
-            `${count(written.securities, "Security", "Securities")} and ` +
-            `${count(written.accounts, "Account")} added or updated. ` +
+            `${count({ n: written.transactions, one: "Transaction" })}, ` +
+            `${count({ n: written.positions, one: "Position" })} and ${count({ n: written.prices, one: "price" })}, and ` +
+            `${count({ n: written.securities, one: "Security", many: "Securities" })} and ` +
+            `${count({ n: written.accounts, one: "Account" })} added or updated. ` +
             `Manifest ${result.manifestSha256}.`,
         );
         break;
@@ -91,7 +91,8 @@ async function main() {
   }
 }
 
-const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const count = ({ n, one, many = `${one}s` }: { n: number; one: string; many?: string }) =>
+  `${n} ${n === 1 ? one : many}`;
 
 try {
   await main();
