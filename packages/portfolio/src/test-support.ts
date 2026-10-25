@@ -30,10 +30,13 @@ export async function feedRows(db: Database) {
  * A feed source over `base`, with some keys' contents replaced (`edits`) or removed (`null`), for
  * a Delivery damaged on the way.
  */
-export function editedFeedSource(
-  base: FeedSource,
-  edits: Record<string, string | null>,
-): FeedSource {
+export function editedFeedSource({
+  base,
+  edits,
+}: {
+  base: FeedSource;
+  edits: Record<string, string | null>;
+}): FeedSource {
   return {
     async get(key) {
       if (!(key in edits)) return base.get(key);
@@ -58,29 +61,45 @@ const ManifestFiles = z.looseObject({ files: z.array(ManifestFile) });
 /**
  * `base`'s Delivery for `asOf` with some files' text replaced, and a Manifest rewritten to match
  * them: as if the Custodian really wrote it this way, so it passes the Manifest check and only its
- * rows can be wrong. `manifest` changes the Manifest's JSON after that.
+ * rows can be wrong. `editManifest` changes the Manifest's JSON after that.
  */
-export async function rewrittenDelivery(
-  base: FeedSource,
-  asOf: string,
-  files: Record<string, string>,
-  manifest: (json: Record<string, unknown>) => Record<string, unknown> = (json) => json,
-): Promise<FeedSource> {
-  const json = ManifestFiles.parse(JSON.parse(await textOf(base, `${asOf}/manifest.json`)));
+export async function rewrittenDelivery({
+  base,
+  asOf,
+  files = {},
+  editManifest = (json) => json,
+}: {
+  base: FeedSource;
+  asOf: string;
+  files?: Record<string, string>;
+  editManifest?: (json: Record<string, unknown>) => Record<string, unknown>;
+}): Promise<FeedSource> {
+  const json = ManifestFiles.parse(
+    JSON.parse(await textOf({ source: base, key: `${asOf}/manifest.json` })),
+  );
   for (const entry of json.files) {
     const text = files[entry.name];
     if (text === undefined) continue;
     entry.rows = text.trimEnd().split("\n").length - 1;
     entry.sha256 = createHash("sha256").update(text).digest("hex");
   }
-  return editedFeedSource(base, {
-    ...Object.fromEntries(Object.entries(files).map(([name, text]) => [`${asOf}/${name}`, text])),
-    [`${asOf}/manifest.json`]: JSON.stringify(manifest(json), null, 2),
+  return editedFeedSource({
+    base,
+    edits: {
+      ...Object.fromEntries(Object.entries(files).map(([name, text]) => [`${asOf}/${name}`, text])),
+      [`${asOf}/manifest.json`]: JSON.stringify(editManifest(json), null, 2),
+    },
   });
 }
 
 /** The text stored under `key`, which must exist. */
-export async function textOf(source: FeedSource, key: string): Promise<string> {
+export async function textOf({
+  source,
+  key,
+}: {
+  source: FeedSource;
+  key: string;
+}): Promise<string> {
   const bytes = await source.get(key);
   if (!bytes) throw new Error(`The feed source has no ${key}`);
   return new TextDecoder().decode(bytes);

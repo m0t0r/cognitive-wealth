@@ -96,7 +96,7 @@ const PROBLEMS_SHOWN = 10;
 // Thrown inside the database transaction, so it rolls back, and returned as a `refused` result.
 class Refusal extends Error {
   readonly reason: RefusalReason;
-  constructor(reason: RefusalReason, message: string) {
+  constructor({ reason, message }: { reason: RefusalReason; message: string }) {
     super(message);
     this.reason = reason;
   }
@@ -143,9 +143,9 @@ async function ingestOnce(
 ): Promise<IngestionResult> {
   try {
     return await db.transaction(async (tx) => {
-      const manifestBytes = await source.get(deliveryKey(asOf, "manifest.json"));
+      const manifestBytes = await source.get(deliveryKey({ asOf, name: "manifest.json" }));
       if (!manifestBytes) {
-        throw new Refusal("not_delivered", `No manifest.json for ${asOf} yet`);
+        throw new Refusal({ reason: "not_delivered", message: `No manifest.json for ${asOf} yet` });
       }
       const manifestSha256 = sha256(manifestBytes);
 
@@ -157,20 +157,21 @@ async function ingestOnce(
         return { status: "already_ingested", asOf, manifestSha256 } as const;
       }
       if (earlier) {
-        throw new Refusal(
-          "restatement",
-          `A different Delivery for ${asOf} was already ingested (Manifest ` +
+        throw new Refusal({
+          reason: "restatement",
+          message:
+            `A different Delivery for ${asOf} was already ingested (Manifest ` +
             `${earlier.manifestSha256}, now ${manifestSha256}); restatements aren't handled yet`,
-        );
+        });
       }
 
-      const manifest = parseManifest(manifestBytes, asOf);
-      const files = await checkedFiles(source, manifest);
-      const rows = validRows(files, asOf);
-      const accountIds = await requireKnownAccounts(tx, firmId, rows);
-      await refuseRepeatedTransactions(tx, firmId, rows.transactions);
+      const manifest = parseManifest({ bytes: manifestBytes, asOf });
+      const files = await checkedFiles({ source, manifest });
+      const rows = validRows({ files, asOf });
+      const accountIds = await requireKnownAccounts(tx, { firmId, rows });
+      await refuseRepeatedTransactions(tx, { firmId, transactions: rows.transactions });
 
-      const written = await write(tx, firmId, asOf, manifestSha256, rows, accountIds);
+      const written = await write(tx, { firmId, asOf, manifestSha256, rows, accountIds });
       return { status: "ingested", asOf, manifestSha256, written } as const;
     });
   } catch (error) {
@@ -185,35 +186,39 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function parseManifest(bytes: Uint8Array, asOf: string): ManifestOutput {
+function parseManifest({ bytes, asOf }: { bytes: Uint8Array; asOf: string }): ManifestOutput {
   let json: unknown;
   try {
     json = JSON.parse(utf8(bytes));
   } catch {
-    throw new Refusal("invalid_manifest", `manifest.json for ${asOf} isn't JSON`);
+    throw new Refusal({
+      reason: "invalid_manifest",
+      message: `manifest.json for ${asOf} isn't JSON`,
+    });
   }
   const parsed = Manifest.safeParse(json);
   if (!parsed.success) {
-    throw new Refusal(
-      "invalid_manifest",
-      `manifest.json for ${asOf} isn't a Manifest this reads: ${describeIssues(parsed.error)}`,
-    );
+    throw new Refusal({
+      reason: "invalid_manifest",
+      message: `manifest.json for ${asOf} isn't a Manifest this reads: ${describeIssues(parsed.error)}`,
+    });
   }
   const manifest = parsed.data;
   if (manifest.asOfDate !== asOf) {
-    throw new Refusal(
-      "invalid_manifest",
-      `manifest.json in ${asOf}'s folder is for ${manifest.asOfDate}`,
-    );
+    throw new Refusal({
+      reason: "invalid_manifest",
+      message: `manifest.json in ${asOf}'s folder is for ${manifest.asOfDate}`,
+    });
   }
   const listed = manifest.files.map((file) => file.name).toSorted();
   const expected = FILE_NAMES;
   if (listed.join() !== expected.join()) {
-    throw new Refusal(
-      "invalid_manifest",
-      `manifest.json for ${asOf} lists ${listed.join(", ") || "no files"}, ` +
+    throw new Refusal({
+      reason: "invalid_manifest",
+      message:
+        `manifest.json for ${asOf} lists ${listed.join(", ") || "no files"}, ` +
         `not ${expected.join(", ")}`,
-    );
+    });
   }
   return manifest;
 }
@@ -223,17 +228,20 @@ function parseManifest(bytes: Uint8Array, asOf: string): ManifestOutput {
  * and Content hash the Manifest gives it. Every file is checked before refusing, so the refusal
  * names all of them.
  */
-async function checkedFiles(
-  source: FeedSource,
-  manifest: ManifestOutput,
-): Promise<Map<FileName, CsvRecord[]>> {
+async function checkedFiles({
+  source,
+  manifest,
+}: {
+  source: FeedSource;
+  manifest: ManifestOutput;
+}): Promise<Map<FileName, CsvRecord[]>> {
   const listed = new Map(manifest.files.map((file) => [file.name, file]));
   // Each file's records, or what's wrong with it.
   const checked = await Promise.all(
     FILE_NAMES.map(async (name): Promise<[FileName, CsvRecord[] | string]> => {
       // parseManifest made sure the Manifest lists each of the five.
       const file = listed.get(name)!;
-      const bytes = await source.get(deliveryKey(manifest.asOfDate, name));
+      const bytes = await source.get(deliveryKey({ asOf: manifest.asOfDate, name }));
       if (!bytes) return [name, `${name} is missing`];
       const records = csvRecords(bytes);
       if (typeof records === "string") return [name, `${name} isn't readable CSV: ${records}`];
@@ -247,10 +255,10 @@ async function checkedFiles(
   );
   const problems = checked.flatMap(([, checks]) => (typeof checks === "string" ? [checks] : []));
   if (problems.length > 0) {
-    throw new Refusal(
-      "incomplete",
-      `The Delivery for ${manifest.asOfDate} doesn't match its Manifest: ${joinProblems(problems)}`,
-    );
+    throw new Refusal({
+      reason: "incomplete",
+      message: `The Delivery for ${manifest.asOfDate} doesn't match its Manifest: ${joinProblems(problems)}`,
+    });
   }
   return new Map(
     checked.flatMap(([name, checks]) =>
@@ -276,7 +284,7 @@ function csvRecords(bytes: Uint8Array): CsvRecord[] | string {
  * Security its Security master doesn't list, or was posted on another day: each snapshot is complete, and
  * `transactions.csv` holds only the Transactions posted on the As-of date (ADR 0017).
  */
-function validRows(files: Map<FileName, CsvRecord[]>, asOf: string): Rows {
+function validRows({ files, asOf }: { files: Map<FileName, CsvRecord[]>; asOf: string }): Rows {
   const problems: string[] = [];
   const parseFile = <Name extends FileName>(name: Name): RowsOf<Name> =>
     (files.get(name) ?? []).flatMap((record, index) => {
@@ -295,41 +303,56 @@ function validRows(files: Map<FileName, CsvRecord[]>, asOf: string): Rows {
     positions: parseFile("positions.csv"),
     prices: parseFile("prices.csv"),
   };
-  if (problems.length > 0) refuseRows(asOf, problems);
+  if (problems.length > 0) refuseRows({ asOf, problems });
 
   const securities = new Set(rows.securities.map((row) => row.identifier));
-  const unlistedSecurity = (name: FileName, index: number, identifier: string | null) => {
+  const unlistedSecurity = ({
+    file,
+    index,
+    identifier,
+  }: {
+    file: FileName;
+    index: number;
+    identifier: string | null;
+  }) => {
     if (identifier !== null && !securities.has(identifier)) {
-      problems.push(`${name} row ${index + 2}: Security ${identifier} isn't in securities.csv`);
+      problems.push(`${file} row ${index + 2}: Security ${identifier} isn't in securities.csv`);
     }
   };
   rows.transactions.forEach((row, index) => {
-    unlistedSecurity("transactions.csv", index, row.security);
+    unlistedSecurity({ file: "transactions.csv", index, identifier: row.security });
     if (row.postingDate !== asOf) {
       problems.push(
         `transactions.csv row ${index + 2}: posted on ${row.postingDate}, not on ${asOf}`,
       );
     }
   });
-  rows.positions.forEach((row, index) => unlistedSecurity("positions.csv", index, row.security));
-  rows.prices.forEach((row, index) => unlistedSecurity("prices.csv", index, row.security));
-  if (problems.length > 0) refuseRows(asOf, problems);
+  rows.positions.forEach((row, index) =>
+    unlistedSecurity({ file: "positions.csv", index, identifier: row.security }),
+  );
+  rows.prices.forEach((row, index) =>
+    unlistedSecurity({ file: "prices.csv", index, identifier: row.security }),
+  );
+  if (problems.length > 0) refuseRows({ asOf, problems });
 
   return rows;
 }
 
-function refuseRows(asOf: string, problems: string[]): never {
-  throw new Refusal(
-    "invalid_rows",
-    `The Delivery for ${asOf} has invalid rows: ${joinProblems(problems)}`,
-  );
+function refuseRows({ asOf, problems }: { asOf: string; problems: string[] }): never {
+  throw new Refusal({
+    reason: "invalid_rows",
+    message: `The Delivery for ${asOf} has invalid rows: ${joinProblems(problems)}`,
+  });
 }
 
 /**
  * The Firm's Account id for each account number the Delivery names, in any file, refusing the Delivery if any
  * is unknown: every row must belong to an Account the Firm knows, so a person looks first.
  */
-async function requireKnownAccounts(db: Database, firmId: number, rows: Rows) {
+async function requireKnownAccounts(
+  db: Database,
+  { firmId, rows }: { firmId: number; rows: Rows },
+) {
   const numbers = [
     ...new Set(
       [...rows.accounts, ...rows.transactions, ...rows.positions].map((row) => row.accountNumber),
@@ -349,19 +372,19 @@ async function requireKnownAccounts(db: Database, firmId: number, rows: Rows) {
   const ids = new Map(found.map((row) => [row.accountNumber, row.id]));
   const unknown = numbers.filter((number) => !ids.has(number)).toSorted();
   if (unknown.length > 0) {
-    throw new Refusal(
-      "unknown_accounts",
-      `The Firm has no Account numbered ${joinProblems(unknown)}; add ${unknown.length === 1 ? "it" : "them"} ` +
+    throw new Refusal({
+      reason: "unknown_accounts",
+      message:
+        `The Firm has no Account numbered ${joinProblems(unknown)}; add ${unknown.length === 1 ? "it" : "them"} ` +
         "to a Household before ingesting",
-    );
+    });
   }
   return ids;
 }
 
 async function refuseRepeatedTransactions(
   db: Database,
-  firmId: number,
-  transactions: Rows["transactions"],
+  { firmId, transactions }: { firmId: number; transactions: Rows["transactions"] },
 ) {
   const ids = transactions.map((row) => row.transactionId);
   if (ids.length === 0) return;
@@ -375,21 +398,30 @@ async function refuseRepeatedTransactions(
       ),
     );
   if (repeated.length > 0) {
-    throw new Refusal(
-      "transactions_already_ingested",
-      `An earlier Delivery already carried Transaction ` +
+    throw new Refusal({
+      reason: "transactions_already_ingested",
+      message:
+        `An earlier Delivery already carried Transaction ` +
         joinProblems(repeated.map((row) => row.transactionId).toSorted()),
-    );
+    });
   }
 }
 
 async function write(
   db: Database,
-  firmId: number,
-  asOf: string,
-  manifestSha256: string,
-  rows: Rows,
-  accountIds: Map<string, number>,
+  {
+    firmId,
+    asOf,
+    manifestSha256,
+    rows,
+    accountIds,
+  }: {
+    firmId: number;
+    asOf: string;
+    manifestSha256: string;
+    rows: Rows;
+    accountIds: Map<string, number>;
+  },
 ): Promise<Extract<IngestionResult, { status: "ingested" }>["written"]> {
   const [delivery] = await db
     .insert(custodianDelivery)
@@ -398,7 +430,8 @@ async function write(
   const deliveryId = delivery!.id;
 
   // The Security master and the Accounts are snapshots: new ones are added, changed ones updated,
-  // and unchanged ones left alone, so only what changed counts as written.
+  // and unchanged ones left alone, so only what changed counts as written. An update overwrites the
+  // old value, so no earlier one is kept yet (#126).
   const securities = rows.securities.length
     ? await db
         .insert(security)
@@ -444,8 +477,8 @@ async function write(
   const securityId = (identifier: string) => securityIds.get(identifier)!;
   const accountId = (number: string) => accountIds.get(number)!;
 
-  await inBatches(
-    rows.transactions.map((row) => ({
+  await inBatches({
+    rows: rows.transactions.map((row) => ({
       firmId,
       deliveryId,
       transactionId: row.transactionId,
@@ -459,10 +492,10 @@ async function write(
       settlementDate: row.settlementDate,
       postingDate: row.postingDate,
     })),
-    (batch) => db.insert(custodialTransaction).values(batch),
-  );
-  await inBatches(
-    rows.positions.map((row) => ({
+    insert: (batch) => db.insert(custodialTransaction).values(batch),
+  });
+  await inBatches({
+    rows: rows.positions.map((row) => ({
       firmId,
       deliveryId,
       asOfDate: asOf,
@@ -472,18 +505,18 @@ async function write(
       price: row.price,
       marketValue: row.marketValue,
     })),
-    (batch) => db.insert(custodialPosition).values(batch),
-  );
-  await inBatches(
-    rows.prices.map((row) => ({
+    insert: (batch) => db.insert(custodialPosition).values(batch),
+  });
+  await inBatches({
+    rows: rows.prices.map((row) => ({
       firmId,
       deliveryId,
       asOfDate: asOf,
       securityId: securityId(row.security),
       price: row.price,
     })),
-    (batch) => db.insert(securityPrice).values(batch),
-  );
+    insert: (batch) => db.insert(securityPrice).values(batch),
+  });
 
   return {
     securities: securities.length,
@@ -497,12 +530,18 @@ async function write(
 // Postgres takes at most 65,535 parameters a statement, so a large file goes in batches.
 const ROWS_PER_INSERT = 1000;
 
-/** `insert` called on `values` a batch at a time, one after another. */
-async function inBatches<T>(values: T[], insert: (batch: T[]) => PromiseLike<unknown>) {
-  for (let start = 0; start < values.length; start += ROWS_PER_INSERT) {
+/** `insert` called on `rows` a batch at a time, one after another. */
+async function inBatches<T>({
+  rows,
+  insert,
+}: {
+  rows: T[];
+  insert: (batch: T[]) => PromiseLike<unknown>;
+}) {
+  for (let start = 0; start < rows.length; start += ROWS_PER_INSERT) {
     // One connection in a database transaction: the batches would queue one after another anyway.
     // oxlint-disable-next-line no-await-in-loop
-    await insert(values.slice(start, start + ROWS_PER_INSERT));
+    await insert(rows.slice(start, start + ROWS_PER_INSERT));
   }
 }
 
