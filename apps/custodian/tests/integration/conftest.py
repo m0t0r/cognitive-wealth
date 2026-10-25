@@ -9,47 +9,29 @@ sees another's rows, and pytest-randomly shuffles the order on every run to prov
 from collections.abc import Iterator
 
 import pytest
-from alembic import command
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from tests.integration.postgres import (
     EMPTY_DATABASE,
-    MIGRATED_DATABASE,
     Database,
     PostgresServer,
-    alembic_config,
-    start_postgres,
+    migrated_database,
+    start_migrated_postgres,
 )
 
 
 @pytest.fixture(scope="session")
 def postgres_server() -> Iterator[PostgresServer]:
     """Started once per run (`scope="session"`), with the migrated template, and stopped after."""
-    with start_postgres() as server:
-        server.create_database(EMPTY_DATABASE, name=MIGRATED_DATABASE)
-        # `alembic upgrade head`, as `pnpm --filter custodian db:migrate` runs it.
-        engine = create_engine(server.url_for(MIGRATED_DATABASE, "migrator"))
-        try:
-            with engine.begin() as connection:
-                command.upgrade(alembic_config(connection), "head")
-        finally:
-            engine.dispose()
+    with start_migrated_postgres() as server:
         yield server
 
 
 @pytest.fixture
 def database(postgres_server: PostgresServer) -> Iterator[Database]:
     """A migrated database for this test alone, dropped when the test ends."""
-    name = postgres_server.create_database(MIGRATED_DATABASE)
-    app = create_engine(postgres_server.url_for(name, "app"))
-    migrator = create_engine(postgres_server.url_for(name, "migrator"))
-    try:
-        yield Database(name=name, app=app, migrator=migrator)
-    finally:
-        app.dispose()
-        migrator.dispose()
-        postgres_server.drop_database(name)
+    with migrated_database(postgres_server) as database:
+        yield database
 
 
 @pytest.fixture

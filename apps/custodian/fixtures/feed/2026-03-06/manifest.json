@@ -1,0 +1,31 @@
+{
+  "format_version": 1,
+  "as_of_date": "2026-03-06",
+  "files": [
+    {
+      "name": "accounts.csv",
+      "rows": 2,
+      "sha256": "10cbf80225479ef117f8fd036167398fa726419cb07eeeca66f729abae197891"
+    },
+    {
+      "name": "positions.csv",
+      "rows": 5,
+      "sha256": "e554b27fac9cb422f1c8289e62f1328a2df3f74b69fdfd532feee3945d40f3ea"
+    },
+    {
+      "name": "prices.csv",
+      "rows": 3,
+      "sha256": "958a5c9a64b25b6a42ceb462968e59605c518980de02dfdc543f0958fd28ee17"
+    },
+    {
+      "name": "securities.csv",
+      "rows": 3,
+      "sha256": "c18814eeaf6a54d83909e0841f77e338cbd6e51d5d9f13ff5e826320bb549e95"
+    },
+    {
+      "name": "transactions.csv",
+      "rows": 3,
+      "sha256": "e0250fd75db2e201e2c67500ae65c2ef66d3348fcb2ffaba47c4795027298ed3"
+    }
+  ]
+}

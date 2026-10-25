@@ -26,10 +26,24 @@ from decimal import (
 from enum import Enum
 from typing import ClassVar, Self
 
-from pydantic import GetCoreSchemaHandler
+from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler
+from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import core_schema
 
-__all__ = ["Money", "Price", "Rate", "RoundingRule", "Shares", "UnroundedMoney", "UnroundedShares"]
+__all__ = [
+    "DECIMAL_PATTERN",
+    "Money",
+    "Price",
+    "Rate",
+    "RoundingRule",
+    "Shares",
+    "UnroundedMoney",
+    "UnroundedShares",
+]
+
+DECIMAL_PATTERN = r"^-?\d+(\.\d+)?$"
+"""How a decimal string with no fixed scale (Price, Rate) looks in the contract: `150.25`, `10`,
+`0.1234`. No exponent. Money and Shares are stricter: see `_DecimalString.contract_pattern`."""
 
 _CENT = Decimal("0.01")
 _SHARE_STEP = Decimal("0.000001")
@@ -143,6 +157,33 @@ class _DecimalString(_Exact):
                 str, return_schema=core_schema.str_schema(), when_used="json"
             ),
         )
+
+    @classmethod
+    def __get_pydantic_json_schema__(
+        cls, schema: core_schema.CoreSchema, handler: GetJsonSchemaHandler
+    ) -> JsonSchemaValue:
+        # Pydantic calls this hook for the field's JSON Schema, which the OpenAPI contract and
+        # Cognitive Wealth's Zod schemas are generated from: a string that only a decimal fits.
+        json_schema = handler(schema)
+        json_schema["pattern"] = cls.contract_pattern()
+        return json_schema
+
+    @classmethod
+    def contract_pattern(cls) -> str:
+        """The decimal strings this type is sent as.
+
+        A fixed-scale type is always sent with exactly its places, because `__init__` keeps each
+        value at its step: Money as `-9.00`, never `-9` or `-9.0`; Shares as `40.000000`. So the
+        contract can refuse any other number of places, such as a fraction of a cent.
+        """
+        if cls._step is None:
+            return DECIMAL_PATTERN
+        # A step of 0.01 has exponent -2: two places after the point. The exponent is a letter
+        # only for NaN or infinity, which a step never is; the isinstance check tells pyright so.
+        exponent = cls._step.as_tuple().exponent
+        if not isinstance(exponent, int):
+            raise TypeError(f"{cls.__name__}'s step must be a finite decimal")
+        return rf"^-?\d+\.\d{{{-exponent}}}$"
 
     @classmethod
     def _parse(cls, value: object) -> Self:

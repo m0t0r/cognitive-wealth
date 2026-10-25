@@ -3,6 +3,11 @@
   "ignorePatterns": [
     "pnpm-lock.yaml",
     "world/schema.json",
+    // Written by Python: json.dumps lays it out, and a Manifest's hash covers its exact bytes.
+    "apps/custodian/openapi.json",
+    "apps/custodian/fixtures/feed/**",
+    // Orval's output, compared byte for byte with a fresh generation by generated.test.ts.
+    "packages/custodian-client/src/generated/**",
     "**/.next/**",
     "**/next-env.d.ts",
     ".agents/**",

@@ -24,6 +24,7 @@ from custodian.market_value import market_value_as_of
 from custodian.money import Shares
 from custodian.positions import positions_as_of
 from custodian.world import WORLD_V0_PATH, WorldFile, read_world
+from tests.integration.example_deliveries import EXAMPLE_DELIVERIES, write_example_deliveries
 from tests.integration.postgres import CUSTODIAN, MIGRATED_DATABASE, Database, PostgresServer
 
 MONDAY = date(2026, 3, 2)
@@ -335,3 +336,18 @@ def test_the_primer_quotes_the_real_hashes_for_2_march(
     for file in manifest.files:
         assert f'"sha256": "{file.sha256}"' in primer, file.name
     assert hashlib.sha256(store.get("2026-03-02/manifest.json")).hexdigest() in primer
+
+
+def test_the_example_deliveries_are_what_the_writer_writes(
+    database: Database, tmp_path: Path
+) -> None:
+    # fixtures/feed/ is what Cognitive Wealth's tests parse (example_deliveries.py). When this
+    # fails, rewrite it with `pnpm --filter custodian feed:examples` and commit the result.
+    store = LocalFeedStore(tmp_path)
+    examples = LocalFeedStore(EXAMPLE_DELIVERIES)
+
+    write_example_deliveries(database, store)
+
+    assert examples.list("") == store.list("")
+    for key in store.list(""):
+        assert examples.get(key) == store.get(key), key

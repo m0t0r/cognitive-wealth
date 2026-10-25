@@ -1,0 +1,4 @@
+identifier,name,kind
+LKBF,Larkspur Bond Fund,fund
+LKSF,Larkspur Stock Fund,fund
+SWEEP,Larkspur Bank Sweep,cash_sweep
