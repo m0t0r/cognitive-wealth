@@ -1,16 +1,21 @@
-import { RegistrationType } from "@repo/custodian-client/schemas";
+import { RegistrationType, SecurityKind, TransactionKind } from "@repo/custodian-client/schemas";
 import { eq, sql } from "drizzle-orm";
 import type { Database } from "./index";
 import {
   accountRole,
   auditEvent,
   custodialAccount,
+  custodialPosition,
+  custodialTransaction,
+  custodianDelivery,
   household,
   householdMember,
   invitation,
   member,
   organization,
   person,
+  security,
+  securityPrice,
   session,
   user,
 } from "./schema";
@@ -327,5 +332,135 @@ describe("households", () => {
     expect(await orm.$count(household)).toBe(0);
     expect(await orm.$count(person)).toBe(0);
     expect(await orm.$count(householdMember)).toBe(0);
+  });
+});
+
+/** A Firm with an Account, a Security and an ingested Delivery to hang feed rows on. */
+async function createFeedFirm(db: Database, slug: string) {
+  const firm = await createOrganization(db, slug);
+  const [account] = await db
+    .insert(custodialAccount)
+    .values({ firmId: firm.id, accountNumber: "CW-000001" })
+    .returning();
+  const [fund] = await db
+    .insert(security)
+    .values({ firmId: firm.id, identifier: "LKSF", name: "Larkspur Stock Fund", kind: "fund" })
+    .returning();
+  const [delivery] = await db
+    .insert(custodianDelivery)
+    .values({ firmId: firm.id, asOfDate: "2026-03-02", manifestSha256: "0".repeat(64) })
+    .returning();
+  return {
+    firmId: firm.id,
+    accountId: account!.id,
+    securityId: fund!.id,
+    deliveryId: delivery!.id,
+  };
+}
+
+const buy = (feed: Awaited<ReturnType<typeof createFeedFirm>>) => ({
+  ...feed,
+  transactionId: "TX-000000004",
+  kind: "buy" as const,
+  shares: "40.000000",
+  amount: "-6010.00",
+  tradeDate: "2026-03-02",
+  settlementDate: "2026-03-03",
+  postingDate: "2026-03-02",
+});
+
+describe("custodian feed", () => {
+  test("keeps amounts at their type's scale, and a price as quoted", async ({ orm }) => {
+    const feed = await createFeedFirm(orm, "larkspur");
+
+    const [row] = await orm
+      .insert(custodialTransaction)
+      .values({ ...buy(feed), shares: "40.5", amount: "-6010" })
+      .returning();
+    const [quote] = await orm
+      .insert(securityPrice)
+      .values({ ...feed, asOfDate: "2026-03-02", price: "150.2500" })
+      .returning();
+
+    expect(row).toMatchObject({ shares: "40.500000", amount: "-6010.00" });
+    expect(quote!.price).toBe("150.2500");
+  });
+
+  // The second guard against loading a Delivery twice (docs/learn/03, Part 5).
+  test("hold each Transaction ID once per Firm", async ({ orm }) => {
+    const larkspur = await createFeedFirm(orm, "larkspur");
+    const globex = await createFeedFirm(orm, "globex");
+    await orm.insert(custodialTransaction).values(buy(larkspur));
+
+    await expect(orm.insert(custodialTransaction).values(buy(larkspur))).rejects.toMatchObject(
+      UNIQUE_VIOLATION,
+    );
+    await orm.insert(custodialTransaction).values(buy(globex));
+  });
+
+  test("hold one Delivery per Firm and As-of date", async ({ orm }) => {
+    const { firmId } = await createFeedFirm(orm, "larkspur");
+
+    await expect(
+      orm
+        .insert(custodianDelivery)
+        .values({ firmId, asOfDate: "2026-03-02", manifestSha256: "1".repeat(64) }),
+    ).rejects.toMatchObject(UNIQUE_VIOLATION);
+  });
+
+  test("can't point at another Firm's Account, Security or Delivery", async ({ orm }) => {
+    const larkspur = await createFeedFirm(orm, "larkspur");
+    const globex = await createFeedFirm(orm, "globex");
+    const strangers = [
+      { accountId: globex.accountId },
+      { securityId: globex.securityId },
+      { deliveryId: globex.deliveryId },
+    ];
+
+    await Promise.all(
+      strangers.map((stranger) =>
+        expect(
+          orm.insert(custodialTransaction).values({ ...buy(larkspur), ...stranger }),
+        ).rejects.toMatchObject(FOREIGN_KEY_VIOLATION),
+      ),
+    );
+    await expect(
+      orm.insert(custodialPosition).values({
+        ...larkspur,
+        accountId: globex.accountId,
+        asOfDate: "2026-03-02",
+        shares: "40.000000",
+      }),
+    ).rejects.toMatchObject(FOREIGN_KEY_VIOLATION);
+  });
+
+  // As with Registration types: the contract can grow, and the migrations froze the lists.
+  test.for([
+    { constraint: "security_kind_check", options: SecurityKind.options },
+    { constraint: "custodial_transaction_kind_check", options: TransactionKind.options },
+  ])(
+    "$constraint accepts the contract's kinds, and no others",
+    async ({ constraint, options }, { orm }) => {
+      const { rows } = await orm.execute<{ definition: string }>(
+        sql`select pg_get_constraintdef(oid) as definition from pg_constraint
+            where conname = ${constraint}`,
+      );
+      const allowed = [...rows[0]!.definition.matchAll(/'([^']+)'::text/g)].map((m) => m[1]);
+
+      expect(new Set(allowed)).toEqual(new Set(options));
+    },
+  );
+
+  test("go when their Firm is deleted", async ({ orm }) => {
+    const feed = await createFeedFirm(orm, "larkspur");
+    await orm.insert(custodialTransaction).values(buy(feed));
+    await orm.insert(securityPrice).values({ ...feed, asOfDate: "2026-03-02", price: "150.25" });
+
+    await orm.delete(organization).where(eq(organization.id, feed.firmId));
+
+    expect(await orm.$count(custodianDelivery)).toBe(0);
+    expect(await orm.$count(security)).toBe(0);
+    expect(await orm.$count(custodialTransaction)).toBe(0);
+    expect(await orm.$count(securityPrice)).toBe(0);
   });
 });

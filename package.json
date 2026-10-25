@@ -16,6 +16,7 @@
     "test:coverage": "turbo run test:coverage",
     "dev:sign-in": "node packages/testing/src/cli/dev-sign-in.ts",
     "db:seed": "pnpm --filter @repo/households db:seed",
+    "custodian:ingest": "pnpm --filter @repo/portfolio custodian:ingest",
     "docs:diagrams": "node .claude/skills/pr-visual/scripts/render.mjs docs/diagrams --svg-only",
     "docs:diagrams:preview": "node .claude/skills/pr-visual/scripts/render.mjs docs/diagrams --png-dir .dev/diagrams",
     "org:create": "node packages/db/src/cli/org-create.ts"

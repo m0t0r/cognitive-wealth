@@ -6,6 +6,7 @@ flowchart TB
   db["@repo/db<br/>Drizzle schema, migrations, CLIs"]
   email["@repo/email<br/>React Email, mailers"]
   households["@repo/households<br/>Households, world file, seed, DTOs"]
+  portfolio["@repo/portfolio<br/>Ingestion of the Custodian feed"]
   testing["@repo/testing<br/>Vitest config, PGlite, sign-in harness"]
   custodian["custodian<br/>FastAPI, Python, uv"]
   client["@repo/custodian-client<br/>Orval fetch client, Zod schemas"]
@@ -16,6 +17,8 @@ flowchart TB
   auth --> db
   auth --> email
   households --> db
+  portfolio --> db
+  portfolio -->|"feed rows, Manifest"| client
   db -->|"Registration types"| client
 
   e2e -.-> auth

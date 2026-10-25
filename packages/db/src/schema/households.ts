@@ -15,18 +15,8 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { firmId, knownValue, nonEmpty } from "./_domain";
 import { createdAt, id, publicId, timestamptz, updatedAt } from "./_helpers";
-import { organization } from "./organization";
-
-const knownValue = (column: unknown, values: readonly string[]) =>
-  sql`${column} in (${sql.raw(values.map((value) => `'${value}'`).join(", "))})`;
-
-// Zod types an enum's `options` as a plain array; Drizzle's `enum` wants a non-empty tuple.
-function nonEmpty<T>(values: readonly T[]): readonly [T, ...T[]] {
-  const [first, ...rest] = values;
-  if (first === undefined) throw new Error("An enum needs at least one value");
-  return [first, ...rest];
-}
 
 /** GLOSSARY.md, "Relationship status". */
 export const RELATIONSHIP_STATUSES = ["prospect", "client", "former_client"] as const;
@@ -52,11 +42,6 @@ export type RelationshipStatus = (typeof RELATIONSHIP_STATUSES)[number];
 export type HouseholdRole = (typeof HOUSEHOLD_ROLES)[number];
 export type RegistrationType = (typeof REGISTRATION_TYPES)[number];
 export type AccountRoleKind = (typeof ACCOUNT_ROLES)[number];
-
-const firmId = () =>
-  bigint("firm_id", { mode: "number" })
-    .notNull()
-    .references(() => organization.id, { onDelete: "cascade" });
 
 // The world file's key for a row (`reyes`, `dana-reyes`), which lets the seed find it again.
 // Null for rows created any other way.
@@ -154,6 +139,7 @@ export const custodialAccount = pgTable(
     accountNumber: text("account_number").notNull(),
     // Null until the Custodian feed is ingested.
     registrationType: text("registration_type", { enum: REGISTRATION_TYPES }),
+    openedOn: date("opened_on", { mode: "string" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

@@ -16,6 +16,16 @@ erDiagram
   person ||--o{ account_role : "holds"
   custodial_account ||--o{ account_role : "is held through"
   organization ||--o| world_seed : "was seeded from"
+  organization ||--o{ custodian_delivery : "ingested (firm_id)"
+  organization ||--o{ security : "knows (firm_id)"
+  custodian_delivery ||--o{ custodial_transaction : "carried"
+  custodian_delivery ||--o{ custodial_position : "reported"
+  custodian_delivery ||--o{ security_price : "priced"
+  custodial_account ||--o{ custodial_transaction : "posted to"
+  custodial_account ||--o{ custodial_position : "holds"
+  security |o--o{ custodial_transaction : "traded in"
+  security ||--o{ custodial_position : "held as"
+  security ||--o{ security_price : "is priced by"
 
   user {
     bigint id PK
@@ -105,6 +115,7 @@ erDiagram
     bigint firm_id FK
     text account_number "unique per Firm"
     text registration_type "null until ingested"
+    date opened_on "null until ingested"
   }
   account_role {
     bigint id PK
@@ -120,4 +131,55 @@ erDiagram
     bigint firm_id FK, UK
     text world_hash "SHA-256 of the CRM half"
     timestamptz seeded_at
+  }
+  custodian_delivery {
+    bigint id PK
+    bigint firm_id FK
+    date as_of_date "unique per Firm"
+    text manifest_sha256 "the Manifest's Content hash"
+    timestamptz arrived_at
+  }
+  security {
+    bigint id PK
+    uuid public_id UK
+    bigint firm_id FK
+    text identifier "unique per Firm"
+    text kind "stock, fund, bond, cash_sweep"
+  }
+  custodial_transaction {
+    bigint id PK
+    uuid public_id UK
+    bigint firm_id FK
+    bigint delivery_id FK "same Firm"
+    text transaction_id "the Custodian's, unique per Firm"
+    bigint account_id FK "same Firm"
+    bigint security_id FK "same Firm, null for cash"
+    text kind "buy, sell, ..., reversal"
+    text reverses "a transaction_id"
+    numeric amount "Money, 2 places"
+    date trade_date
+    date settlement_date
+    date posting_date "the Delivery's As-of date"
+    timestamptz arrived_at
+  }
+  custodial_position {
+    bigint id PK
+    uuid public_id UK
+    bigint firm_id FK
+    bigint delivery_id FK "same Firm"
+    bigint account_id FK "same Firm"
+    bigint security_id FK "same Firm"
+    date as_of_date
+    numeric shares "6 places"
+    numeric market_value "null without a price"
+    timestamptz arrived_at
+  }
+  security_price {
+    bigint id PK
+    bigint firm_id FK
+    bigint delivery_id FK "same Firm"
+    bigint security_id FK "same Firm"
+    date as_of_date
+    numeric price "as quoted"
+    timestamptz arrived_at
   }
