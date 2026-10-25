@@ -407,21 +407,17 @@ async function refuseRepeatedTransactions(
   }
 }
 
+interface WriteInput {
+  firmId: number;
+  asOf: string;
+  manifestSha256: string;
+  rows: Rows;
+  accountIds: Map<string, number>;
+}
+
 async function write(
   db: Database,
-  {
-    firmId,
-    asOf,
-    manifestSha256,
-    rows,
-    accountIds,
-  }: {
-    firmId: number;
-    asOf: string;
-    manifestSha256: string;
-    rows: Rows;
-    accountIds: Map<string, number>;
-  },
+  { firmId, asOf, manifestSha256, rows, accountIds }: WriteInput,
 ): Promise<Extract<IngestionResult, { status: "ingested" }>["written"]> {
   const [delivery] = await db
     .insert(custodianDelivery)
