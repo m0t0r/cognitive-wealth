@@ -38,7 +38,7 @@ Sign-in is passwordless and invite-only ([ADR 0001](adr/0001-better-auth-passwor
 
    Larkspur Wealth Partners (slug `larkspur`) is the world file's Firm, and `owner@` is its Advisor. Globex is the small second Firm that shows one Firm can't see another's data ([docs/product.md](product.md), "The synthetic world"). In the synthetic world the Advisor is the only User: `admin@` and `member@` exist only to try member management.
 
-   A database seeded before Larkspur replaced Acme keeps its Acme rows, since the seed only adds what's missing. To drop them, start over with an empty database (`down -v`, below) and seed again.
+   The seed only adds what's missing, with one exception: in a database seeded when the world's Firm was Acme, it renames Acme (slug `acme`) to Larkspur, unless Larkspur already exists. Members, invitations, audit events and sessions stay with the renamed Firm, so the app opens Larkspur where it used to open Acme.
 
    The seed refuses to run when `NODE_ENV=production` or when the `DATABASE_URL` host isn't `localhost`, `127.0.0.1`, `::1` or `*.localhost`.
 

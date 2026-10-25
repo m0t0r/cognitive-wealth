@@ -16,12 +16,15 @@ async function main() {
   const config = connectionConfig();
   const { db, close } = connect(config, { max: 1 });
   try {
-    const { added } = await seedDevData(db);
+    const { added, renamed } = await seedDevData(db);
     console.log(
       `Seeded ${describeDatabaseUrl(config.url)}${envFile ? ` (from ${envFile})` : ""}: added ` +
         `${added.users} users, ${added.organizations} organizations and ${added.memberships} ` +
         "memberships; existing rows were left as they are.",
     );
+    if (renamed.organizations > 0) {
+      console.log("  Renamed the old Acme to Larkspur Wealth Partners, keeping its members.");
+    }
   } finally {
     await close();
   }

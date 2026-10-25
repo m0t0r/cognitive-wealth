@@ -18,11 +18,13 @@ describe("seedDevData", () => {
   test("is idempotent", async ({ orm }) => {
     expect(await seedDevData(orm)).toEqual({
       added: { users: 3, organizations: 2, memberships: 4 },
+      renamed: { organizations: 0 },
     });
     const first = await rowCounts(orm);
 
     expect(await seedDevData(orm)).toEqual({
       added: { users: 0, organizations: 0, memberships: 0 },
+      renamed: { organizations: 0 },
     });
     expect(await rowCounts(orm)).toEqual(first);
     expect(first).toEqual({ users: 3, organizations: 2, memberships: 4 });
@@ -64,6 +66,8 @@ describe("seedDevData", () => {
     ]);
   });
 
+  // The world file is the custodian's input; the seed loads its CRM half into this Firm (#39), so
+  // the two must agree on its name.
   test("names the world file's Firm by its slug", async ({ orm }) => {
     await seedDevData(orm);
 
@@ -78,6 +82,61 @@ describe("seedDevData", () => {
     expect(world).toMatchObject({ crm: { firm: { name: firm!.name } } });
   });
 
+  test("turns a database's old seeded Acme into Larkspur, keeping its members", async ({ orm }) => {
+    const [acme] = await orm
+      .insert(organization)
+      .values({ name: "Acme", slug: "acme" })
+      .returning({ id: organization.id, publicId: organization.publicId });
+    const [extra] = await orm
+      .insert(user)
+      .values({ email: "invited@example.com", name: "Ivy", emailVerified: true })
+      .returning({ id: user.id });
+    await orm
+      .insert(member)
+      .values({ organizationId: acme!.id, userId: extra!.id, role: "member" });
+
+    expect(await seedDevData(orm)).toEqual({
+      added: { users: 3, organizations: 1, memberships: 4 },
+      renamed: { organizations: 1 },
+    });
+    expect(
+      await orm
+        .select({ publicId: organization.publicId, name: organization.name })
+        .from(organization)
+        .where(eq(organization.slug, WORLD_FIRM_SLUG)),
+    ).toEqual([{ publicId: acme!.publicId, name: "Larkspur Wealth Partners" }]);
+    expect(
+      await orm
+        .select({ email: user.email })
+        .from(member)
+        .innerJoin(user, eq(member.userId, user.id))
+        .where(eq(member.organizationId, acme!.id))
+        .orderBy(asc(user.email)),
+    ).toEqual([
+      { email: "admin@cognitive-wealth.test" },
+      { email: "invited@example.com" },
+      { email: "member@cognitive-wealth.test" },
+      { email: "owner@cognitive-wealth.test" },
+    ]);
+    expect(await orm.select().from(organization).where(eq(organization.slug, "acme"))).toEqual([]);
+  });
+
+  test("leaves an Acme alone once Larkspur exists", async ({ orm }) => {
+    await seedDevData(orm);
+    await orm.insert(organization).values({ name: "Acme", slug: "acme" });
+
+    expect(await seedDevData(orm)).toEqual({
+      added: { users: 0, organizations: 0, memberships: 0 },
+      renamed: { organizations: 0 },
+    });
+    expect(
+      await orm
+        .select({ name: organization.name })
+        .from(organization)
+        .where(eq(organization.slug, "acme")),
+    ).toEqual([{ name: "Acme" }]);
+  });
+
   test("adds what's missing and leaves existing rows alone", async ({ orm }) => {
     await orm
       .insert(user)
@@ -85,6 +144,7 @@ describe("seedDevData", () => {
 
     expect(await seedDevData(orm)).toEqual({
       added: { users: 2, organizations: 2, memberships: 4 },
+      renamed: { organizations: 0 },
     });
     expect(
       await orm
