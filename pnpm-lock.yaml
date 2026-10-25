@@ -229,6 +229,9 @@ importers:
       '@repo/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
+      '@repo/households':
+        specifier: workspace:*
+        version: link:../../packages/households
       next:
         specifier: 16.4.2
         version: 16.4.2(@babel/core@7.29.7)(@playwright/test@1.64.1)(@types/node@26.6.5)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -297,6 +300,12 @@ importers:
       '@repo/email':
         specifier: workspace:*
         version: link:../../packages/email
+      '@repo/households':
+        specifier: workspace:*
+        version: link:../../packages/households
+      '@repo/portfolio':
+        specifier: workspace:*
+        version: link:../../packages/portfolio
       '@repo/testing':
         specifier: workspace:*
         version: link:../../packages/testing

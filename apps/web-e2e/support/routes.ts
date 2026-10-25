@@ -1,5 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import type { Database } from "@repo/db";
+import { seedIngestedWorld } from "./households";
 import { seedInvitation, seedOrganization, seedUser } from "./seed";
 
 // Every page route; the a11y and security-header specs run against each. Add new routes here.
@@ -66,6 +67,17 @@ export const SIGNED_IN_ROUTES: SignedInRoute[] = [
         inviter: viewer,
       });
       return "/settings/members";
+    },
+  },
+  {
+    // World file v0's Household after both example Deliveries, so its Positions tables render.
+    name: "/households/[publicId]",
+    async setUp(db, email) {
+      const user = await seedUser(db, { email, name: "Ada Advisor" });
+      const publicId = await seedIngestedWorld(db, {
+        advisor: { user, firm: "larkspur", role: "owner" },
+      });
+      return `/households/${publicId}`;
     },
   },
   {
