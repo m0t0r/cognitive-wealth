@@ -12,12 +12,16 @@ const PUBLIC_ID = "0192f0c4-0000-7000-8000-000000000001";
 // 16 bytes of base64url without padding.
 const DEVICE_ID = "AAAAAAAAAAAAAAAAAAAAAA";
 
-const cookie = (publicId: string, issuedAt: number | string, deviceId: string) =>
+const cookie = ({
+  publicId = PUBLIC_ID,
+  issuedAt = NOW_SECONDS,
+  deviceId = DEVICE_ID,
+}: { publicId?: string; issuedAt?: number | string; deviceId?: string } = {}) =>
   `${publicId}.${issuedAt}.${deviceId}`;
 
 describe("parseDeviceCookie", () => {
   it("parses a well-formed cookie", () => {
-    expect(parseDeviceCookie(cookie(PUBLIC_ID, NOW_SECONDS - 60, DEVICE_ID), NOW)).toEqual({
+    expect(parseDeviceCookie(cookie({ issuedAt: NOW_SECONDS - 60 }), NOW)).toEqual({
       publicId: PUBLIC_ID,
       issuedAt: NOW_SECONDS - 60,
       deviceId: DEVICE_ID,
@@ -27,33 +31,33 @@ describe("parseDeviceCookie", () => {
   it.for([
     ["no dots", "not-a-device-cookie"],
     ["two parts", `${PUBLIC_ID}.${NOW_SECONDS}`],
-    ["an extra part", `${cookie(PUBLIC_ID, NOW_SECONDS, DEVICE_ID)}.${DEVICE_ID}`],
+    ["an extra part", `${cookie()}.${DEVICE_ID}`],
     ["nothing", ""],
   ])("refuses %s", ([, value]) => {
     expect(parseDeviceCookie(value!, NOW)).toBeNull();
   });
 
   it("refuses an empty publicId", () => {
-    expect(parseDeviceCookie(cookie("", NOW_SECONDS, DEVICE_ID), NOW)).toBeNull();
+    expect(parseDeviceCookie(cookie({ publicId: "" }), NOW)).toBeNull();
   });
 
   it.for(["soon", "", "-1", "1.5", "1e9", " 1", "1234567890123"])(
     "refuses the issue time %j",
     (issuedAt) => {
-      expect(parseDeviceCookie(cookie(PUBLIC_ID, issuedAt, DEVICE_ID), NOW)).toBeNull();
+      expect(parseDeviceCookie(cookie({ issuedAt }), NOW)).toBeNull();
     },
   );
 
   it("refuses a cookie from the future, but not one issued this second", () => {
-    expect(parseDeviceCookie(cookie(PUBLIC_ID, NOW_SECONDS + 1, DEVICE_ID), NOW)).toBeNull();
-    expect(parseDeviceCookie(cookie(PUBLIC_ID, NOW_SECONDS, DEVICE_ID), NOW)).not.toBeNull();
+    expect(parseDeviceCookie(cookie({ issuedAt: NOW_SECONDS + 1 }), NOW)).toBeNull();
+    expect(parseDeviceCookie(cookie(), NOW)).not.toBeNull();
   });
 
   it("refuses a cookie older than 180 days, but not one exactly that old", () => {
     const oldest = NOW_SECONDS - DEVICE_COOKIE_MAX_AGE;
     expect(DEVICE_COOKIE_MAX_AGE).toBe(180 * 24 * 60 * 60);
-    expect(parseDeviceCookie(cookie(PUBLIC_ID, oldest, DEVICE_ID), NOW)).not.toBeNull();
-    expect(parseDeviceCookie(cookie(PUBLIC_ID, oldest - 1, DEVICE_ID), NOW)).toBeNull();
+    expect(parseDeviceCookie(cookie({ issuedAt: oldest }), NOW)).not.toBeNull();
+    expect(parseDeviceCookie(cookie({ issuedAt: oldest - 1 }), NOW)).toBeNull();
   });
 
   it.for([
@@ -64,7 +68,7 @@ describe("parseDeviceCookie", () => {
     ["standard base64", `${DEVICE_ID.slice(2)}+/`],
     ["empty", ""],
   ])("refuses a %s device ID", ([, deviceId]) => {
-    expect(parseDeviceCookie(cookie(PUBLIC_ID, NOW_SECONDS, deviceId!), NOW)).toBeNull();
+    expect(parseDeviceCookie(cookie({ deviceId: deviceId! }), NOW)).toBeNull();
   });
 });
 
@@ -76,6 +80,7 @@ describe("parseDeviceCookie", () => {
 function fakeContext(signed: string | null | false) {
   const getSignedCookie = vi.fn(async (_name: string, _secret: string) => signed);
   const setSignedCookie = vi.fn(
+    // oxlint-disable-next-line max-params -- better-call's `setSignedCookie(name, value, secret, attributes)`
     async (_name: string, _value: string, _secret: string, _attributes: unknown) => {},
   );
   const stub = {
@@ -97,7 +102,7 @@ function fakeContext(signed: string | null | false) {
 
 describe("readDeviceCookie", () => {
   it("reads the signed cookie under its full name with the auth secret", async () => {
-    const { ctx, getSignedCookie } = fakeContext(cookie(PUBLIC_ID, NOW_SECONDS, DEVICE_ID));
+    const { ctx, getSignedCookie } = fakeContext(cookie());
     expect(await readDeviceCookie(ctx, NOW)).toEqual({
       publicId: PUBLIC_ID,
       issuedAt: NOW_SECONDS,
@@ -115,7 +120,7 @@ describe("readDeviceCookie", () => {
   });
 
   it("checks the age against the current time by default", async () => {
-    const { ctx } = fakeContext(cookie(PUBLIC_ID, NOW_SECONDS, DEVICE_ID));
+    const { ctx } = fakeContext(cookie());
     vi.useFakeTimers({ toFake: ["Date"] });
     onTestFinished(() => {
       vi.useRealTimers();
@@ -137,7 +142,7 @@ function issued(setSignedCookie: ReturnType<typeof fakeContext>["setSignedCookie
 describe("setDeviceCookie", () => {
   it("issues a signed, parseable cookie with a new device ID, scoped to the auth endpoints", async () => {
     const { ctx, setSignedCookie } = fakeContext(null);
-    await setDeviceCookie(ctx, PUBLIC_ID, NOW);
+    await setDeviceCookie(ctx, { publicId: PUBLIC_ID, now: NOW });
 
     const { name, secret, attributes, parsed } = issued(setSignedCookie);
     expect(name).toBe("cw.device");
@@ -156,8 +161,8 @@ describe("setDeviceCookie", () => {
   });
 
   it("keeps the device ID of the same user's cookie and renews its issue time", async () => {
-    const { ctx, setSignedCookie } = fakeContext(cookie(PUBLIC_ID, NOW_SECONDS - 3600, DEVICE_ID));
-    await setDeviceCookie(ctx, PUBLIC_ID, NOW);
+    const { ctx, setSignedCookie } = fakeContext(cookie({ issuedAt: NOW_SECONDS - 3600 }));
+    await setDeviceCookie(ctx, { publicId: PUBLIC_ID, now: NOW });
 
     expect(issued(setSignedCookie).parsed).toEqual({
       publicId: PUBLIC_ID,
@@ -167,9 +172,9 @@ describe("setDeviceCookie", () => {
   });
 
   it("gives another user on the same browser a device ID of their own", async () => {
-    const { ctx, setSignedCookie } = fakeContext(cookie(PUBLIC_ID, NOW_SECONDS, DEVICE_ID));
+    const { ctx, setSignedCookie } = fakeContext(cookie());
     const other = "0192f0c4-0000-7000-8000-000000000002";
-    await setDeviceCookie(ctx, other, NOW);
+    await setDeviceCookie(ctx, { publicId: other, now: NOW });
 
     const { parsed } = issued(setSignedCookie);
     expect(parsed?.publicId).toBe(other);
@@ -178,10 +183,10 @@ describe("setDeviceCookie", () => {
 
   it.for([
     ["a forged", false],
-    ["an expired", cookie(PUBLIC_ID, NOW_SECONDS - DEVICE_COOKIE_MAX_AGE - 1, DEVICE_ID)],
+    ["an expired", cookie({ issuedAt: NOW_SECONDS - DEVICE_COOKIE_MAX_AGE - 1 })],
   ] as const)("doesn't keep the device ID of %s cookie", async ([, signed]) => {
     const { ctx, setSignedCookie } = fakeContext(signed);
-    await setDeviceCookie(ctx, PUBLIC_ID, NOW);
+    await setDeviceCookie(ctx, { publicId: PUBLIC_ID, now: NOW });
     expect(issued(setSignedCookie).parsed?.deviceId).not.toBe(DEVICE_ID);
   });
 });

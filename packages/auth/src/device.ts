@@ -71,8 +71,7 @@ export async function readDeviceCookie(
 /** (Re)issues the device cookie for `publicId`, keeping the device ID this browser already has. */
 export async function setDeviceCookie(
   ctx: DeviceCookieContext,
-  publicId: string,
-  now = Date.now(),
+  { publicId, now = Date.now() }: { publicId: string; now?: number },
 ): Promise<void> {
   const existing = await readDeviceCookie(ctx, now);
   const deviceId =

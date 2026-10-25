@@ -42,7 +42,7 @@ test("no internal ID reaches the browser through sign-in, home, members and a sw
 
   // Sign in by link through the UI, so the auth endpoints' JSON is captured too.
   await page.goto("/sign-in");
-  await confirmSignIn(page, await requestSignInFromUi(page, mailbox, email));
+  await confirmSignIn(page, await requestSignInFromUi(page, { mailbox, email }));
   await expect(page.getByText("You're an owner of Acme.")).toBeVisible();
 
   await page

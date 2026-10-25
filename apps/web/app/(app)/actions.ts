@@ -14,7 +14,7 @@ export async function switchWorkspace(input: {
 }): Promise<ActionResult> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "not_found" };
-  const result = await switchOrganization(getAuth(), await headers(), parsed.data);
+  const result = await switchOrganization(getAuth(), { headers: await headers(), ...parsed.data });
   if (!result.ok) return result;
   refresh();
   return { ok: true };

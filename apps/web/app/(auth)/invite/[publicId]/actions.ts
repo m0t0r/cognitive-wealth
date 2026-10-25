@@ -16,7 +16,7 @@ export async function acceptInvitationAction(
 ): Promise<FormState> {
   const input = schema.safeParse({ invitationPublicId: formData.get("invitationPublicId") });
   if (!input.success) return { ok: false, error: "not_found" };
-  const result = await acceptInvitation(getAuth(), await headers(), input.data);
+  const result = await acceptInvitation(getAuth(), { headers: await headers(), ...input.data });
   if (!result.ok) return result;
   return redirect("/");
 }
@@ -27,6 +27,6 @@ export async function declineInvitationAction(input: {
 }): Promise<ActionResult> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "not_found" };
-  const result = await declineInvitation(getAuth(), await headers(), parsed.data);
+  const result = await declineInvitation(getAuth(), { headers: await headers(), ...parsed.data });
   return result.ok ? { ok: true } : { ok: false, error: result.error };
 }

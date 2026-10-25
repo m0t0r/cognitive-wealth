@@ -43,7 +43,7 @@ describe("ids", () => {
       body: { email: "ada@example.com" },
     });
     bodies.push(await request.json());
-    const message = await t.waitForEmail("ada@example.com");
+    const message = await t.waitForEmail({ to: "ada@example.com" });
     const token = new URLSearchParams(
       new URL(/Sign-in link: (\S+)/.exec(message.text)![1]!).hash.slice(1),
     ).get("token")!;

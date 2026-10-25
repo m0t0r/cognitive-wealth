@@ -131,7 +131,15 @@ export function createTestAuth({ orm, ...overrides }: { orm: Database } & Partia
   }
 
   /** The next email to `to` after the first `after` messages, once background sends finish. */
-  async function waitForEmail(to: string, after = 0, timeoutMs = 5000): Promise<EmailMessage> {
+  async function waitForEmail({
+    to,
+    after = 0,
+    timeoutMs = 5000,
+  }: {
+    to: string;
+    after?: number;
+    timeoutMs?: number;
+  }): Promise<EmailMessage> {
     await settle();
     // Still polls, for a test that passes a runner of its own.
     const deadline = Date.now() + timeoutMs;
@@ -149,13 +157,16 @@ export function createTestAuth({ orm, ...overrides }: { orm: Database } & Partia
     const before = mailer.messages.length;
     const response = await fetchAuth("/sign-in/magic-link", { ...init, body: { email } });
     if (response.status !== 200) throw new Error(`sign-in request failed: ${response.status}`);
-    const message = await waitForEmail(email.trim().toLowerCase(), before);
+    const message = await waitForEmail({ to: email.trim().toLowerCase(), after: before });
     return parseSignInEmail(message.text);
   }
 
   /** `Headers` that carry the session cookies of `response`, for `auth.api` and the tenant API. */
   function sessionHeaders(response: Response): Headers {
-    const cookies = parseSetCookies(response.headers.getSetCookie(), new URL(TEST_BASE_URL));
+    const cookies = parseSetCookies({
+      headers: response.headers.getSetCookie(),
+      requestUrl: new URL(TEST_BASE_URL),
+    });
     if (cookies.length === 0) throw new Error("Response set no cookies");
     return new Headers({
       cookie: cookies.map(({ name, value }) => `${name}=${value}`).join("; "),

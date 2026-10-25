@@ -39,7 +39,10 @@ async function createOrganization(db: Database, slug = "acme") {
   return row!;
 }
 
-async function createSession(db: Database, userId: number, activeOrganizationId?: number) {
+async function createSession(
+  db: Database,
+  { userId, activeOrganizationId }: { userId: number; activeOrganizationId?: number },
+) {
   const [row] = await db
     .insert(session)
     .values({
@@ -53,7 +56,10 @@ async function createSession(db: Database, userId: number, activeOrganizationId?
   return row!;
 }
 
-async function createInvitation(db: Database, organizationId: number, inviterId: number) {
+async function createInvitation(
+  db: Database,
+  { organizationId, inviterId }: { organizationId: number; inviterId: number },
+) {
   const [row] = await db
     .insert(invitation)
     .values({
@@ -88,7 +94,7 @@ describe("ids", () => {
       .insert(member)
       .values({ organizationId: org.id, userId: u.id, role: "owner" })
       .returning();
-    const inv = await createInvitation(orm, org.id, u.id);
+    const inv = await createInvitation(orm, { organizationId: org.id, inviterId: u.id });
 
     for (const row of [u, org, m!, inv]) expect(row.publicId).toMatch(UUID_V7);
   });
@@ -109,7 +115,7 @@ describe("session.activeOrganizationId", () => {
   test("round-trips as a string", async ({ orm }) => {
     const u = await createUser(orm);
     const org = await createOrganization(orm);
-    const created = await createSession(orm, u.id, org.id);
+    const created = await createSession(orm, { userId: u.id, activeOrganizationId: org.id });
 
     const [row] = await orm
       .select({ activeOrganizationId: session.activeOrganizationId })
@@ -121,7 +127,7 @@ describe("session.activeOrganizationId", () => {
   test("is nulled when its organization is deleted", async ({ orm }) => {
     const u = await createUser(orm);
     const org = await createOrganization(orm);
-    const created = await createSession(orm, u.id, org.id);
+    const created = await createSession(orm, { userId: u.id, activeOrganizationId: org.id });
 
     await orm.delete(organization).where(eq(organization.id, org.id));
 
@@ -161,7 +167,7 @@ describe("roles", () => {
   test("hold exactly one known role, on members and invitations", async ({ orm }) => {
     const ada = await createUser(orm);
     const acme = await createOrganization(orm);
-    const invited = await createInvitation(orm, acme.id, ada.id);
+    const invited = await createInvitation(orm, { organizationId: acme.id, inviterId: ada.id });
     // Better Auth would store several roles comma-separated; one role per row is the rule.
     for (const role of ["owner,admin", "superuser", "Owner"]) {
       // Sequential on purpose: each insert is checked on its own.
@@ -183,9 +189,9 @@ describe("deleting a user", () => {
   }) => {
     const u = await createUser(orm);
     const org = await createOrganization(orm);
-    await createSession(orm, u.id, org.id);
+    await createSession(orm, { userId: u.id, activeOrganizationId: org.id });
     await orm.insert(member).values({ organizationId: org.id, userId: u.id, role: "owner" });
-    await createInvitation(orm, org.id, u.id);
+    await createInvitation(orm, { organizationId: org.id, inviterId: u.id });
     await orm.insert(auditEvent).values({ action: "auth.sign_in", actorUserId: u.id });
 
     await orm.delete(user).where(eq(user.id, u.id));
@@ -205,7 +211,7 @@ describe("deleting an organization", () => {
     const u = await createUser(orm);
     const org = await createOrganization(orm);
     await orm.insert(member).values({ organizationId: org.id, userId: u.id, role: "owner" });
-    await createInvitation(orm, org.id, u.id);
+    await createInvitation(orm, { organizationId: org.id, inviterId: u.id });
     await orm.insert(auditEvent).values({ action: "org.switched", organizationId: org.id });
 
     await orm.delete(organization).where(eq(organization.id, org.id));

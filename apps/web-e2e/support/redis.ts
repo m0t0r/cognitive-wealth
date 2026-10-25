@@ -140,7 +140,15 @@ class RespConnection {
  * worker server's REDIS_KEY_PREFIX), so each test starts without rate-limit counters or cached
  * sessions from the one before.
  */
-export async function connectJanitor(url: string, password: string, prefix: string) {
+export async function connectJanitor({
+  url,
+  password,
+  prefix,
+}: {
+  url: string;
+  password: string;
+  prefix: string;
+}) {
   if (!prefix.startsWith("cw:")) throw new Error(`The ACL only allows cw:* keys, got ${prefix}`);
   const { hostname, port } = new URL(url);
   const connection = await RespConnection.open(hostname, Number(port));

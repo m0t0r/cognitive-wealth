@@ -30,15 +30,15 @@ test("an owner invites a new address and the invitee joins from their own browse
 
   // Browser A: the owner sends the invitation from the members page.
   await page.goto("/settings/members");
-  const url = await invitationLink(
-    mailbox,
-    { to: inviteeEmail, organizationName: "Acme" },
-    async () => {
+  const url = await invitationLink(mailbox, {
+    to: inviteeEmail,
+    organizationName: "Acme",
+    trigger: async () => {
       await page.getByRole("textbox", { name: "Email" }).fill(inviteeEmail);
       await page.getByRole("button", { name: "Send invitation" }).click();
       await expect(page.getByText(`Invitation sent to ${inviteeEmail}.`)).toBeVisible();
     },
-  );
+  });
   const invitationPath = new URL(url).pathname;
   await expect(page.getByRole("table", { name: /Pending invitations/ })).toContainText(
     inviteeEmail,
@@ -49,7 +49,7 @@ test("an owner invites a new address and the invitee joins from their own browse
   const inviteeViolations = await recordCspViolations(invitee.page);
   await invitee.page.goto(url);
   await expect(invitee.page).toHaveURL(`/sign-in?next=${encodeURIComponent(invitationPath)}`);
-  const link = await requestSignInFromUi(invitee.page, mailbox, inviteeEmail);
+  const link = await requestSignInFromUi(invitee.page, { mailbox, email: inviteeEmail });
   await confirmSignIn(invitee.page, link);
 
   await expect(invitee.page).toHaveURL(invitationPath);
@@ -112,9 +112,13 @@ test("a stale session asks for a fresh sign-in before changing a role", async ({
 
   const dialog = page.getByRole("dialog", { name: "Sign in again to continue" });
   await expect(dialog).toBeVisible();
-  const message = await nextEmail(mailbox, ownerEmail, SIGN_IN_SUBJECT, async () => {
-    await dialog.getByRole("button", { name: "Send sign-in link" }).click();
-    await expect(page.getByRole("dialog", { name: "Check your email" })).toBeVisible();
+  const message = await nextEmail(mailbox, {
+    to: ownerEmail,
+    subject: SIGN_IN_SUBJECT,
+    trigger: async () => {
+      await dialog.getByRole("button", { name: "Send sign-in link" }).click();
+      await expect(page.getByRole("dialog", { name: "Check your email" })).toBeVisible();
+    },
   });
   // The link brings the owner back to this page.
   expect(parseSignInEmail(message.text).next).toBe("/settings/members");

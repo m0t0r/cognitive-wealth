@@ -64,7 +64,15 @@ export function signInOtpIdentifier(email: string): string {
 }
 
 /** `${baseURL}/sign-in/confirm#token=…&next=…`: the token stays in the fragment, off the wire. */
-export function confirmUrl(baseURL: string, token: string, callbackPath: string): string {
+export function confirmUrl({
+  baseURL,
+  token,
+  callbackPath,
+}: {
+  baseURL: string;
+  token: string;
+  callbackPath: string;
+}): string {
   const url = new URL("/sign-in/confirm", baseURL);
   url.hash = new URLSearchParams({ token, next: callbackPath }).toString();
   return url.toString();
@@ -171,11 +179,10 @@ export function createSignInFlow(deps: SignInFlowDeps) {
 
   /** Counts a request against one sign-in email limit; whether it's still within it. */
   async function consume(key: string, rule: keyof typeof SIGN_IN_EMAIL_LIMITS): Promise<boolean> {
-    const result = await consumeRateLimit(
-      deps.storage,
-      `sign-in-email:${key}`,
-      SIGN_IN_EMAIL_LIMITS[rule],
-    );
+    const result = await consumeRateLimit(deps.storage, {
+      key: `sign-in-email:${key}`,
+      rule: SIGN_IN_EMAIL_LIMITS[rule],
+    });
     return result.ok;
   }
 
@@ -271,8 +278,12 @@ export function createSignInFlow(deps: SignInFlowDeps) {
       await codeSlot.run(slot, () => deps.issueOtp(email));
       if (slot.code === undefined) throw new Error("The emailOTP plugin issued no code");
 
-      const link = confirmUrl(deps.baseURL, request.token, request.callbackPath);
-      await deliver(deps.mailer, email, link, slot.code);
+      const link = confirmUrl({
+        baseURL: deps.baseURL,
+        token: request.token,
+        callbackPath: request.callbackPath,
+      });
+      await deliver(deps.mailer, { to: email, url: link, code: slot.code });
     } catch (error) {
       console.error("Sign-in request failed", error);
       await discard().catch(() => {});
@@ -282,7 +293,10 @@ export function createSignInFlow(deps: SignInFlowDeps) {
   return { sendMagicLink, sendVerificationOTP };
 }
 
-async function deliver(mailer: Mailer, to: string, url: string, code: string): Promise<void> {
+async function deliver(
+  mailer: Mailer,
+  { to, url, code }: { to: string; url: string; code: string },
+): Promise<void> {
   const email = await renderSignInEmail({
     url,
     code,
@@ -305,8 +319,7 @@ async function deliver(mailer: Mailer, to: string, url: string, code: string): P
  */
 export async function deleteSiblingCredentials(
   db: Database,
-  storage: SecondaryStorage,
-  email: string,
+  { storage, email }: { storage: SecondaryStorage; email: string },
 ): Promise<number> {
   const normalized = normalizeEmail(email);
   const deleted = await db

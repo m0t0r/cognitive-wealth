@@ -76,7 +76,7 @@ export async function seedDevWorld(
       .where(eq(worldSeed.firmId, firm.id));
     if (last?.worldHash === worldHash) return { devData, crm: { added: NOTHING_ADDED } };
 
-    const crm = await loadCrmHalf(tx, firm.id, world);
+    const crm = await loadCrmHalf(tx, { firmId: firm.id, world });
     await tx
       .insert(worldSeed)
       .values({ firmId: firm.id, worldHash })
@@ -99,7 +99,10 @@ const NOTHING_ADDED: CrmSeedResult["added"] = {
  * by number, and rows that already exist are left as they are. Accounts get only their number:
  * the rest comes from the Custodian (ADR 0009), so the custodian half is never copied.
  */
-async function loadCrmHalf(db: Database, firmId: number, world: World): Promise<CrmSeedResult> {
+async function loadCrmHalf(
+  db: Database,
+  { firmId, world }: { firmId: number; world: World },
+): Promise<CrmSeedResult> {
   const { households } = world.crm;
   if (households.length === 0) return { added: NOTHING_ADDED };
   // Every Household has a Primary, so from here on there are People too.
@@ -149,27 +152,24 @@ async function loadCrmHalf(db: Database, firmId: number, world: World): Promise<
         .returning({ id: custodialAccount.id })
     : [];
 
-  const householdIds = await idsByKey(
-    db,
-    household,
-    household.seedKey,
+  const householdIds = await idsByKey(db, {
+    table: household,
+    key: household.seedKey,
     firmId,
-    households.map((home) => home.key),
-  );
-  const personIds = await idsByKey(
-    db,
-    person,
-    person.seedKey,
+    keys: households.map((home) => home.key),
+  });
+  const personIds = await idsByKey(db, {
+    table: person,
+    key: person.seedKey,
     firmId,
-    people.map(({ worldPerson }) => worldPerson.key),
-  );
-  const accountIds = await idsByKey(
-    db,
-    custodialAccount,
-    custodialAccount.accountNumber,
+    keys: people.map(({ worldPerson }) => worldPerson.key),
+  });
+  const accountIds = await idsByKey(db, {
+    table: custodialAccount,
+    key: custodialAccount.accountNumber,
     firmId,
-    accountNumbers,
-  );
+    keys: accountNumbers,
+  });
 
   // No conflict target: a Household that already has a Primary or Co-client keeps them.
   const addedMembers = await db
@@ -208,14 +208,13 @@ async function loadCrmHalf(db: Database, firmId: number, world: World): Promise<
         .returning({ id: accountRole.id })
     : [];
 
-  await refuseChangedRows(
-    db,
+  await refuseChangedRows(db, {
     firmId,
     world,
     people,
-    [...householdIds.values()],
-    [...personIds.values()],
-  );
+    householdIds: [...householdIds.values()],
+    personIds: [...personIds.values()],
+  });
 
   return {
     added: {
@@ -237,11 +236,19 @@ async function loadCrmHalf(db: Database, firmId: number, world: World): Promise<
  */
 async function refuseChangedRows(
   db: Database,
-  firmId: number,
-  world: World,
-  people: { householdKey: string; worldPerson: WorldPerson; role: HouseholdRole }[],
-  householdIds: number[],
-  personIds: number[],
+  {
+    firmId,
+    world,
+    people,
+    householdIds,
+    personIds,
+  }: {
+    firmId: number;
+    world: World;
+    people: { householdKey: string; worldPerson: WorldPerson; role: HouseholdRole }[];
+    householdIds: number[];
+    personIds: number[];
+  },
 ) {
   const [households, persons, members, roles] = await Promise.all([
     db
@@ -336,10 +343,17 @@ function sameItems(a: string[], b: string[]) {
 /** The ids of the Firm's rows whose `key` column holds one of `keys`, by that key. */
 async function idsByKey(
   db: Database,
-  table: typeof household | typeof person | typeof custodialAccount,
-  key: AnyPgColumn,
-  firmId: number,
-  keys: string[],
+  {
+    table,
+    key,
+    firmId,
+    keys,
+  }: {
+    table: typeof household | typeof person | typeof custodialAccount;
+    key: AnyPgColumn;
+    firmId: number;
+    keys: string[];
+  },
 ): Promise<Map<string, number>> {
   const rows = await db
     .select({ id: table.id, key: sql<string>`${key}` })

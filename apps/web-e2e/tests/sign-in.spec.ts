@@ -29,7 +29,7 @@ test("a signed-out visitor signs in by emailed link and returns to the page they
   await expect(page).toHaveURL("/sign-in?next=%2Fsettings%2Fmembers%3Fx%3D1");
 
   // The request goes through the real form and SMTP; the link carries `next` in its fragment.
-  const link = await requestSignInFromUi(page, mailbox, email);
+  const link = await requestSignInFromUi(page, { mailbox, email });
   expect(link.next).toBe("/settings/members?x=1");
 
   // The confirm page takes the token out of the address bar before anything else can read it.
@@ -86,7 +86,7 @@ test("the code from the same email signs in, and an off-site next lands on the h
   const violations = await recordCspViolations(page);
 
   await page.goto("/sign-in?next=//evil.example");
-  const { code, next } = await requestSignInFromUi(page, mailbox, email);
+  const { code, next } = await requestSignInFromUi(page, { mailbox, email });
   expect(next).toBe("/");
 
   await page.getByRole("textbox", { name: "Sign-in code" }).click();
@@ -110,7 +110,7 @@ test("a link scanner's top-level visit to verify is refused and the link still w
   const ada = await seedUser(db, { email, name: "Ada Lovelace" });
   await seedOrganization(db, { name: "Acme", members: [{ user: ada, role: "member" }] });
   await page.goto("/sign-in");
-  const link = await requestSignInFromUi(page, mailbox, email);
+  const link = await requestSignInFromUi(page, { mailbox, email });
 
   // What a scanner or a pasted link does: Chromium sends Sec-Fetch-Mode: navigate.
   const scan = await page.goto(

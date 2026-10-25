@@ -60,7 +60,7 @@ export async function changeRoleAction(input: {
 }): Promise<ActionResult> {
   const parsed = roleSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  return done(await changeMemberRole(getAuth(), await headers(), parsed.data));
+  return done(await changeMemberRole(getAuth(), { headers: await headers(), ...parsed.data }));
 }
 
 export async function removeMemberAction(input: {
@@ -69,7 +69,7 @@ export async function removeMemberAction(input: {
 }): Promise<ActionResult> {
   const parsed = memberSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "not_found" };
-  return done(await removeMember(getAuth(), await headers(), parsed.data));
+  return done(await removeMember(getAuth(), { headers: await headers(), ...parsed.data }));
 }
 
 export async function cancelInvitationAction(input: {
@@ -78,7 +78,7 @@ export async function cancelInvitationAction(input: {
 }): Promise<ActionResult> {
   const parsed = invitationSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "not_found" };
-  return done(await cancelInvitation(getAuth(), await headers(), parsed.data));
+  return done(await cancelInvitation(getAuth(), { headers: await headers(), ...parsed.data }));
 }
 
 async function invite(input: {
@@ -89,7 +89,7 @@ async function invite(input: {
   // Server Actions take whatever a client sends: parse before touching any field.
   const parsed = inviteSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  return done(await inviteMember(getAuth(), await headers(), parsed.data));
+  return done(await inviteMember(getAuth(), { headers: await headers(), ...parsed.data }));
 }
 
 /**

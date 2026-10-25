@@ -123,7 +123,8 @@ describe("getViewer", () => {
   test("drops a tenant the moment the member is removed", async ({ t, world }) => {
     expect((await getViewer(t.auth, world.as.cy))?.tenant?.organization.slug).toBe("acme");
     expect(
-      await removeMember(t.auth, world.as.ada, {
+      await removeMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         memberPublicId: world.members.cy.publicId,
       }),
@@ -144,7 +145,8 @@ describe("getViewer", () => {
       .update(member)
       .set({ role: "owner" })
       .where(eq(member.id, world.members.bob.id));
-    await removeMember(t.auth, world.as.bob, {
+    await removeMember(t.auth, {
+      headers: world.as.bob,
       organizationPublicId: world.acme.publicId,
       memberPublicId: world.members.ada.publicId,
     });
@@ -164,7 +166,8 @@ describe("getViewer", () => {
 
 describe("switchOrganization", () => {
   test("switches to another of the viewer's organizations", async ({ t, world }) => {
-    const result = await switchOrganization(t.auth, world.as.ada, {
+    const result = await switchOrganization(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.globex.publicId,
     });
     expect(result).toEqual({
@@ -176,7 +179,8 @@ describe("switchOrganization", () => {
 
   test("refuses an organization the viewer isn't in", async ({ t, world }) => {
     expect(
-      await switchOrganization(t.auth, world.as.bob, {
+      await switchOrganization(t.auth, {
+        headers: world.as.bob,
         organizationPublicId: world.globex.publicId,
       }),
     ).toEqual({ ok: false, error: "not_found" });
@@ -187,10 +191,11 @@ describe("switchOrganization", () => {
     for (const organizationPublicId of ["1", "not-a-uuid", crypto.randomUUID()]) {
       // Sequential on purpose: each step depends on the ones before.
       // oxlint-disable-next-line no-await-in-loop
-      expect(await switchOrganization(t.auth, world.as.ada, { organizationPublicId })).toEqual({
-        ok: false,
-        error: "not_found",
+      const result = await switchOrganization(t.auth, {
+        headers: world.as.ada,
+        organizationPublicId,
       });
+      expect(result).toEqual({ ok: false, error: "not_found" });
     }
   });
 
@@ -256,7 +261,8 @@ describe("members", () => {
   });
 
   test("an admin changes a member's role", async ({ t, world }) => {
-    const result = await changeMemberRole(t.auth, world.as.bob, {
+    const result = await changeMemberRole(t.auth, {
+      headers: world.as.bob,
       organizationPublicId: world.acme.publicId,
       memberPublicId: world.members.cy.publicId,
       role: "admin",
@@ -269,14 +275,16 @@ describe("members", () => {
 
   test("a member can't change roles or remove anyone", async ({ t, world }) => {
     expect(
-      await changeMemberRole(t.auth, world.as.cy, {
+      await changeMemberRole(t.auth, {
+        headers: world.as.cy,
         organizationPublicId: world.acme.publicId,
         memberPublicId: world.members.bob.publicId,
         role: "member",
       }),
     ).toEqual({ ok: false, error: "forbidden" });
     expect(
-      await removeMember(t.auth, world.as.cy, {
+      await removeMember(t.auth, {
+        headers: world.as.cy,
         organizationPublicId: world.acme.publicId,
         memberPublicId: world.members.bob.publicId,
       }),
@@ -288,7 +296,8 @@ describe("members", () => {
 
   test("an admin can't remove or demote an owner, or promote to owner", async ({ t, world }) => {
     expect(
-      await removeMember(t.auth, world.as.bob, {
+      await removeMember(t.auth, {
+        headers: world.as.bob,
         organizationPublicId: world.acme.publicId,
         memberPublicId: world.members.ada.publicId,
       }),
@@ -297,14 +306,16 @@ describe("members", () => {
       error: "forbidden",
     });
     expect(
-      await changeMemberRole(t.auth, world.as.bob, {
+      await changeMemberRole(t.auth, {
+        headers: world.as.bob,
         organizationPublicId: world.acme.publicId,
         memberPublicId: world.members.ada.publicId,
         role: "member",
       }),
     ).toEqual({ ok: false, error: "forbidden" });
     expect(
-      await changeMemberRole(t.auth, world.as.bob, {
+      await changeMemberRole(t.auth, {
+        headers: world.as.bob,
         organizationPublicId: world.acme.publicId,
         memberPublicId: world.members.cy.publicId,
         role: "owner",
@@ -315,7 +326,8 @@ describe("members", () => {
 
   test("the last owner can't leave or step down", async ({ t, world }) => {
     expect(
-      await removeMember(t.auth, world.as.ada, {
+      await removeMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         memberPublicId: world.members.ada.publicId,
       }),
@@ -324,7 +336,8 @@ describe("members", () => {
       error: "last_owner",
     });
     expect(
-      await changeMemberRole(t.auth, world.as.ada, {
+      await changeMemberRole(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         memberPublicId: world.members.ada.publicId,
         role: "admin",
@@ -336,7 +349,8 @@ describe("members", () => {
     const [adaInGlobex] = world.globex.members;
     // Bob is an admin of Acme only; Ada's Globex membership is outside his tenant.
     expect(
-      await removeMember(t.auth, world.as.bob, {
+      await removeMember(t.auth, {
+        headers: world.as.bob,
         organizationPublicId: world.acme.publicId,
         memberPublicId: adaInGlobex!.publicId,
       }),
@@ -346,7 +360,8 @@ describe("members", () => {
     });
     // Even Ada can't, while Acme is her tenant: the publicId must belong to the active org.
     expect(
-      await changeMemberRole(t.auth, world.as.ada, {
+      await changeMemberRole(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         memberPublicId: adaInGlobex!.publicId,
         role: "admin",
@@ -360,14 +375,16 @@ describe("members", () => {
   }) => {
     makeSessionsStale();
     expect(
-      await changeMemberRole(t.auth, world.as.ada, {
+      await changeMemberRole(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         memberPublicId: world.members.cy.publicId,
         role: "admin",
       }),
     ).toEqual({ ok: false, error: "reauth_required" });
     expect(
-      await removeMember(t.auth, world.as.ada, {
+      await removeMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         memberPublicId: world.members.cy.publicId,
       }),
@@ -382,7 +399,8 @@ describe("members", () => {
 
 describe("invitations", () => {
   test("invite → the invitee signs in → accepts", async ({ t, world }) => {
-    const invited = await inviteMember(t.auth, world.as.bob, {
+    const invited = await inviteMember(t.auth, {
+      headers: world.as.bob,
       organizationPublicId: world.acme.publicId,
       email: "Dee@Example.com",
       role: "member",
@@ -400,7 +418,7 @@ describe("invitations", () => {
     if (!invited.ok) return;
     expect(internalKeys(invited.data)).toEqual([]);
 
-    const email = await t.waitForEmail("dee@example.com");
+    const email = await t.waitForEmail({ to: "dee@example.com" });
     expect(email.idempotencyKey).toBe(`invitation/${invited.data.publicId}`);
     expect(email.tags).toEqual({ category: "invitation" });
     expect(parseInvitationEmail(email.text).url).toBe(
@@ -410,7 +428,7 @@ describe("invitations", () => {
     const dee = await t.signInAs("dee@example.com");
     expect((await getViewer(t.auth, dee))?.tenant).toBeNull();
     expect(
-      await getInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId }),
+      await getInvitation(t.auth, { headers: dee, invitationPublicId: invited.data.publicId }),
     ).toMatchObject({
       ok: true,
       data: {
@@ -421,7 +439,7 @@ describe("invitations", () => {
     });
 
     expect(
-      await acceptInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId }),
+      await acceptInvitation(t.auth, { headers: dee, invitationPublicId: invited.data.publicId }),
     ).toEqual({
       ok: true,
       data: {
@@ -433,7 +451,8 @@ describe("invitations", () => {
   });
 
   test("only the invited address can read or accept an invitation", async ({ t, world }) => {
-    const invited = await inviteMember(t.auth, world.as.ada, {
+    const invited = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "admin",
@@ -442,19 +461,19 @@ describe("invitations", () => {
     const input = { invitationPublicId: invited.data.publicId };
 
     // Cy is signed in, but as someone else.
-    expect(await getInvitation(t.auth, world.as.cy, input)).toEqual({
+    expect(await getInvitation(t.auth, { headers: world.as.cy, ...input })).toEqual({
       ok: false,
       error: "wrong_recipient",
     });
-    expect(await acceptInvitation(t.auth, world.as.cy, input)).toEqual({
+    expect(await acceptInvitation(t.auth, { headers: world.as.cy, ...input })).toEqual({
       ok: false,
       error: "wrong_recipient",
     });
-    expect(await declineInvitation(t.auth, world.as.cy, input)).toEqual({
+    expect(await declineInvitation(t.auth, { headers: world.as.cy, ...input })).toEqual({
       ok: false,
       error: "wrong_recipient",
     });
-    expect(await getInvitation(t.auth, new Headers(), input)).toEqual({
+    expect(await getInvitation(t.auth, { headers: new Headers(), ...input })).toEqual({
       ok: false,
       error: "unauthenticated",
     });
@@ -465,7 +484,7 @@ describe("invitations", () => {
     for (const invitationPublicId of [crypto.randomUUID(), "nope"]) {
       // Sequential on purpose: each step depends on the ones before.
       // oxlint-disable-next-line no-await-in-loop
-      expect(await getInvitation(t.auth, world.as.cy, { invitationPublicId })).toEqual({
+      expect(await getInvitation(t.auth, { headers: world.as.cy, invitationPublicId })).toEqual({
         ok: false,
         error: "not_found",
       });
@@ -473,7 +492,8 @@ describe("invitations", () => {
   });
 
   test("the invitee can decline", async ({ t, world }) => {
-    const invited = await inviteMember(t.auth, world.as.ada, {
+    const invited = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "member",
@@ -482,13 +502,13 @@ describe("invitations", () => {
     const dee = await t.signInAs("dee@example.com");
 
     expect(
-      await declineInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId }),
+      await declineInvitation(t.auth, { headers: dee, invitationPublicId: invited.data.publicId }),
     ).toEqual({
       ok: true,
       data: null,
     });
     expect(
-      await acceptInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId }),
+      await acceptInvitation(t.auth, { headers: dee, invitationPublicId: invited.data.publicId }),
     ).toEqual({
       ok: false,
       error: "not_found",
@@ -497,7 +517,8 @@ describe("invitations", () => {
 
   test("a member can't invite", async ({ t, world }) => {
     expect(
-      await inviteMember(t.auth, world.as.cy, {
+      await inviteMember(t.auth, {
+        headers: world.as.cy,
         organizationPublicId: world.acme.publicId,
         email: "dee@example.com",
         role: "member",
@@ -512,7 +533,8 @@ describe("invitations", () => {
 
   test("an admin can't invite an owner", async ({ t, world }) => {
     expect(
-      await inviteMember(t.auth, world.as.bob, {
+      await inviteMember(t.auth, {
+        headers: world.as.bob,
         organizationPublicId: world.acme.publicId,
         email: "dee@example.com",
         role: "owner",
@@ -525,7 +547,8 @@ describe("invitations", () => {
 
   test("refuses bad input and existing members", async ({ t, world }) => {
     expect(
-      await inviteMember(t.auth, world.as.ada, {
+      await inviteMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         email: "not an email",
         role: "member",
@@ -538,14 +561,16 @@ describe("invitations", () => {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion
     const superuser = "superuser" as "member";
     expect(
-      await inviteMember(t.auth, world.as.ada, {
+      await inviteMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         email: "dee@example.com",
         role: superuser,
       }),
     ).toEqual({ ok: false, error: "invalid_input" });
     expect(
-      await inviteMember(t.auth, world.as.ada, {
+      await inviteMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         email: "cy@example.com",
         role: "member",
@@ -569,7 +594,8 @@ describe("invitations", () => {
     ] as const) {
       // Sequential on purpose: each case checks the database afterwards.
       // oxlint-disable-next-line no-await-in-loop
-      const result = await inviteMember(t.auth, as, {
+      const result = await inviteMember(t.auth, {
+        headers: as,
         organizationPublicId: world.acme.publicId,
         email: "dee@example.com",
         role,
@@ -581,7 +607,8 @@ describe("invitations", () => {
     expect(await auditActions(t)).toEqual([]);
 
     expect(
-      await inviteMember(t.auth, world.as.bob, {
+      await inviteMember(t.auth, {
+        headers: world.as.bob,
         organizationPublicId: world.acme.publicId,
         email: "dee@example.com",
         role: "member",
@@ -593,7 +620,8 @@ describe("invitations", () => {
     for (let i = 0; i < 25; i++) {
       // Sequential on purpose: each attempt would count against the limit.
       // oxlint-disable-next-line no-await-in-loop
-      const result = await inviteMember(t.auth, world.as.bob, {
+      const result = await inviteMember(t.auth, {
+        headers: world.as.bob,
         organizationPublicId: world.acme.publicId,
         email: i % 2 === 0 ? "cy@example.com" : "dee@example.com",
         // An admin can't invite an owner; Cy is already a member.
@@ -603,7 +631,8 @@ describe("invitations", () => {
     }
 
     expect(
-      await inviteMember(t.auth, world.as.bob, {
+      await inviteMember(t.auth, {
+        headers: world.as.bob,
         organizationPublicId: world.acme.publicId,
         email: "dee@example.com",
         role: "member",
@@ -612,7 +641,8 @@ describe("invitations", () => {
   });
 
   test("keeps and records an invitation whose email failed, and says so", async ({ t, world }) => {
-    const first = await inviteMember(t.auth, world.as.ada, {
+    const first = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "member",
@@ -621,7 +651,8 @@ describe("invitations", () => {
     vi.spyOn(t.mailer, "send").mockRejectedValueOnce(new Error("SMTP is down"));
 
     expect(
-      await inviteMember(t.auth, world.as.ada, {
+      await inviteMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         email: "dee@example.com",
         role: "member",
@@ -648,7 +679,8 @@ describe("invitations", () => {
 
     // Sending again works, and replaces it.
     expect(
-      await inviteMember(t.auth, world.as.ada, {
+      await inviteMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         email: "dee@example.com",
         role: "member",
@@ -660,7 +692,8 @@ describe("invitations", () => {
     for (let i = 0; i < 20; i++) {
       // Sequential on purpose: each step depends on the ones before.
       // oxlint-disable-next-line no-await-in-loop
-      const result = await inviteMember(t.auth, world.as.ada, {
+      const result = await inviteMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         email: `p${i}@example.com`,
         role: "member",
@@ -668,7 +701,8 @@ describe("invitations", () => {
       expect(result.ok).toBe(true);
     }
     expect(
-      await inviteMember(t.auth, world.as.ada, {
+      await inviteMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         email: "p20@example.com",
         role: "member",
@@ -680,7 +714,8 @@ describe("invitations", () => {
   });
 
   test("lists and cancels the tenant's pending invitations", async ({ t, world }) => {
-    const invited = await inviteMember(t.auth, world.as.ada, {
+    const invited = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "member",
@@ -691,7 +726,8 @@ describe("invitations", () => {
     expect(internalKeys(listed)).toEqual([]);
 
     expect(
-      await cancelInvitation(t.auth, world.as.cy, {
+      await cancelInvitation(t.auth, {
+        headers: world.as.cy,
         organizationPublicId: world.acme.publicId,
         invitationPublicId: invited.data.publicId,
       }),
@@ -700,7 +736,8 @@ describe("invitations", () => {
       error: "forbidden",
     });
     expect(
-      await cancelInvitation(t.auth, world.as.bob, {
+      await cancelInvitation(t.auth, {
+        headers: world.as.bob,
         organizationPublicId: world.acme.publicId,
         invitationPublicId: invited.data.publicId,
       }),
@@ -712,8 +749,12 @@ describe("invitations", () => {
   });
 
   test("can't cancel another organization's invitation", async ({ t, world }) => {
-    await switchOrganization(t.auth, world.as.ada, { organizationPublicId: world.globex.publicId });
-    const invited = await inviteMember(t.auth, world.as.ada, {
+    await switchOrganization(t.auth, {
+      headers: world.as.ada,
+      organizationPublicId: world.globex.publicId,
+    });
+    const invited = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.globex.publicId,
       email: "dee@example.com",
       role: "member",
@@ -722,7 +763,8 @@ describe("invitations", () => {
     expect(invited.data.organization.slug).toBe("globex");
 
     expect(
-      await cancelInvitation(t.auth, world.as.bob, {
+      await cancelInvitation(t.auth, {
+        headers: world.as.bob,
         organizationPublicId: world.acme.publicId,
         invitationPublicId: invited.data.publicId,
       }),
@@ -735,7 +777,8 @@ describe("invitations", () => {
   });
 
   test("a stale session must re-authenticate to cancel", async ({ t, world }) => {
-    const invited = await inviteMember(t.auth, world.as.ada, {
+    const invited = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "member",
@@ -743,7 +786,8 @@ describe("invitations", () => {
     if (!invited.ok) throw new Error("invite failed");
     makeSessionsStale();
     expect(
-      await cancelInvitation(t.auth, world.as.ada, {
+      await cancelInvitation(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         invitationPublicId: invited.data.publicId,
       }),
@@ -756,8 +800,11 @@ describe("invitations", () => {
 
 // Tab A shows Acme; tab B (the same session) switches it to Globex. Tab A's next mutation names
 // Acme, the workspace it showed, and must be refused before anything happens.
-async function switchInAnotherTab(t: TestAuth, headers: Headers, organizationPublicId: string) {
-  expect((await switchOrganization(t.auth, headers, { organizationPublicId })).ok).toBe(true);
+async function switchInAnotherTab(
+  t: TestAuth,
+  { headers, organizationPublicId }: { headers: Headers; organizationPublicId: string },
+) {
+  expect((await switchOrganization(t.auth, { headers, organizationPublicId })).ok).toBe(true);
 }
 
 /** Moves an invitation past its expiry. */
@@ -773,10 +820,14 @@ describe("a page showing another workspace (tenant_changed)", () => {
     t,
     world,
   }) => {
-    await switchInAnotherTab(t, world.as.ada, world.globex.publicId);
+    await switchInAnotherTab(t, {
+      headers: world.as.ada,
+      organizationPublicId: world.globex.publicId,
+    });
 
     expect(
-      await inviteMember(t.auth, world.as.ada, {
+      await inviteMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         email: "dee@example.com",
         role: "member",
@@ -794,30 +845,37 @@ describe("a page showing another workspace (tenant_changed)", () => {
     t,
     world,
   }) => {
-    const invited = await inviteMember(t.auth, world.as.ada, {
+    const invited = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "member",
     });
     if (!invited.ok) throw new Error("invite failed");
-    await switchInAnotherTab(t, world.as.ada, world.globex.publicId);
+    await switchInAnotherTab(t, {
+      headers: world.as.ada,
+      organizationPublicId: world.globex.publicId,
+    });
     const stale = { organizationPublicId: world.acme.publicId };
 
     expect(
-      await changeMemberRole(t.auth, world.as.ada, {
+      await changeMemberRole(t.auth, {
+        headers: world.as.ada,
         ...stale,
         memberPublicId: world.members.cy.publicId,
         role: "admin",
       }),
     ).toEqual({ ok: false, error: "tenant_changed" });
     expect(
-      await removeMember(t.auth, world.as.ada, {
+      await removeMember(t.auth, {
+        headers: world.as.ada,
         ...stale,
         memberPublicId: world.members.cy.publicId,
       }),
     ).toEqual({ ok: false, error: "tenant_changed" });
     expect(
-      await cancelInvitation(t.auth, world.as.ada, {
+      await cancelInvitation(t.auth, {
+        headers: world.as.ada,
         ...stale,
         invitationPublicId: invited.data.publicId,
       }),
@@ -837,23 +895,37 @@ describe("a page showing another workspace (tenant_changed)", () => {
   });
 
   test("comes before every other check", async ({ t, world }) => {
-    await switchInAnotherTab(t, world.as.ada, world.globex.publicId);
+    await switchInAnotherTab(t, {
+      headers: world.as.ada,
+      organizationPublicId: world.globex.publicId,
+    });
     makeSessionsStale();
     const stale = { organizationPublicId: world.acme.publicId };
     // A stale session would be `reauth_required`, bad input `invalid_input`, and a publicId from
     // the old page `not_found`: none of them may say why before the tenant check does.
-    expect(await removeMember(t.auth, world.as.ada, { ...stale, memberPublicId: "nope" })).toEqual({
+    expect(
+      await removeMember(t.auth, { headers: world.as.ada, ...stale, memberPublicId: "nope" }),
+    ).toEqual({
       ok: false,
       error: "tenant_changed",
     });
     expect(
-      await inviteMember(t.auth, world.as.ada, { ...stale, email: "not an email", role: "member" }),
+      await inviteMember(t.auth, {
+        headers: world.as.ada,
+        ...stale,
+        email: "not an email",
+        role: "member",
+      }),
     ).toEqual({ ok: false, error: "tenant_changed" });
   });
 
   test("still acts on the workspace the page shows", async ({ t, world }) => {
-    await switchInAnotherTab(t, world.as.ada, world.globex.publicId);
-    const invited = await inviteMember(t.auth, world.as.ada, {
+    await switchInAnotherTab(t, {
+      headers: world.as.ada,
+      organizationPublicId: world.globex.publicId,
+    });
+    const invited = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.globex.publicId,
       email: "dee@example.com",
       role: "member",
@@ -869,13 +941,13 @@ describe("inviting an address again", () => {
       email: "dee@example.com",
       role: "admin" as const,
     };
-    const first = await inviteMember(t.auth, world.as.ada, input);
+    const first = await inviteMember(t.auth, { headers: world.as.ada, ...input });
     if (!first.ok) throw new Error("invite failed");
     await expire(t, first.data.publicId);
     const listedExpired = await listInvitations(t.auth, await tenantViewer(t, world.as.ada));
     expect(listedExpired.map((i) => i.publicId)).toEqual([first.data.publicId]);
 
-    const second = await inviteMember(t.auth, world.as.ada, input);
+    const second = await inviteMember(t.auth, { headers: world.as.ada, ...input });
     if (!second.ok) throw new Error("re-invite failed");
 
     expect(second.data).toMatchObject({ email: "dee@example.com", role: "admin" });
@@ -913,15 +985,16 @@ describe("inviting an address again", () => {
       email: "dee@example.com",
       role: "member" as const,
     };
-    const first = await inviteMember(t.auth, world.as.ada, input);
-    const second = await inviteMember(t.auth, world.as.ada, input);
+    const first = await inviteMember(t.auth, { headers: world.as.ada, ...input });
+    const second = await inviteMember(t.auth, { headers: world.as.ada, ...input });
     if (!first.ok || !second.ok) throw new Error("invite failed");
     const listed = await listInvitations(t.auth, await tenantViewer(t, world.as.ada));
     expect(listed.map((i) => i.publicId)).toEqual([second.data.publicId]);
   });
 
   test("counts against the same hourly invite limit", async ({ t, world }) => {
-    const first = await inviteMember(t.auth, world.as.ada, {
+    const first = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "member",
@@ -932,11 +1005,15 @@ describe("inviting an address again", () => {
     for (let i = 1; i < INVITE_LIMIT.max; i++) {
       // Sequential on purpose: each step depends on the ones before.
       // oxlint-disable-next-line no-await-in-loop
-      await consumeRateLimit(t.storage, `invite:${world.users.ada.id}`, INVITE_LIMIT);
+      await consumeRateLimit(t.storage, {
+        key: `invite:${world.users.ada.id}`,
+        rule: INVITE_LIMIT,
+      });
     }
 
     expect(
-      await inviteMember(t.auth, world.as.ada, {
+      await inviteMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId: world.acme.publicId,
         email: "dee@example.com",
         role: "member",
@@ -953,14 +1030,16 @@ describe("inviting an address again", () => {
 describe("an inviter who leaves or loses the role", () => {
   test("removing them cancels the invitations they sent", async ({ t, world }) => {
     await t.seedUser({ email: "dee@example.com", name: "Dee" });
-    const invited = await inviteMember(t.auth, world.as.bob, {
+    const invited = await inviteMember(t.auth, {
+      headers: world.as.bob,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "admin",
     });
     if (!invited.ok) throw new Error(invited.error);
 
-    await removeMember(t.auth, world.as.ada, {
+    await removeMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       memberPublicId: world.members.bob.publicId,
     });
@@ -968,7 +1047,7 @@ describe("an inviter who leaves or loses the role", () => {
     expect(await listInvitations(t.auth, await tenantViewer(t, world.as.ada))).toEqual([]);
     const dee = await t.signInAs("dee@example.com");
     expect(
-      await acceptInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId }),
+      await acceptInvitation(t.auth, { headers: dee, invitationPublicId: invited.data.publicId }),
     ).toEqual({ ok: false, error: "not_found" });
     expect(await auditActions(t)).toContainEqual({
       action: "org.invitation.cancelled",
@@ -981,24 +1060,28 @@ describe("an inviter who leaves or loses the role", () => {
     t,
     world,
   }) => {
-    await changeMemberRole(t.auth, world.as.ada, {
+    await changeMemberRole(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       memberPublicId: world.members.bob.publicId,
       role: "owner",
     });
-    const asOwner = await inviteMember(t.auth, world.as.bob, {
+    const asOwner = await inviteMember(t.auth, {
+      headers: world.as.bob,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "owner",
     });
-    const asMember = await inviteMember(t.auth, world.as.bob, {
+    const asMember = await inviteMember(t.auth, {
+      headers: world.as.bob,
       organizationPublicId: world.acme.publicId,
       email: "eve@example.com",
       role: "member",
     });
     if (!asOwner.ok || !asMember.ok) throw new Error("invite failed");
 
-    await changeMemberRole(t.auth, world.as.ada, {
+    await changeMemberRole(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       memberPublicId: world.members.bob.publicId,
       role: "admin",
@@ -1012,7 +1095,8 @@ describe("an inviter who leaves or loses the role", () => {
     t,
     world,
   }) => {
-    const invited = await inviteMember(t.auth, world.as.bob, {
+    const invited = await inviteMember(t.auth, {
+      headers: world.as.bob,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "admin",
@@ -1024,11 +1108,11 @@ describe("an inviter who leaves or loses the role", () => {
 
     const viewer = await getViewer(t.auth, dee);
     expect(await listMyInvitations(t.auth, viewer!)).toEqual([]);
-    expect(await getInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId })).toEqual(
-      { ok: false, error: "not_found" },
-    );
     expect(
-      await acceptInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId }),
+      await getInvitation(t.auth, { headers: dee, invitationPublicId: invited.data.publicId }),
+    ).toEqual({ ok: false, error: "not_found" });
+    expect(
+      await acceptInvitation(t.auth, { headers: dee, invitationPublicId: invited.data.publicId }),
     ).toEqual({ ok: false, error: "not_found" });
     expect(await t.auth.$deps.db.$count(member, eq(member.organizationId, world.acme.id))).toBe(2);
   });
@@ -1037,7 +1121,8 @@ describe("an inviter who leaves or loses the role", () => {
     t,
     world,
   }) => {
-    const invited = await inviteMember(t.auth, world.as.ada, {
+    const invited = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "owner",
@@ -1050,7 +1135,7 @@ describe("an inviter who leaves or loses the role", () => {
       .where(eq(member.id, world.members.ada.id));
 
     expect(
-      await acceptInvitation(t.auth, dee, { invitationPublicId: invited.data.publicId }),
+      await acceptInvitation(t.auth, { headers: dee, invitationPublicId: invited.data.publicId }),
     ).toEqual({ ok: false, error: "not_found" });
     expect((await getViewer(t.auth, dee))?.tenant).toBeNull();
   });
@@ -1059,18 +1144,23 @@ describe("an inviter who leaves or loses the role", () => {
 describe("listMyInvitations", () => {
   test("lists only the viewer's own invitations they can still answer", async ({ t, world }) => {
     const toDee = (organizationPublicId: string) =>
-      inviteMember(t.auth, world.as.ada, {
+      inviteMember(t.auth, {
+        headers: world.as.ada,
         organizationPublicId,
         email: "Dee@Example.com",
         role: "member",
       });
     const acme = await toDee(world.acme.publicId);
-    const other = await inviteMember(t.auth, world.as.ada, {
+    const other = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "eve@example.com",
       role: "admin",
     });
-    await switchOrganization(t.auth, world.as.ada, { organizationPublicId: world.globex.publicId });
+    await switchOrganization(t.auth, {
+      headers: world.as.ada,
+      organizationPublicId: world.globex.publicId,
+    });
     const globex = await toDee(world.globex.publicId);
     if (!acme.ok || !other.ok || !globex.ok) throw new Error("invite failed");
     const dee = await t.signInAs("dee@example.com");
@@ -1089,7 +1179,7 @@ describe("listMyInvitations", () => {
       .update(invitation)
       .set({ expiresAt: new Date(Date.now() - 1000) })
       .where(eq(invitation.publicId, globex.data.publicId));
-    await declineInvitation(t.auth, dee, { invitationPublicId: acme.data.publicId });
+    await declineInvitation(t.auth, { headers: dee, invitationPublicId: acme.data.publicId });
     expect(await listMyInvitations(t.auth, viewer)).toEqual([]);
     expect(
       await t.auth.$deps.db.$count(
@@ -1100,7 +1190,8 @@ describe("listMyInvitations", () => {
   });
 
   test("never lists someone else's invitations", async ({ t, world }) => {
-    await inviteMember(t.auth, world.as.ada, {
+    await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "member",
@@ -1116,7 +1207,9 @@ describe("listMyInvitations", () => {
 
 describe("profile", () => {
   test("updates the name", async ({ t, world }) => {
-    expect(await updateProfileName(t.auth, world.as.cy, { name: "  Cy Young " })).toMatchObject({
+    expect(
+      await updateProfileName(t.auth, { headers: world.as.cy, name: "  Cy Young " }),
+    ).toMatchObject({
       ok: true,
       data: { name: "Cy Young", email: "cy@example.com" },
     });
@@ -1135,7 +1228,7 @@ describe("profile", () => {
     ]) {
       // Sequential on purpose: each step depends on the ones before.
       // oxlint-disable-next-line no-await-in-loop
-      expect(await updateProfileName(t.auth, world.as.cy, { name })).toEqual({
+      expect(await updateProfileName(t.auth, { headers: world.as.cy, name })).toEqual({
         ok: false,
         error: "invalid_input",
       });
@@ -1145,42 +1238,54 @@ describe("profile", () => {
 
 describe("audit", () => {
   test("records each organization event with its target's publicId", async ({ t, world }) => {
-    await switchOrganization(t.auth, world.as.ada, { organizationPublicId: world.globex.publicId });
-    await switchOrganization(t.auth, world.as.ada, { organizationPublicId: world.acme.publicId });
-    const first = await inviteMember(t.auth, world.as.ada, {
+    await switchOrganization(t.auth, {
+      headers: world.as.ada,
+      organizationPublicId: world.globex.publicId,
+    });
+    await switchOrganization(t.auth, {
+      headers: world.as.ada,
+      organizationPublicId: world.acme.publicId,
+    });
+    const first = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "member",
     });
-    const second = await inviteMember(t.auth, world.as.ada, {
+    const second = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "eve@example.com",
       role: "member",
     });
-    const third = await inviteMember(t.auth, world.as.ada, {
+    const third = await inviteMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       email: "fay@example.com",
       role: "member",
     });
     if (!first.ok || !second.ok || !third.ok) throw new Error("invite failed");
     const dee = await t.signInAs("dee@example.com");
-    await acceptInvitation(t.auth, dee, { invitationPublicId: first.data.publicId });
+    await acceptInvitation(t.auth, { headers: dee, invitationPublicId: first.data.publicId });
     const eve = await t.signInAs("eve@example.com");
-    await declineInvitation(t.auth, eve, { invitationPublicId: second.data.publicId });
-    await cancelInvitation(t.auth, world.as.ada, {
+    await declineInvitation(t.auth, { headers: eve, invitationPublicId: second.data.publicId });
+    await cancelInvitation(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       invitationPublicId: third.data.publicId,
     });
-    await changeMemberRole(t.auth, world.as.ada, {
+    await changeMemberRole(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       memberPublicId: world.members.cy.publicId,
       role: "admin",
     });
-    await removeMember(t.auth, world.as.ada, {
+    await removeMember(t.auth, {
+      headers: world.as.ada,
       organizationPublicId: world.acme.publicId,
       memberPublicId: world.members.cy.publicId,
     });
-    await updateProfileName(t.auth, world.as.bob, { name: "Robert" });
+    await updateProfileName(t.auth, { headers: world.as.bob, name: "Robert" });
 
     expect(await auditActions(t)).toEqual([
       { action: "org.switched", targetType: "organization", targetId: world.globex.publicId },
@@ -1218,12 +1323,14 @@ describe("audit", () => {
   });
 
   test("refused actions write nothing", async ({ t, world }) => {
-    await inviteMember(t.auth, world.as.cy, {
+    await inviteMember(t.auth, {
+      headers: world.as.cy,
       organizationPublicId: world.acme.publicId,
       email: "dee@example.com",
       role: "member",
     });
-    await removeMember(t.auth, world.as.bob, {
+    await removeMember(t.auth, {
+      headers: world.as.bob,
       organizationPublicId: world.acme.publicId,
       memberPublicId: world.members.ada.publicId,
     });

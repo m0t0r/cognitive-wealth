@@ -58,6 +58,7 @@ export function createMemoryStorage({
       entry.value = String(count + 1);
       return count + 1;
     },
+    // oxlint-disable-next-line max-params -- Better Auth's `SecondaryStorage.set(key, value, ttl)`
     async set(key, value, ttl) {
       if (ttl === undefined) {
         entries.set(key, { value, expiresAt: null });

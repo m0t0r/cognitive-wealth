@@ -11,6 +11,7 @@ const HAS_EXTENSION = /\.[cm]?[jt]sx?$/;
  */
 export function registerTsResolution() {
   registerHooks({
+    // oxlint-disable-next-line max-params -- Node's `registerHooks` resolve hook `(specifier, context, nextResolve)`
     resolve(specifier, context, nextResolve) {
       try {
         return nextResolve(specifier, context);

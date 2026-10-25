@@ -22,9 +22,7 @@ export { SIGN_IN_SUBJECT };
  */
 export async function nextEmail(
   mailbox: Mailpit,
-  to: string,
-  subject: string | RegExp,
-  trigger: () => Promise<void>,
+  { to, subject, trigger }: { to: string; subject: string | RegExp; trigger: () => Promise<void> },
 ) {
   const exclude = await mailbox.messageIds(to);
   await trigger();
@@ -34,13 +32,16 @@ export async function nextEmail(
 /** On `/sign-in`: submits `email` and returns the link and code from the email it sends. */
 export async function requestSignInFromUi(
   page: Page,
-  mailbox: Mailpit,
-  email: string,
+  { mailbox, email }: { mailbox: Mailpit; email: string },
 ): Promise<SignInEmail> {
-  const message = await nextEmail(mailbox, email, SIGN_IN_SUBJECT, async () => {
-    await page.getByRole("textbox", { name: "Email" }).fill(email);
-    await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+  const message = await nextEmail(mailbox, {
+    to: email,
+    subject: SIGN_IN_SUBJECT,
+    trigger: async () => {
+      await page.getByRole("textbox", { name: "Email" }).fill(email);
+      await page.getByRole("button", { name: "Continue" }).click();
+      await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+    },
   });
   return parseSignInEmail(message.text);
 }
@@ -54,9 +55,16 @@ export async function confirmSignIn(page: Page, link: SignInEmail): Promise<void
 /** Waits for the invitation to `organizationName` that `trigger` sends `to`; returns its link. */
 export async function invitationLink(
   mailbox: Mailpit,
-  { to, organizationName }: { to: string; organizationName: string },
-  trigger: () => Promise<void>,
+  {
+    to,
+    organizationName,
+    trigger,
+  }: { to: string; organizationName: string; trigger: () => Promise<void> },
 ): Promise<string> {
-  const message = await nextEmail(mailbox, to, invitationSubject(organizationName), trigger);
+  const message = await nextEmail(mailbox, {
+    to,
+    subject: invitationSubject(organizationName),
+    trigger,
+  });
   return parseInvitationEmail(message.text).url;
 }

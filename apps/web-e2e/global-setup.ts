@@ -78,9 +78,13 @@ export default async function globalSetup() {
   const serverUrl = postgres.getConnectionUri();
   // Migrate as `migrator`, as the compose `migrate` job does, so tables get its default grants.
   await runMigrations({
-    url: databaseUrl(serverUrl, TEMPLATE_DATABASE, {
-      name: "migrator",
-      password: passwords.migrator,
+    url: databaseUrl({
+      serverUrl,
+      database: TEMPLATE_DATABASE,
+      user: {
+        name: "migrator",
+        password: passwords.migrator,
+      },
     }),
   });
 

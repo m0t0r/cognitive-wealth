@@ -62,11 +62,15 @@ export function toPublicAccountRole(row: AccountRoleRow, account: AccountRow): P
   return { account: toPublicAccount(account), role: row.role, startsOn: row.startsOn };
 }
 
-export function toPublicPerson(
-  row: PersonRow,
-  householdRole: HouseholdRole,
-  accountRoles: PublicAccountRole[],
-): PublicPerson {
+export function toPublicPerson({
+  row,
+  householdRole,
+  accountRoles,
+}: {
+  row: PersonRow;
+  householdRole: HouseholdRole;
+  accountRoles: PublicAccountRole[];
+}): PublicPerson {
   return {
     publicId: row.publicId,
     firstName: row.firstName,

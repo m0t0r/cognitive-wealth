@@ -76,7 +76,7 @@ Decisions and their reasons are in `docs/adr/` (0001 to 0008); how the system wo
 
 ## Code conventions
 
-- **Named arguments.** A function with two or more parameters, besides a leading `db` (or `tx`), takes them as one destructured object, so every call names what it passes: `write(db, { firmId, asOf, rows })`, `deliveryKey({ asOf, name })`, not `write(db, firmId, asOf, rows)`. This covers constructors and test helpers too. Callbacks whose arity an API dictates (`(row, index)`, Playwright fixtures, Better Auth's storage) are exempt. Oxlint's `max-params` (`max: 2`) enforces it in `packages/portfolio`; older code is migrated in #127, so follow the convention in new code even where the rule isn't on yet.
+- **Named arguments.** A function with two or more parameters, besides a leading handle it works through (`db` or `tx`, `auth`, `storage`, a Playwright `page`, a test's `t`), takes them as one destructured object, so every call names what it passes: `write(db, { firmId, asOf, rows })`, `removeMember(auth, { headers, organizationPublicId, memberPublicId })`, `deliveryKey({ asOf, name })`, not `write(db, firmId, asOf, rows)`. This covers constructors and test helpers too. Callbacks whose arity an API dictates (`(row, index)`, Playwright fixtures, Better Auth's storage) are exempt: where the rule flags one, add `// oxlint-disable-next-line max-params -- <whose signature it is>`. Oxlint's `max-params` (`max: 2`) enforces it everywhere except `.claude/`, whose hooks and skill scripts change only with the user's approval. The rule can't see a two-parameter function without a handle (`textOf(source, key)`), so review catches those.
 
 ## Testing
 

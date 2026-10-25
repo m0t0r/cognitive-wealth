@@ -53,13 +53,13 @@ export async function listHouseholds(db: Database, firmId: number): Promise<Publ
     toPublicHousehold(
       row,
       inRoleOrder(membersOf.get(row.id) ?? []).map((member) =>
-        toPublicPerson(
-          member.person,
-          member.role,
-          (rolesOf.get(member.person.id) ?? []).map(({ role, account }) =>
+        toPublicPerson({
+          row: member.person,
+          householdRole: member.role,
+          accountRoles: (rolesOf.get(member.person.id) ?? []).map(({ role, account }) =>
             toPublicAccountRole(role, account),
           ),
-        ),
+        }),
       ),
     ),
   );

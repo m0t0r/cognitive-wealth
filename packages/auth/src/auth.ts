@@ -224,13 +224,13 @@ export function createAuth(deps: AuthDeps) {
         if (method === undefined || !created) return;
         try {
           // The credential just used is consumed; the other one (link or code) must die too.
-          await deleteSiblingCredentials(db, storage, created.user.email);
+          await deleteSiblingCredentials(db, { storage, email: created.user.email });
           // Mark this browser as one the user signs in from, so it keeps getting sign-in emails
           // while others flood the address (`sendMagicLink`). Reissued on every sign-in to
           // restart its 180 days.
           const { publicId } = created.user as typeof created.user & { publicId?: unknown };
           if (typeof publicId !== "string") throw new Error("Signed-in user has no publicId");
-          await setDeviceCookie(ctx, publicId);
+          await setDeviceCookie(ctx, { publicId });
         } catch (error) {
           // The session already exists. If a sibling may still be live, the sign-in fails as a
           // whole: end the session too, so a failure never leaves one behind.

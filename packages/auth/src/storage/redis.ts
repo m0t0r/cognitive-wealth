@@ -40,6 +40,7 @@ export function createRedisStorage(
   return {
     get: (key) => redis.get(k(key)),
     getAndDelete: (key) => redis.getDel(k(key)),
+    // oxlint-disable-next-line max-params -- Better Auth's `SecondaryStorage.set(key, value, ttl)`
     async set(key, value, ttl) {
       if (ttl === undefined) {
         await redis.set(k(key), value);

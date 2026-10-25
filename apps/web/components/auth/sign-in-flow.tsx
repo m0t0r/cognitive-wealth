@@ -117,7 +117,7 @@ export function SignInFlow({ next, arrivalError, purpose = null }: SignInFlowPro
         if (!result.ok) return { error: signInErrorMessage(result.error), notice: null };
         history = recordSend(history, Date.now());
         sends.current.set(key, history);
-        await saveSendHistory(email, history);
+        await saveSendHistory({ email, history });
         setCode("");
         setAttempt((count) => count + 1);
       }

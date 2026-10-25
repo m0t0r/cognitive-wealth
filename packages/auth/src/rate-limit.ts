@@ -17,9 +17,8 @@ export type RateLimitResult = { ok: true } | { ok: false; retryAfter: number };
  */
 export async function consumeRateLimit(
   storage: Pick<SecondaryStorage, "increment">,
-  key: string,
-  { window, max }: RateLimitRule,
+  { key, rule }: { key: string; rule: RateLimitRule },
 ): Promise<RateLimitResult> {
-  const count = await storage.increment(`rl:${key}`, window);
-  return count <= max ? { ok: true } : { ok: false, retryAfter: window };
+  const count = await storage.increment(`rl:${key}`, rule.window);
+  return count <= rule.max ? { ok: true } : { ok: false, retryAfter: rule.window };
 }
