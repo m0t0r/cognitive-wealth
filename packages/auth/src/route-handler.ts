@@ -207,7 +207,8 @@ async function withinCodeBudget(auth: Auth, body: Record<string, unknown> | unde
   const email = body?.email;
   if (typeof email !== "string") return false;
   const key = `sign-in-code:${normalizeEmail(email)}`;
-  return (await consumeRateLimit(auth.$deps.storage, { key, rule: SIGN_IN_CODE_LIMIT })).ok;
+  return (await consumeRateLimit({ storage: auth.$deps.storage, key, rule: SIGN_IN_CODE_LIMIT }))
+    .ok;
 }
 
 async function rebuild({

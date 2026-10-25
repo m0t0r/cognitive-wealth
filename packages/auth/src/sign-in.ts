@@ -179,7 +179,8 @@ export function createSignInFlow(deps: SignInFlowDeps) {
 
   /** Counts a request against one sign-in email limit; whether it's still within it. */
   async function consume(key: string, rule: keyof typeof SIGN_IN_EMAIL_LIMITS): Promise<boolean> {
-    const result = await consumeRateLimit(deps.storage, {
+    const result = await consumeRateLimit({
+      storage: deps.storage,
       key: `sign-in-email:${key}`,
       rule: SIGN_IN_EMAIL_LIMITS[rule],
     });
@@ -283,7 +284,7 @@ export function createSignInFlow(deps: SignInFlowDeps) {
         token: request.token,
         callbackPath: request.callbackPath,
       });
-      await deliver(deps.mailer, { to: email, url: link, code: slot.code });
+      await deliver({ mailer: deps.mailer, to: email, url: link, code: slot.code });
     } catch (error) {
       console.error("Sign-in request failed", error);
       await discard().catch(() => {});
@@ -293,10 +294,17 @@ export function createSignInFlow(deps: SignInFlowDeps) {
   return { sendMagicLink, sendVerificationOTP };
 }
 
-async function deliver(
-  mailer: Mailer,
-  { to, url, code }: { to: string; url: string; code: string },
-): Promise<void> {
+async function deliver({
+  mailer,
+  to,
+  url,
+  code,
+}: {
+  mailer: Mailer;
+  to: string;
+  url: string;
+  code: string;
+}): Promise<void> {
   const email = await renderSignInEmail({
     url,
     code,

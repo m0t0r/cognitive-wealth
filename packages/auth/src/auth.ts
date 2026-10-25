@@ -230,7 +230,7 @@ export function createAuth(deps: AuthDeps) {
           // restart its 180 days.
           const { publicId } = created.user as typeof created.user & { publicId?: unknown };
           if (typeof publicId !== "string") throw new Error("Signed-in user has no publicId");
-          await setDeviceCookie(ctx, { publicId });
+          await setDeviceCookie({ ctx, publicId });
         } catch (error) {
           // The session already exists. If a sibling may still be live, the sign-in fails as a
           // whole: end the session too, so a failure never leaves one behind.

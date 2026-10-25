@@ -25,10 +25,13 @@ function minutes(n: number) {
 }
 
 /** Sends `count` sign-in requests for `email`, each answered `{ status: true }`, then lets sends finish. */
-async function requestEmails(
-  t: TestAuth,
-  { email, count, ip, cookie }: Init & { email: string; count: number },
-) {
+async function requestEmails({
+  t,
+  email,
+  count,
+  ip,
+  cookie,
+}: Init & { t: TestAuth; email: string; count: number }) {
   for (let i = 0; i < count; i++) {
     // Sequential on purpose: each request counts against the limits the next one sees.
     // oxlint-disable-next-line no-await-in-loop
@@ -45,9 +48,9 @@ async function requestEmails(
 }
 
 /** Emails to `email` sent by one request, made like `requestEmails`. */
-async function emailsFor(t: TestAuth, { email, ...init }: Init & { email: string }) {
+async function emailsFor({ t, email, ...init }: Init & { t: TestAuth; email: string }) {
   const before = t.mailer.messages.length;
-  await requestEmails(t, { email, count: 1, ...init });
+  await requestEmails({ t, email, count: 1, ...init });
   return t.mailer.messages.slice(before).filter((m) => m.to === email).length;
 }
 
@@ -92,7 +95,7 @@ function tamperSignature(cookie: string): string {
 }
 
 /** Signs `email` in by link from a browser holding `cookie`, returning the verify response. */
-async function signInFrom(t: TestAuth, { email, cookie }: { email: string; cookie?: string }) {
+async function signInFrom({ t, email, cookie }: { t: TestAuth; email: string; cookie?: string }) {
   const headers: Record<string, string> = cookie ? { cookie } : {};
   const { token } = await t.requestSignIn(email, { headers });
   const response = await t.fetchAuth(`/magic-link/verify?token=${encodeURIComponent(token)}`, {
@@ -103,18 +106,23 @@ async function signInFrom(t: TestAuth, { email, cookie }: { email: string; cooki
 }
 
 /** Uses up the address's hourly backstop: `alreadySent` plus 3 per fresh IP, up to 10. */
-async function exhaustAddress(
-  t: TestAuth,
-  { email, alreadySent }: { email: string; alreadySent: number },
-) {
+async function exhaustAddress({
+  t,
+  email,
+  alreadySent,
+}: {
+  t: TestAuth;
+  email: string;
+  alreadySent: number;
+}) {
   let sent = alreadySent;
   for (let ip = 1; sent < 10; ip++) {
     const count = Math.min(3, 10 - sent);
     // oxlint-disable-next-line no-await-in-loop
-    await requestEmails(t, { email, count, ip: `192.0.2.${ip}` });
+    await requestEmails({ t, email, count, ip: `192.0.2.${ip}` });
     sent += count;
   }
-  expect(await emailsFor(t, { email, ip: "192.0.2.200" })).toBe(0);
+  expect(await emailsFor({ t, email, ip: "192.0.2.200" })).toBe(0);
 }
 
 const throttleEvents = (t: TestAuth) =>
@@ -133,10 +141,10 @@ const throttleEvents = (t: TestAuth) =>
 describe("per-requester limit", () => {
   test("an attacker's 3 requests don't stop another requester's email", async ({ t }) => {
     await t.seedUser({ email: ADA });
-    await requestEmails(t, { email: ADA, count: 4, ip: ATTACKER });
+    await requestEmails({ t, email: ADA, count: 4, ip: ATTACKER });
     expect(t.mailer.messages).toHaveLength(3);
 
-    expect(await emailsFor(t, { email: ADA, ip: "203.0.113.67" })).toBe(1);
+    expect(await emailsFor({ t, email: ADA, ip: "203.0.113.67" })).toBe(1);
   });
 
   test("allows 3 more after 10 minutes, and 6 in an hour", async ({ orm }) => {
@@ -151,18 +159,18 @@ describe("per-requester limit", () => {
       vi.useRealTimers();
     });
 
-    await requestEmails(t, { email: ADA, count: 4, ip: ATTACKER });
+    await requestEmails({ t, email: ADA, count: 4, ip: ATTACKER });
     expect(t.mailer.messages).toHaveLength(3);
     minutes(10);
-    await requestEmails(t, { email: ADA, count: 4, ip: ATTACKER });
+    await requestEmails({ t, email: ADA, count: 4, ip: ATTACKER });
     expect(t.mailer.messages).toHaveLength(6);
     // A new 10 minutes, but the hour already has its 6.
     minutes(10);
-    await requestEmails(t, { email: ADA, count: 1, ip: ATTACKER });
+    await requestEmails({ t, email: ADA, count: 1, ip: ATTACKER });
     expect(t.mailer.messages).toHaveLength(6);
     // An hour after the first email, both windows start again.
     minutes(40);
-    await requestEmails(t, { email: ADA, count: 1, ip: ATTACKER });
+    await requestEmails({ t, email: ADA, count: 1, ip: ATTACKER });
     expect(t.mailer.messages).toHaveLength(7);
   });
 
@@ -170,11 +178,11 @@ describe("per-requester limit", () => {
     t,
   }) => {
     const ada = await t.seedUser({ email: ADA });
-    await requestEmails(t, { email: ADA, count: 3, ip: ATTACKER });
+    await requestEmails({ t, email: ADA, count: 3, ip: ATTACKER });
     // Clear the three sent emails' links and code, so anything left comes from the refused one.
     await t.auth.$deps.db.delete(verification);
 
-    expect(await emailsFor(t, { email: ADA, ip: ATTACKER })).toBe(0);
+    expect(await emailsFor({ t, email: ADA, ip: ATTACKER })).toBe(0);
     expect(await t.auth.$deps.db.$count(verification)).toBe(0);
     const events = await throttleEvents(t);
     expect(events).toEqual([
@@ -204,7 +212,7 @@ describe("per-requester limit", () => {
       status: "pending",
       expiresAt: new Date(Date.now() + 86_400_000),
     });
-    await requestEmails(t, { email: "grace@example.com", count: 4, ip: ATTACKER });
+    await requestEmails({ t, email: "grace@example.com", count: 4, ip: ATTACKER });
     expect(t.mailer.messages).toHaveLength(3);
     expect(await throttleEvents(t)).toEqual([
       expect.objectContaining({
@@ -219,23 +227,23 @@ describe("per-requester limit", () => {
 describe("per-address backstop", () => {
   test("stops new requesters at 10 an hour, but not the user's own browser", async ({ t }) => {
     await t.seedUser({ email: ADA });
-    const cookie = deviceCookie(await signInFrom(t, { email: ADA }));
+    const cookie = deviceCookie(await signInFrom({ t, email: ADA }));
     // That sign-in's email was the first of the hour; 9 more from 3 IPs reach the backstop.
-    await exhaustAddress(t, { email: ADA, alreadySent: 1 });
+    await exhaustAddress({ t, email: ADA, alreadySent: 1 });
     expect(t.mailer.messages).toHaveLength(10);
     expect((await throttleEvents(t)).map((e) => e.metadata)).toEqual([{ rule: "address" }]);
 
-    expect(await emailsFor(t, { email: ADA, ip: "192.0.2.201", cookie })).toBe(1);
+    expect(await emailsFor({ t, email: ADA, ip: "192.0.2.201", cookie })).toBe(1);
   });
 
   test("an attacker's refused requests don't spend it", async ({ t }) => {
     await t.seedUser({ email: ADA });
     // 3 sent, 2 refused by the per-requester limit (5 stays under Better Auth's per-IP 429).
-    await requestEmails(t, { email: ADA, count: 5, ip: ATTACKER });
+    await requestEmails({ t, email: ADA, count: 5, ip: ATTACKER });
     expect(t.mailer.messages).toHaveLength(3);
 
     // The other 7 of the 10 are still there for everyone else.
-    await exhaustAddress(t, { email: ADA, alreadySent: 3 });
+    await exhaustAddress({ t, email: ADA, alreadySent: 3 });
     expect(t.mailer.messages).toHaveLength(10);
   });
 });
@@ -243,16 +251,16 @@ describe("per-address backstop", () => {
 describe("known device", () => {
   test("has its own limit of 3 per 10 minutes", async ({ t }) => {
     const ada = await t.seedUser({ email: ADA });
-    const cookie = deviceCookie(await signInFrom(t, { email: ADA }));
+    const cookie = deviceCookie(await signInFrom({ t, email: ADA }));
     // An attacker behind the user's NAT uses up the requester limit for that IP; the user's
     // own browser there still gets its email.
-    await requestEmails(t, { email: ADA, count: 3, ip: ATTACKER });
-    expect(await emailsFor(t, { email: ADA, ip: ATTACKER, cookie })).toBe(1);
+    await requestEmails({ t, email: ADA, count: 3, ip: ATTACKER });
+    expect(await emailsFor({ t, email: ADA, ip: ATTACKER, cookie })).toBe(1);
 
     // Another IP (Better Auth's per-IP limit would stop a 6th request from this one).
-    expect(await emailsFor(t, { email: ADA, ip: "203.0.113.67", cookie })).toBe(1);
-    expect(await emailsFor(t, { email: ADA, ip: "203.0.113.67", cookie })).toBe(1);
-    expect(await emailsFor(t, { email: ADA, ip: "203.0.113.67", cookie })).toBe(0);
+    expect(await emailsFor({ t, email: ADA, ip: "203.0.113.67", cookie })).toBe(1);
+    expect(await emailsFor({ t, email: ADA, ip: "203.0.113.67", cookie })).toBe(1);
+    expect(await emailsFor({ t, email: ADA, ip: "203.0.113.67", cookie })).toBe(0);
     expect((await throttleEvents(t)).at(-1)).toMatchObject({
       targetId: ada.publicId,
       metadata: { rule: "device" },
@@ -267,22 +275,22 @@ describe("known device", () => {
   ])("gets no exemption with %s", async ([, forge], { t }) => {
     await t.seedUser({ email: ADA });
     await t.seedUser({ email: "grace@example.com" });
-    const real = deviceCookie(await signInFrom(t, { email: ADA }));
-    const other = deviceCookie(await signInFrom(t, { email: "grace@example.com" }));
-    await exhaustAddress(t, { email: ADA, alreadySent: 1 });
+    const real = deviceCookie(await signInFrom({ t, email: ADA }));
+    const other = deviceCookie(await signInFrom({ t, email: "grace@example.com" }));
+    await exhaustAddress({ t, email: ADA, alreadySent: 1 });
 
     expect(
-      await emailsFor(t, { email: ADA, ip: "192.0.2.201", cookie: forge({ real, other }) }),
+      await emailsFor({ t, email: ADA, ip: "192.0.2.201", cookie: forge({ real, other }) }),
     ).toBe(0);
     // The genuine cookie still works, so the forgery, not the setup, was refused.
-    expect(await emailsFor(t, { email: ADA, ip: "192.0.2.202", cookie: real })).toBe(1);
+    expect(await emailsFor({ t, email: ADA, ip: "192.0.2.202", cookie: real })).toBe(1);
   });
 });
 
 describe("device cookie", () => {
   test("is set on sign-in by link and by code, scoped to the auth endpoints", async ({ t }) => {
     await t.seedUser({ email: ADA });
-    const byLink = await signInFrom(t, { email: ADA });
+    const byLink = await signInFrom({ t, email: ADA });
     const { code } = await t.requestSignIn(ADA);
     const byCode = await t.fetchAuth("/sign-in/email-otp", { body: { email: ADA, otp: code } });
     expect(byCode.status).toBe(200);
@@ -304,7 +312,7 @@ describe("device cookie", () => {
   }) => {
     const t = createTestAuth({ orm, secureCookies: true });
     await t.seedUser({ email: ADA });
-    const response = await signInFrom(t, { email: ADA });
+    const response = await signInFrom({ t, email: ADA });
     expect(deviceCookieOf({ response, name: SECURE_DEVICE })).toMatchObject({
       path: AUTH_BASE_PATH,
       httpOnly: true,
@@ -314,14 +322,14 @@ describe("device cookie", () => {
     expect(deviceCookieOf({ response, name: DEVICE })).toBeUndefined();
 
     // Past the requester limit, only a recognized device cookie still gets an email.
-    await requestEmails(t, { email: ADA, count: 3, ip: ATTACKER });
+    await requestEmails({ t, email: ADA, count: 3, ip: ATTACKER });
     const cookie = deviceCookie(response, SECURE_DEVICE);
-    expect(await emailsFor(t, { email: ADA, ip: ATTACKER, cookie })).toBe(1);
+    expect(await emailsFor({ t, email: ADA, ip: ATTACKER, cookie })).toBe(1);
   });
 
   test("survives sign-out and still exempts", async ({ t }) => {
     await t.seedUser({ email: ADA });
-    const signedIn = await signInFrom(t, { email: ADA });
+    const signedIn = await signInFrom({ t, email: ADA });
     const cookie = deviceCookie(signedIn);
     const session = t.sessionHeaders(signedIn);
 
@@ -334,24 +342,24 @@ describe("device cookie", () => {
     // Neither replaced nor cleared.
     expect(setCookieNames(signOut)).not.toContain(DEVICE);
 
-    await requestEmails(t, { email: ADA, count: 3, ip: ATTACKER });
-    expect(await emailsFor(t, { email: ADA, ip: ATTACKER, cookie })).toBe(1);
+    await requestEmails({ t, email: ADA, count: 3, ip: ATTACKER });
+    expect(await emailsFor({ t, email: ADA, ip: ATTACKER, cookie })).toBe(1);
   });
 
   test("a cookie issued by a real sign-in still exempts after signing in again, on the same device", async ({
     t,
   }) => {
     await t.seedUser({ email: ADA });
-    const first = deviceCookie(await signInFrom(t, { email: ADA }));
+    const first = deviceCookie(await signInFrom({ t, email: ADA }));
     // Signing in again from that browser reissues the cookie; its request is the device's 1st.
-    const again = deviceCookie(await signInFrom(t, { email: ADA, cookie: first }));
+    const again = deviceCookie(await signInFrom({ t, email: ADA, cookie: first }));
 
     // Past the requester limit, the reissued cookie is still recognized (the device's 2nd)…
-    await requestEmails(t, { email: ADA, count: 3, ip: ATTACKER });
-    expect(await emailsFor(t, { email: ADA, ip: ATTACKER, cookie: again })).toBe(1);
+    await requestEmails({ t, email: ADA, count: 3, ip: ATTACKER });
+    expect(await emailsFor({ t, email: ADA, ip: ATTACKER, cookie: again })).toBe(1);
     // …and it kept the device ID: it shares the first cookie's limit of 3, so the 4th is refused.
     // (Another IP: Better Auth's per-IP limit would stop a 6th request from this one.)
-    expect(await emailsFor(t, { email: ADA, ip: "203.0.113.67", cookie: again })).toBe(1);
-    expect(await emailsFor(t, { email: ADA, ip: "203.0.113.67", cookie: again })).toBe(0);
+    expect(await emailsFor({ t, email: ADA, ip: "203.0.113.67", cookie: again })).toBe(1);
+    expect(await emailsFor({ t, email: ADA, ip: "203.0.113.67", cookie: again })).toBe(0);
   });
 });

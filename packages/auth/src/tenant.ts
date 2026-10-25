@@ -339,7 +339,8 @@ export function inviteMember(
       if (role.data !== "member" && !viewer.session.isFresh) return fail("reauth_required");
       if (await isMember(db, { organizationId, email: email.data })) return fail("already_member");
 
-      const limit = await consumeRateLimit(auth.$deps.storage, {
+      const limit = await consumeRateLimit({
+        storage: auth.$deps.storage,
         key: `invite:${userId}`,
         rule: INVITE_LIMIT,
       });
@@ -547,9 +548,12 @@ export function cancelInvitation(
  */
 export async function getInvitation(
   auth: Auth,
-  { headers, invitationPublicId }: { headers: Headers; invitationPublicId: string },
+  { headers, ...input }: { headers: Headers; invitationPublicId: string },
 ): Promise<Result<PublicInvitation>> {
-  const found = await invitationForViewer(auth, { headers, invitationPublicId });
+  const found = await invitationForViewer(auth, {
+    headers,
+    invitationPublicId: input.invitationPublicId,
+  });
   if (!found.ok) return found;
   const checked = await call(() =>
     auth.api.getInvitation({ headers, query: { id: String(found.data.invitationId) } }),
@@ -564,9 +568,12 @@ export async function getInvitation(
 
 export async function acceptInvitation(
   auth: Auth,
-  { headers, invitationPublicId }: { headers: Headers; invitationPublicId: string },
+  { headers, ...input }: { headers: Headers; invitationPublicId: string },
 ): Promise<Result<{ organization: PublicOrganization }>> {
-  const found = await invitationForViewer(auth, { headers, invitationPublicId });
+  const found = await invitationForViewer(auth, {
+    headers,
+    invitationPublicId: input.invitationPublicId,
+  });
   if (!found.ok) return found;
   const { invitationId, organizationId, viewer } = found.data;
 
@@ -589,7 +596,7 @@ export async function acceptInvitation(
       action: "org.invitation.accepted",
       actorUserId: viewer.internal.userId,
       organizationId,
-      target: { type: "invitation", publicId: invitationPublicId },
+      target: { type: "invitation", publicId: input.invitationPublicId },
     },
   });
   return ok({ organization: toPublicOrganization(org) });
@@ -597,9 +604,12 @@ export async function acceptInvitation(
 
 export async function declineInvitation(
   auth: Auth,
-  { headers, invitationPublicId }: { headers: Headers; invitationPublicId: string },
+  { headers, ...input }: { headers: Headers; invitationPublicId: string },
 ): Promise<Result<null>> {
-  const found = await invitationForViewer(auth, { headers, invitationPublicId });
+  const found = await invitationForViewer(auth, {
+    headers,
+    invitationPublicId: input.invitationPublicId,
+  });
   if (!found.ok) return found;
   const { invitationId, organizationId, viewer } = found.data;
 
@@ -614,7 +624,7 @@ export async function declineInvitation(
       action: "org.invitation.declined",
       actorUserId: viewer.internal.userId,
       organizationId,
-      target: { type: "invitation", publicId: invitationPublicId },
+      target: { type: "invitation", publicId: input.invitationPublicId },
     },
   });
   return ok(null);

@@ -142,7 +142,7 @@ function issued(setSignedCookie: ReturnType<typeof fakeContext>["setSignedCookie
 describe("setDeviceCookie", () => {
   it("issues a signed, parseable cookie with a new device ID, scoped to the auth endpoints", async () => {
     const { ctx, setSignedCookie } = fakeContext(null);
-    await setDeviceCookie(ctx, { publicId: PUBLIC_ID, now: NOW });
+    await setDeviceCookie({ ctx, publicId: PUBLIC_ID, now: NOW });
 
     const { name, secret, attributes, parsed } = issued(setSignedCookie);
     expect(name).toBe("cw.device");
@@ -162,7 +162,7 @@ describe("setDeviceCookie", () => {
 
   it("keeps the device ID of the same user's cookie and renews its issue time", async () => {
     const { ctx, setSignedCookie } = fakeContext(cookie({ issuedAt: NOW_SECONDS - 3600 }));
-    await setDeviceCookie(ctx, { publicId: PUBLIC_ID, now: NOW });
+    await setDeviceCookie({ ctx, publicId: PUBLIC_ID, now: NOW });
 
     expect(issued(setSignedCookie).parsed).toEqual({
       publicId: PUBLIC_ID,
@@ -174,7 +174,7 @@ describe("setDeviceCookie", () => {
   it("gives another user on the same browser a device ID of their own", async () => {
     const { ctx, setSignedCookie } = fakeContext(cookie());
     const other = "0192f0c4-0000-7000-8000-000000000002";
-    await setDeviceCookie(ctx, { publicId: other, now: NOW });
+    await setDeviceCookie({ ctx, publicId: other, now: NOW });
 
     const { parsed } = issued(setSignedCookie);
     expect(parsed?.publicId).toBe(other);
@@ -186,7 +186,7 @@ describe("setDeviceCookie", () => {
     ["an expired", cookie({ issuedAt: NOW_SECONDS - DEVICE_COOKIE_MAX_AGE - 1 })],
   ] as const)("doesn't keep the device ID of %s cookie", async ([, signed]) => {
     const { ctx, setSignedCookie } = fakeContext(signed);
-    await setDeviceCookie(ctx, { publicId: PUBLIC_ID, now: NOW });
+    await setDeviceCookie({ ctx, publicId: PUBLIC_ID, now: NOW });
     expect(issued(setSignedCookie).parsed?.deviceId).not.toBe(DEVICE_ID);
   });
 });

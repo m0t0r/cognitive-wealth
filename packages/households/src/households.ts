@@ -50,17 +50,17 @@ export async function listHouseholds(db: Database, firmId: number): Promise<Publ
   const inRoleOrder = (rows: typeof members) =>
     HOUSEHOLD_ROLES.flatMap((role) => rows.filter((row) => row.role === role));
   return households.map((row) =>
-    toPublicHousehold(
+    toPublicHousehold({
       row,
-      inRoleOrder(membersOf.get(row.id) ?? []).map((member) =>
+      people: inRoleOrder(membersOf.get(row.id) ?? []).map((member) =>
         toPublicPerson({
           row: member.person,
           householdRole: member.role,
           accountRoles: (rolesOf.get(member.person.id) ?? []).map(({ role, account }) =>
-            toPublicAccountRole(role, account),
+            toPublicAccountRole({ row: role, account }),
           ),
         }),
       ),
-    ),
+    }),
   );
 }

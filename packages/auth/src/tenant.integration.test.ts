@@ -800,10 +800,15 @@ describe("invitations", () => {
 
 // Tab A shows Acme; tab B (the same session) switches it to Globex. Tab A's next mutation names
 // Acme, the workspace it showed, and must be refused before anything happens.
-async function switchInAnotherTab(
-  t: TestAuth,
-  { headers, organizationPublicId }: { headers: Headers; organizationPublicId: string },
-) {
+async function switchInAnotherTab({
+  t,
+  headers,
+  organizationPublicId,
+}: {
+  t: TestAuth;
+  headers: Headers;
+  organizationPublicId: string;
+}) {
   expect((await switchOrganization(t.auth, { headers, organizationPublicId })).ok).toBe(true);
 }
 
@@ -820,7 +825,8 @@ describe("a page showing another workspace (tenant_changed)", () => {
     t,
     world,
   }) => {
-    await switchInAnotherTab(t, {
+    await switchInAnotherTab({
+      t,
       headers: world.as.ada,
       organizationPublicId: world.globex.publicId,
     });
@@ -852,7 +858,8 @@ describe("a page showing another workspace (tenant_changed)", () => {
       role: "member",
     });
     if (!invited.ok) throw new Error("invite failed");
-    await switchInAnotherTab(t, {
+    await switchInAnotherTab({
+      t,
       headers: world.as.ada,
       organizationPublicId: world.globex.publicId,
     });
@@ -895,7 +902,8 @@ describe("a page showing another workspace (tenant_changed)", () => {
   });
 
   test("comes before every other check", async ({ t, world }) => {
-    await switchInAnotherTab(t, {
+    await switchInAnotherTab({
+      t,
       headers: world.as.ada,
       organizationPublicId: world.globex.publicId,
     });
@@ -920,7 +928,8 @@ describe("a page showing another workspace (tenant_changed)", () => {
   });
 
   test("still acts on the workspace the page shows", async ({ t, world }) => {
-    await switchInAnotherTab(t, {
+    await switchInAnotherTab({
+      t,
       headers: world.as.ada,
       organizationPublicId: world.globex.publicId,
     });
@@ -1005,7 +1014,8 @@ describe("inviting an address again", () => {
     for (let i = 1; i < INVITE_LIMIT.max; i++) {
       // Sequential on purpose: each step depends on the ones before.
       // oxlint-disable-next-line no-await-in-loop
-      await consumeRateLimit(t.storage, {
+      await consumeRateLimit({
+        storage: t.storage,
         key: `invite:${world.users.ada.id}`,
         rule: INVITE_LIMIT,
       });

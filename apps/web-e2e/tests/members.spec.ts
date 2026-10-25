@@ -30,7 +30,8 @@ test("an owner invites a new address and the invitee joins from their own browse
 
   // Browser A: the owner sends the invitation from the members page.
   await page.goto("/settings/members");
-  const url = await invitationLink(mailbox, {
+  const url = await invitationLink({
+    mailbox,
     to: inviteeEmail,
     organizationName: "Acme",
     trigger: async () => {
@@ -49,7 +50,7 @@ test("an owner invites a new address and the invitee joins from their own browse
   const inviteeViolations = await recordCspViolations(invitee.page);
   await invitee.page.goto(url);
   await expect(invitee.page).toHaveURL(`/sign-in?next=${encodeURIComponent(invitationPath)}`);
-  const link = await requestSignInFromUi(invitee.page, { mailbox, email: inviteeEmail });
+  const link = await requestSignInFromUi({ page: invitee.page, mailbox, email: inviteeEmail });
   await confirmSignIn(invitee.page, link);
 
   await expect(invitee.page).toHaveURL(invitationPath);
@@ -112,7 +113,8 @@ test("a stale session asks for a fresh sign-in before changing a role", async ({
 
   const dialog = page.getByRole("dialog", { name: "Sign in again to continue" });
   await expect(dialog).toBeVisible();
-  const message = await nextEmail(mailbox, {
+  const message = await nextEmail({
+    mailbox,
     to: ownerEmail,
     subject: SIGN_IN_SUBJECT,
     trigger: async () => {

@@ -15,10 +15,15 @@ export type RateLimitResult = { ok: true } | { ok: false; retryAfter: number };
  * `auth.api.*` calls from Server Actions. Keys are namespaced under `rl:` so they can't collide
  * with Better Auth's own entries.
  */
-export async function consumeRateLimit(
-  storage: Pick<SecondaryStorage, "increment">,
-  { key, rule }: { key: string; rule: RateLimitRule },
-): Promise<RateLimitResult> {
+export async function consumeRateLimit({
+  storage,
+  key,
+  rule,
+}: {
+  storage: Pick<SecondaryStorage, "increment">;
+  key: string;
+  rule: RateLimitRule;
+}): Promise<RateLimitResult> {
   const count = await storage.increment(`rl:${key}`, rule.window);
   return count <= rule.max ? { ok: true } : { ok: false, retryAfter: rule.window };
 }

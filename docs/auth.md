@@ -122,7 +122,7 @@ The browser calls these through `@repo/auth/client` (`requestSignIn`, `verifyMag
   - **An invitation is only as good as its inviter:** accepting checks (`organizationHooks.beforeAcceptInvitation`) that the inviter is still a member allowed `invitation:create`, and that an owner invitation still comes from an owner; otherwise `not_found`. `getInvitation` and `listMyInvitations` apply the same rule, and removing someone or changing their role cancels the pending invitations they could no longer send (`metadata: { reason: "inviter_removed" | "inviter_role_changed" }`). Better Auth only checks the inviter at creation, so without this a removed owner could rejoin through an invitation to another of their addresses.
   - **Re-inviting** an address replaces its pending invitations in that organization, expired ones included. Better Auth's `cancelPendingInvitationsOnReInvite` only sees unexpired ones, so `inviteMember` cancels the rest itself and audits each as `org.invitation.cancelled` with `metadata: { replacedBy }`. A resend is an ordinary invite: same permission, same limit.
 - `revokeUserSessions(auth, userPublicId)` signs a user out everywhere at once, in Postgres and the Redis cache ([ADR 0005](adr/0005-sessions-cached-in-redis.md)), and audits `auth.sessions_revoked`. It checks no permissions: call it only from trusted server code. A storage error is thrown, never reported as success.
-- `consumeRateLimit(storage, { key, rule: { window, max } })` is the Server Action limiter, for the invite action and anything else costly.
+- `consumeRateLimit({ storage, key, rule: { window, max } })` is the Server Action limiter, for the invite action and anything else costly.
 
 The order every tenant mutation checks in:
 
