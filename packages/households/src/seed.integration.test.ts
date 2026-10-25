@@ -12,8 +12,8 @@ import {
 import { WORLD_FIRM_SLUG } from "@repo/db/seed-data";
 import { test } from "@repo/db/testing";
 import { asc, eq } from "drizzle-orm";
-import { seedDevWorld } from "./seed";
-import { InvalidWorldError, parseWorld } from "./world";
+import { SeedConflict, seedDevWorld } from "./seed";
+import { InvalidWorldError, type World, parseWorld } from "./world";
 
 const readWorld = (path = "v0.json"): unknown =>
   JSON.parse(readFileSync(new URL(`../../../world/${path}`, import.meta.url), "utf8"));
@@ -116,5 +116,73 @@ describe("seedDevWorld", () => {
     expect(await orm.$count(user)).toBe(0);
     expect(await orm.$count(organization)).toBe(0);
     expect(Object.values(await crmRows(orm)).flat()).toEqual([]);
+  });
+
+  // Like the custodian's `world:load` (`LoadConflict`): a rerun adds what's missing, but never
+  // silently keeps rows the world file now describes differently.
+  test.for<[string, (world: World) => void, string]>([
+    [
+      "a Household's name",
+      (world) => {
+        world.crm.households[0]!.name = "The Reyes Family";
+      },
+      "Household reyes is already seeded with other details",
+    ],
+    [
+      "a Person's birth date",
+      (world) => {
+        world.crm.households[0]!.primary.born_on = "1978-05-15";
+      },
+      "Person dana-reyes is already seeded with other details",
+    ],
+    [
+      "who is Primary",
+      (world) => {
+        const home = world.crm.households[0]!;
+        [home.primary, home.co_client] = [home.co_client!, home.primary];
+      },
+      "Household reyes already has other People in other roles",
+    ],
+    [
+      "an Account role",
+      (world) => {
+        world.crm.households[0]!.co_client!.account_roles[1]!.role = "owner";
+      },
+      "Person jordan-reyes already holds other Account roles",
+    ],
+  ])(
+    "refuses a world that changes %s, and writes nothing",
+    async ([, change, message], { orm }) => {
+      await seedDevWorld(orm, readWorld());
+      const seeded = await crmRows(orm);
+      const world = parseWorld(readWorld());
+      change(world);
+
+      await expect(seedDevWorld(orm, world)).rejects.toThrow(new SeedConflict(message));
+      expect(await crmRows(orm)).toEqual(seeded);
+    },
+  );
+
+  test("adds a Household the world file gained since the last run", async ({ orm }) => {
+    await seedDevWorld(orm, readWorld());
+    const world = parseWorld(readWorld());
+    world.crm.households.push({
+      key: "okafor",
+      name: "The Okafor Household",
+      relationship_status: "prospect",
+      primary: {
+        key: "ada-okafor",
+        first_name: "Ada",
+        last_name: "Okafor",
+        born_on: "1985-11-30",
+        account_roles: [],
+      },
+      co_client: null,
+      dependents: [],
+    });
+
+    expect((await seedDevWorld(orm, world)).crm).toEqual({
+      added: { households: 1, people: 1, householdMembers: 1, accounts: 0, accountRoles: 0 },
+    });
   });
 });

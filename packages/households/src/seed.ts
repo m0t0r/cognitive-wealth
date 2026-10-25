@@ -10,7 +10,22 @@ import {
 import { type SeedResult, WORLD_FIRM_SLUG, seedDevData } from "@repo/db/seed-data";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import { InvalidWorldError, type World, householdPeople, parseWorld } from "./world";
+import type { HouseholdRole } from "@repo/db/schema/households";
+import {
+  InvalidWorldError,
+  type World,
+  type WorldPerson,
+  householdPeople,
+  parseWorld,
+} from "./world";
+
+/** The database already holds a seeded row the world file now describes differently. */
+export class SeedConflict extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SeedConflict";
+  }
+}
 
 export interface CrmSeedResult {
   /** Rows this run inserted; rows that already existed are left as they are. */
@@ -169,6 +184,15 @@ async function loadCrmHalf(db: Database, firmId: number, world: World): Promise<
         .returning({ id: accountRole.id })
     : [];
 
+  await refuseChangedRows(
+    db,
+    firmId,
+    world,
+    people,
+    [...householdIds.values()],
+    [...personIds.values()],
+  );
+
   return {
     added: {
       households: addedHouseholds.length,
@@ -178,6 +202,112 @@ async function loadCrmHalf(db: Database, firmId: number, world: World): Promise<
       accountRoles: addedRoles.length,
     },
   };
+}
+
+/**
+ * Throws a `SeedConflict` unless every seeded row the world file describes matches it: each
+ * Household's and Person's details, who is in each Household in which role, and each Person's
+ * Account roles. Called after the inserts, so a new row matches trivially and an old one that
+ * differs is caught; the caller's transaction then rolls the whole run back. Rows the world file
+ * doesn't name, such as a Household it no longer has, are left alone.
+ */
+async function refuseChangedRows(
+  db: Database,
+  firmId: number,
+  world: World,
+  people: { householdKey: string; worldPerson: WorldPerson; role: HouseholdRole }[],
+  householdIds: number[],
+  personIds: number[],
+) {
+  const [households, persons, members, roles] = await Promise.all([
+    db
+      .select({
+        key: household.seedKey,
+        name: household.name,
+        relationshipStatus: household.relationshipStatus,
+      })
+      .from(household)
+      .where(and(eq(household.firmId, firmId), inArray(household.id, householdIds))),
+    db
+      .select({
+        key: person.seedKey,
+        firstName: person.firstName,
+        lastName: person.lastName,
+        bornOn: person.bornOn,
+      })
+      .from(person)
+      .where(and(eq(person.firmId, firmId), inArray(person.id, personIds))),
+    db
+      .select({
+        householdKey: household.seedKey,
+        personKey: person.seedKey,
+        role: householdMember.role,
+      })
+      .from(householdMember)
+      .innerJoin(household, eq(household.id, householdMember.householdId))
+      .innerJoin(person, eq(person.id, householdMember.personId))
+      .where(
+        and(eq(householdMember.firmId, firmId), inArray(householdMember.householdId, householdIds)),
+      ),
+    db
+      .select({
+        personKey: person.seedKey,
+        accountNumber: custodialAccount.accountNumber,
+        role: accountRole.role,
+        startsOn: accountRole.startsOn,
+      })
+      .from(accountRole)
+      .innerJoin(person, eq(person.id, accountRole.personId))
+      .innerJoin(custodialAccount, eq(custodialAccount.id, accountRole.accountId))
+      .where(and(eq(accountRole.firmId, firmId), inArray(accountRole.personId, personIds))),
+  ]);
+
+  const loadedHouseholds = new Map(households.map((row) => [row.key, row]));
+  for (const home of world.crm.households) {
+    const loaded = loadedHouseholds.get(home.key);
+    if (loaded?.name !== home.name || loaded.relationshipStatus !== home.relationship_status) {
+      throw new SeedConflict(`Household ${home.key} is already seeded with other details`);
+    }
+  }
+  const loadedPeople = new Map(persons.map((row) => [row.key, row]));
+  for (const { worldPerson: wanted } of people) {
+    const loaded = loadedPeople.get(wanted.key);
+    if (
+      loaded?.firstName !== wanted.first_name ||
+      loaded.lastName !== wanted.last_name ||
+      loaded.bornOn !== wanted.born_on
+    ) {
+      throw new SeedConflict(`Person ${wanted.key} is already seeded with other details`);
+    }
+  }
+  for (const home of world.crm.households) {
+    const wanted = people
+      .filter((p) => p.householdKey === home.key)
+      .map((p) => `${p.worldPerson.key} ${p.role}`);
+    const loaded = members
+      .filter((m) => m.householdKey === home.key)
+      .map((m) => `${m.personKey} ${m.role}`);
+    if (!sameItems(wanted, loaded)) {
+      throw new SeedConflict(`Household ${home.key} already has other People in other roles`);
+    }
+  }
+  for (const { worldPerson } of people) {
+    const wanted = worldPerson.account_roles.map(
+      (r) => `${r.account_number} ${r.role} ${r.starts_on}`,
+    );
+    const loaded = roles
+      .filter((r) => r.personKey === worldPerson.key)
+      .map((r) => `${r.accountNumber} ${r.role} ${r.startsOn}`);
+    if (!sameItems(wanted, loaded)) {
+      throw new SeedConflict(`Person ${worldPerson.key} already holds other Account roles`);
+    }
+  }
+}
+
+// The same items in any order. Sets, since a row the world file lists twice is still one row.
+function sameItems(a: string[], b: string[]) {
+  const [left, right] = [new Set(a), new Set(b)];
+  return left.size === right.size && [...left].every((item) => right.has(item));
 }
 
 /** The ids of the Firm's rows whose `key` column holds one of `keys`, by that key. */
