@@ -211,17 +211,14 @@ async function withinCodeBudget(auth: Auth, body: Record<string, unknown> | unde
     .ok;
 }
 
-async function rebuild({
-  route,
-  request,
-  url,
-  origin,
-}: {
+type RebuildArgs = {
   route: AuthRoute;
   request: Request;
   url: URL;
   origin: string;
-}): Promise<Rebuilt> {
+};
+
+async function rebuild({ route, request, url, origin }: RebuildArgs): Promise<Rebuilt> {
   if (route === "verify") {
     // Only `token`: callback params would make Better Auth redirect, and an attacker-chosen
     // `errorCallbackURL` is an open redirect waiting to happen.

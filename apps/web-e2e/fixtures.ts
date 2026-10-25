@@ -33,18 +33,15 @@ export interface OtherBrowser {
   signIn: (email: string) => Promise<Cookie[]>;
 }
 
-/** The HTTP harness's sign-in, from `ip`, with the session cookies added to `context`. */
-async function signInto({
-  context,
-  appUrl,
-  ip,
-  email,
-}: {
+type SignIntoArgs = {
   context: BrowserContext;
   appUrl: string;
   ip: string;
   email: string;
-}) {
+};
+
+/** The HTTP harness's sign-in, from `ip`, with the session cookies added to `context`. */
+async function signInto({ context, appUrl, ip, email }: SignIntoArgs) {
   const { cookies } = await signIn({
     appUrl,
     email,

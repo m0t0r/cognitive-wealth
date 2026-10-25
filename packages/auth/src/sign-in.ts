@@ -294,17 +294,14 @@ export function createSignInFlow(deps: SignInFlowDeps) {
   return { sendMagicLink, sendVerificationOTP };
 }
 
-async function deliver({
-  mailer,
-  to,
-  url,
-  code,
-}: {
+type DeliverArgs = {
   mailer: Mailer;
   to: string;
   url: string;
   code: string;
-}): Promise<void> {
+};
+
+async function deliver({ mailer, to, url, code }: DeliverArgs): Promise<void> {
   const email = await renderSignInEmail({
     url,
     code,

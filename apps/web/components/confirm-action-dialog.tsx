@@ -13,6 +13,21 @@ import {
 import { Spinner } from "@repo/design-system/components/spinner";
 import { type ComponentProps, type ReactNode, useTransition } from "react";
 
+type ConfirmActionDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** An `AlertDialogTrigger`, when the dialog has its own (otherwise open it with `open`). */
+  trigger?: ReactNode;
+  finalFocus?: ComponentProps<typeof AlertDialogContent>["finalFocus"];
+  title: ReactNode;
+  description: ReactNode;
+  cancelLabel: string;
+  confirmLabel: string;
+  /** `destructive` for what can't be undone; `default` for a change that can be. */
+  confirmVariant?: "default" | "destructive";
+  onConfirm: () => Promise<void>;
+};
+
 /**
  * Confirms a destructive or high-stakes action. `onConfirm` runs in a transition, with the confirm
  * button disabled (but still focused) and showing a spinner until it settles; it should close the
@@ -30,20 +45,7 @@ export function ConfirmActionDialog({
   confirmLabel,
   confirmVariant = "destructive",
   onConfirm,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** An `AlertDialogTrigger`, when the dialog has its own (otherwise open it with `open`). */
-  trigger?: ReactNode;
-  finalFocus?: ComponentProps<typeof AlertDialogContent>["finalFocus"];
-  title: ReactNode;
-  description: ReactNode;
-  cancelLabel: string;
-  confirmLabel: string;
-  /** `destructive` for what can't be undone; `default` for a change that can be. */
-  confirmVariant?: "default" | "destructive";
-  onConfirm: () => Promise<void>;
-}) {
+}: ConfirmActionDialogProps) {
   const [pending, startTransition] = useTransition();
 
   return (

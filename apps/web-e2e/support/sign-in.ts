@@ -16,21 +16,18 @@ export const [, DEVICE_COOKIE] = DEVICE_COOKIE_NAMES;
 
 export { SIGN_IN_SUBJECT };
 
-/**
- * Reads the inbox before `trigger` runs, so the email returned is the one it caused, not an
- * older one to the same address.
- */
-export async function nextEmail({
-  mailbox,
-  to,
-  subject,
-  trigger,
-}: {
+type NextEmailArgs = {
   mailbox: Mailpit;
   to: string;
   subject: string | RegExp;
   trigger: () => Promise<void>;
-}) {
+};
+
+/**
+ * Reads the inbox before `trigger` runs, so the email returned is the one it caused, not an
+ * older one to the same address.
+ */
+export async function nextEmail({ mailbox, to, subject, trigger }: NextEmailArgs) {
   const exclude = await mailbox.messageIds(to);
   await trigger();
   return mailbox.waitForMessage({ to, subject, exclude });
@@ -65,18 +62,20 @@ export async function confirmSignIn(page: Page, link: SignInEmail): Promise<void
   await page.getByRole("button", { name: "Continue to Cognitive Wealth" }).click();
 }
 
+type InvitationLinkArgs = {
+  mailbox: Mailpit;
+  to: string;
+  organizationName: string;
+  trigger: () => Promise<void>;
+};
+
 /** Waits for the invitation to `organizationName` that `trigger` sends `to`; returns its link. */
 export async function invitationLink({
   mailbox,
   to,
   organizationName,
   trigger,
-}: {
-  mailbox: Mailpit;
-  to: string;
-  organizationName: string;
-  trigger: () => Promise<void>;
-}): Promise<string> {
+}: InvitationLinkArgs): Promise<string> {
   const message = await nextEmail({
     mailbox,
     to,

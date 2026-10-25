@@ -22,12 +22,14 @@ export async function captureResponseBodies(page: Page) {
   const pending: Array<Promise<void>> = [];
 
   // The fields of CDP's `Fetch.requestPaused` this reads.
-  async function capture(event: {
+  type CaptureArgs = {
     requestId: string;
     request: { url: string };
     responseStatusCode?: number;
     responseHeaders?: Array<{ name: string; value: string }>;
-  }) {
+  };
+
+  async function capture(event: CaptureArgs) {
     const status = event.responseStatusCode ?? 0;
     const contentType =
       event.responseHeaders?.find((header) => header.name.toLowerCase() === "content-type")

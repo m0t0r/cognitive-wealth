@@ -227,6 +227,14 @@ async function loadCrmHalf(
   };
 }
 
+type RefuseChangedRowsArgs = {
+  firmId: number;
+  world: World;
+  people: { householdKey: string; worldPerson: WorldPerson; role: HouseholdRole }[];
+  householdIds: number[];
+  personIds: number[];
+};
+
 /**
  * Throws a `SeedConflict` unless every seeded row the world file describes matches it: each
  * Household's and Person's details, who is in each Household in which role, and each Person's
@@ -236,19 +244,7 @@ async function loadCrmHalf(
  */
 async function refuseChangedRows(
   db: Database,
-  {
-    firmId,
-    world,
-    people,
-    householdIds,
-    personIds,
-  }: {
-    firmId: number;
-    world: World;
-    people: { householdKey: string; worldPerson: WorldPerson; role: HouseholdRole }[];
-    householdIds: number[];
-    personIds: number[];
-  },
+  { firmId, world, people, householdIds, personIds }: RefuseChangedRowsArgs,
 ) {
   const [households, persons, members, roles] = await Promise.all([
     db
@@ -340,20 +336,17 @@ function sameItems(a: string[], b: string[]) {
   return new Set(a).symmetricDifference(new Set(b)).size === 0;
 }
 
+type IdsByKeyArgs = {
+  table: typeof household | typeof person | typeof custodialAccount;
+  key: AnyPgColumn;
+  firmId: number;
+  keys: string[];
+};
+
 /** The ids of the Firm's rows whose `key` column holds one of `keys`, by that key. */
 async function idsByKey(
   db: Database,
-  {
-    table,
-    key,
-    firmId,
-    keys,
-  }: {
-    table: typeof household | typeof person | typeof custodialAccount;
-    key: AnyPgColumn;
-    firmId: number;
-    keys: string[];
-  },
+  { table, key, firmId, keys }: IdsByKeyArgs,
 ): Promise<Map<string, number>> {
   const rows = await db
     .select({ id: table.id, key: sql<string>`${key}` })
