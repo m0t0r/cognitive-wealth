@@ -14,7 +14,7 @@
   },
   "env": {
     "browser": true,
-    "es2024": true
+    "es2025": true
   },
   "settings": {
     "react": {

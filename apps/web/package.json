@@ -38,6 +38,9 @@
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
   },
+  "browserslist": [
+    "chrome >= 153"
+  ],
   "portless": {
     "name": "cognitive-wealth",
     "script": "dev:app"
