@@ -205,11 +205,11 @@ Where the Custodian keeps an Account's uninvested cash overnight, such as a bank
 _Avoid_: Cash balance, money market (when the sweep is meant)
 
 **Sweep rate**:
-The yearly interest rate the Cash sweep pays. Interest builds up every calendar day at the Sweep rate ÷ 365 (366 in a leap year) and is paid once a month.
+The yearly interest rate the Cash sweep pays. Interest builds up daily and is paid once a month.
 _Avoid_: Sweep yield, APY (a different measure)
 
 **Accrued interest**:
-Interest earned but not yet paid, kept at full precision. It becomes an interest Transaction, rounded once to cents, when it is paid.
+Interest earned but not yet paid. It becomes an interest Transaction when it is paid.
 _Avoid_: Pending interest
 
 **Business day**:
@@ -291,12 +291,16 @@ _Avoid_: Beta (fine for the market alone), loading, weight
 The simulated Custodian's own list of the Securities in the world, with what drives each one's price, such as its Factor exposures. The Security master is the feed file that sends Securities to Cognitive Wealth.
 _Avoid_: Security master (for the catalog), universe
 
+**Duration**:
+How much a bond's or bond fund's price moves when yields change: with a duration of 10, a rise of 1 percentage point lowers the price by about 10%.
+_Avoid_: Maturity (the date a bond repays)
+
 **Factor file**:
-The one copy of the Fama-French Factor returns the simulated Custodian prices from: downloaded into a local cache, never committed, and checked against its Pin.
+The one copy of the Fama-French Factor returns the simulated Custodian prices from, checked against its Pin.
 _Avoid_: Market data, price history
 
 **Pin**:
-The committed address and Content hash of the Factor file. The Custodian refuses to start when its cached copy doesn't match; moving the Pin is a deliberate rebuild of the world.
+The address and Content hash of the Factor file, which fix exactly which copy the world is built from. Moving the Pin is a deliberate rebuild of the world.
 _Avoid_: Lock, version
 
 **Treasury yield**:
@@ -312,7 +316,7 @@ The day whose end decides who is on the books as a holder, and so is paid a divi
 _Avoid_: Date of record (fine in speech)
 
 **Ex-dividend date**:
-The first day a share is bought without its next dividend: a buyer on or after it doesn't get the dividend, the seller does. Under T+1 it is usually the Record date, or the Business day before it when the Record date isn't a Business day; a dividend of 25% or more of the price has a later one. The price drops by the dividend on this day.
+The first day a share is bought without its next dividend: a buyer on or after it doesn't get the dividend, the seller does. Under T+1 it is the Record date, or the Business day before it when the Record date isn't a Business day (larger dividends differ). The price drops by the dividend on this day.
 _Avoid_: Ex-date (fine in speech)
 
 **Pay date**:

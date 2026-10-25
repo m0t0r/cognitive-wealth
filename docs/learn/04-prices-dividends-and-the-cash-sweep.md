@@ -35,7 +35,7 @@ Not covered here: the Close itself and its order of events (#48's primer), tax o
 
 **Short answer:** what one share costs at a given moment: the amount a buyer and a seller last agreed on.
 
-Think of a market stall selling apples. Nobody writes down what an apple is "really" worth. The price is whatever the last buyer paid the stallholder. If more people want apples, the stallholder can ask more. If apples pile up unsold, the price comes down.
+Think of a market stall selling apples. Nobody writes down what an apple is "really" worth. The price is whatever the last buyer paid the stallholder. If more people want apples, the stallholder can ask more. If many apples are left unsold, the stallholder asks less.
 
 A share works the same way. Its price is the amount the last buyer and seller agreed on. Each Business day, the Custodian records one price per Security, the one at the end of the day, and uses it to work out Market value ([the ledger primer](01-ledger-positions-and-dates.md), Part 5).
 
@@ -53,7 +53,7 @@ Say a share costs $50.00 on Monday and $52.00 on Tuesday. It gained $2.00. As a 
 
 (52.00 − 50.00) ÷ 50.00 = 0.04 = **4%**
 
-Why bother with percentages when you can see the dollars? Because dollars can't be compared across Securities. The Bond Fund costs about $10 and the Stock Fund about $150. A $0.40 rise is big news for the Bond Fund and almost nothing for the Stock Fund:
+Why bother with percentages when you can see the dollars? Because dollars can't be compared across Securities. The Bond Fund costs about $10 and the Stock Fund about $150. A $0.40 rise is a large change for the Bond Fund and a very small one for the Stock Fund:
 
 | Security   | Monday  | Tuesday | Gain in dollars | Return |
 | ---------- | ------- | ------- | --------------- | ------ |
@@ -70,13 +70,13 @@ Start with $100.00. On Monday it gains 10%, so it's worth $100.00 × 1.10 = $110
 
 $110.00 × 0.90 = **$99.00**
 
-So a day's price is always the day before's price × (1 + that day's Return). That one line is the heart of the simulated market, and Part 3 uses it every day.
+So a day's price is always the day before's price × (1 + that day's Return). The simulated market is built on that one line, and Part 3 uses it every day.
 
 ### How is a fund's price set?
 
 **Short answer:** from what the fund owns, through a number called its NAV, worked out each Business day.
 
-A fund is a basket of Securities (the ledger primer, Part 1). Its **NAV**, short for net asset value, is what the basket is worth after paying what the fund owes, divided by the number of fund shares. The SEC gives an example: a fund with "an NAV of $100 million" and 10,000,000 shares has a "per share NAV" of $10 ([SEC: Net Asset Value](https://www.investor.gov/introduction-investing/investing-basics/glossary/net-asset-value)).
+A fund is a basket of Securities (the ledger primer, Part 1). Its **NAV**, short for net asset value, is what the basket is worth after paying what the fund owes, divided by the number of fund shares. The SEC (the US Securities and Exchange Commission, the government agency that regulates markets and funds) gives an example: a fund with "an NAV of $100 million" and 10,000,000 shares has a "per share NAV" of $10 ([SEC: Net Asset Value](https://www.investor.gov/introduction-investing/investing-basics/glossary/net-asset-value)).
 
 What the basket holds changes in price every day, so the NAV does too. Mutual funds, a common kind of fund, "generally must calculate their NAV at least once every business day, typically after the major U.S. exchanges close". Investors buy at "the approximate per share NAV, plus any fees that the fund imposes at purchase" (same page).
 
@@ -125,7 +125,12 @@ Add the other two factors in the same way. If SMB is 0.50% and HML is −0.40%, 
 
 A $100.00 fund would end the day at $100.00 × 1.0135 = $101.35.
 
-That's how the simulated market can have invented funds with realistic prices. Each Larkspur fund gets its own exposures, chosen once. Each day's Factor returns are real ones, so each fund rises and falls when real markets did. Real funds also have their own day-to-day surprises on top, which the examples leave out to keep the sums short. Which factors the world uses, and the exact recipe, are for #45 and #46 to decide. This primer uses the three above.
+That's how the simulated market can have invented funds with realistic prices. The world wants both halves on purpose ([docs/product.md](../product.md), "Fictional Securities, real market history"):
+
+- **Real history**, so real events happen in the world too: "2020 and 2022 still happen".
+- **Fictional Securities**, so the world decides everything about them, such as when they pay dividends. Real security numbers (CUSIPs and ISINs) and many price feeds come with licences, which invented ones don't ([research](../research/synthetic-data-and-infra.md), "Securities: real tickers or fictional securities?").
+
+The data library is what joins the two: it's free, and it publishes real Factor returns for every Business day back to 1926. Each Larkspur fund gets its own exposures, chosen once. Each day's Factor returns are real ones, so each fund rises and falls when real markets did. Real funds also have their own day-to-day surprises on top, which the examples leave out to keep the sums short. Which factors the world uses, and the exact recipe, are for #45 and #46 to decide. This primer uses the three above.
 
 ### What is a Treasury yield?
 
@@ -155,7 +160,7 @@ Here's why, with a simplified bond that pays $1,030.00 one year from now and not
 
 The $1,030.00 didn't change. The price did, by $9.62.
 
-A bond that repays later moves more, because the higher yield is missed for longer. The number that says how much a bond's price moves is its **duration**. FINRA puts it like this: "if a bond has a duration of 10 and interest rates increase by 1 percentage point", its price "would be expected to decline by approximately 10 percent". Duration is "not to be confused with a bond's maturity", the date it repays ([FINRA: Interest Rate Changes and Duration](https://www.finra.org/investors/insights/bonds-interest-rate-changes-duration)). A bond fund has a duration too, from the bonds it holds. Part 3 prices the Bond Fund this way.
+A bond that repays later moves more, because the higher yield is missed for longer. The number that says how much a bond's price moves is its **duration**. FINRA (the Financial Industry Regulatory Authority, which oversees US brokers) puts it like this: "if a bond has a duration of 10 and interest rates increase by 1 percentage point", its price "would be expected to decline by approximately 10 percent". Duration is "not to be confused with a bond's maturity", the date it repays ([FINRA: Interest Rate Changes and Duration](https://www.finra.org/investors/insights/bonds-interest-rate-changes-duration)). A bond fund has a duration too, from the bonds it holds. Part 3 prices the Bond Fund this way.
 
 ## Part 3: A week of prices (Level 2)
 
@@ -174,7 +179,7 @@ You'll follow Dana's joint Account, CW-000001, for the rest of March. (Dana's IR
 
 Nobody trades in the Account for the rest of March. Every change you'll see comes from prices, one dividend and interest.
 
-**Every market number in Parts 3 to 5 is made up:** the Factor returns, the Treasury yields, the exposures, the dividend and the Sweep rate. They're picked to keep the sums short, not taken from March 2026. In the world, the Factor returns and yields would be real ones.
+**Every market number in Parts 3 to 5 is made up:** the Factor returns, the Treasury yields, the exposures, the dividend and the Sweep rate (the Cash sweep's interest rate, Part 5). They're picked to keep the sums short, not taken from March 2026. In the world, the Factor returns and yields would be real ones.
 
 ### How does the Stock Fund's price move?
 
@@ -218,7 +223,7 @@ Its price: $154.93 × 0.9807 = $151.939851, rounded to **$151.94**. Tuesday's Re
 | Mon 16 Mar   | 0.01% | −0.30% | 0.00%  | 0.00%  | −0.29% | 153.980703  | 153.98 |
 | Tue 17 Mar   | 0.01% | 0.40%  | 0.00%  | 0.00%  | 0.41%  | 154.611318  | 154.61 |
 
-Monday 16 March is different: it's the day the Stock Fund's dividend comes off its price, so its exact price is $154.93 × 0.9971 − $0.50. Part 4 explains why.
+Monday 16 March is different: it's the day the Stock Fund's dividend is taken off its price, so its exact price is $154.93 × 0.9971 − $0.50. Part 4 explains why.
 
 Saturday 14 and Sunday 15 March aren't Business days. There are no Factor returns and no new prices, so the Account is valued at Friday's prices, as the ledger primer described (Part 5).
 
@@ -246,7 +251,7 @@ Notice Tuesday 10 March: the Stock Fund fell 1.93%, and the Bond Fund rose 0.40%
 
 The example leaves something out on purpose: a real bond fund also earns interest from its bonds every day, which it pays out as dividends (Part 6). Here the Bond Fund's price moves only with the yield.
 
-### What is Dana's Account worth each day?
+### What is the Account's Market value each day?
 
 **Short answer:** shares × each day's prices, plus cash, exactly as in the ledger primer.
 
@@ -259,7 +264,7 @@ The example leaves something out on purpose: a real bond fund also earns interes
 | Thu 12 Mar | 4,618.80               | 3,012.00               | 6,476.65   | 14,107.45 |
 | Fri 13 Mar | 4,647.90               | 3,012.00               | 6,476.65   | 14,136.55 |
 
-Five days with no Transactions, and the Account's worth changed every day. The Ledger is untouched: only the prices are new.
+Five days with no Transactions, and the Account's Market value changed every day. The Ledger is untouched: only the prices are new.
 
 These totals leave out the interest the Cash sweep is building up (Part 5), because it isn't paid yet. Real statements often show it as a separate line; the example doesn't, to keep the totals simple.
 
@@ -269,7 +274,7 @@ These totals leave out the interest the Cash sweep is building up (Part 5), beca
 
 **Short answer:** to pass on to its holders the income that what it holds has earned.
 
-The companies a fund holds pay dividends to the fund, and bonds pay it interest. The fund keeps very little of it. The SEC describes it like this: "The fund then pays the shareholders nearly all the income, less expenses, as a dividend payment" ([SEC: Mutual Funds](https://www.investor.gov/introduction-investing/investing-basics/investment-products/mutual-funds-and-exchange-traded-funds-etfs/mutual-funds)).
+A company that makes a profit can keep it to grow the business, or pay part of it to its owners, the shareholders, as a dividend (the ledger primer, Part 2). A fund does the same with what it earns. The companies a fund holds pay dividends to the fund, and bonds pay it interest. The fund keeps very little of it. The SEC describes it like this: "The fund then pays the shareholders nearly all the income, less expenses, as a dividend payment" ([SEC: Mutual Funds](https://www.investor.gov/introduction-investing/investing-basics/investment-products/mutual-funds-and-exchange-traded-funds-etfs/mutual-funds)).
 
 A dividend is an amount per share. The Stock Fund pays **$0.50 a share**, so Dana's 30 shares are owed 30 × $0.50 = **$15.00**.
 
@@ -328,12 +333,12 @@ The price fell $0.95 from Friday: $0.50 from the dividend, and $0.449297 from th
 
 **Short answer:** no, because the $15.00 Dana is owed is taken out of what Dana's shares are worth.
 
-| Close      | Stock Fund shares × price | Dividend owed | Together |
-| ---------- | ------------------------- | ------------- | -------- |
-| Fri 13 Mar | 30 × 154.93 = 4,647.90    | –             | 4,647.90 |
-| Mon 16 Mar | 30 × 153.98 = 4,619.40    | 15.00         | 4,634.40 |
+| Close      | Stock Fund shares × price | Dividend owed | Shares plus dividend owed |
+| ---------- | ------------------------- | ------------- | ------------------------- |
+| Fri 13 Mar | 30 × 154.93 = 4,647.90    | –             | 4,647.90                  |
+| Mon 16 Mar | 30 × 153.98 = 4,619.40    | 15.00         | 4,634.40                  |
 
-The $13.50 fall in "Together" is the market's −0.29% day, not the dividend. A dividend moves value from inside the fund into Dana's cash. That's why there are two ways to measure a Return:
+The $13.50 fall in the last column is the market's −0.29% day, not the dividend. A dividend moves value from inside the fund into Dana's cash. That's why there are two ways to measure a Return:
 
 - **price return:** the change in price only.
 - **Total return:** the change in price plus the dividends paid.
@@ -393,7 +398,7 @@ The sweep agreement explains how. One real agreement, for sweeps run through the
 
 **Short answer:** $0.647665 on Saturday 7 March, at a Sweep rate of 3.65%.
 
-The example's Sweep rate is 3.65% a year. 2026 isn't a leap year, so the daily rate is 3.65% ÷ 365 = **0.01%**. (The example picks 3.65% so the daily rate is round.)
+In the world, the Sweep rate comes from Treasury yields. In this example it is a Treasury yield less a margin (#47 decides the real recipe; Part 6 explains why there's a gap). Say the one-month Treasury bill's yield is 4.15% and the margin is 0.50 percentage points, both made up: the Sweep rate is 4.15% − 0.50% = 3.65% a year. 2026 isn't a leap year, so the daily rate is 3.65% ÷ 365 = **0.01%**. (The example picks 3.65% so the daily rate is round.)
 
 On Saturday 7 March, Dana's cash is $6,476.65:
 
@@ -412,17 +417,47 @@ Two things to notice:
 
 Dana's cash is $6,476.65 from 7 to 16 March (10 days) and $6,491.65 from 17 March, when the dividend arrives, to 31 March (15 days). Interest on the dividend starts on the day it arrives.
 
-| Day        | Cash     | Today's interest, on cash + Accrued interest  | Accrued interest so far |
-| ---------- | -------- | --------------------------------------------- | ----------------------- |
-| Sat 7 Mar  | 6,476.65 | 6,476.65 × 0.0001 = 0.647665                  | 0.647665                |
-| Sun 8 Mar  | 6,476.65 | (6,476.65 + 0.647665) × 0.0001 = 0.6477297665 | 1.2953947665            |
-| …          |          |                                               |                         |
-| Mon 16 Mar | 6,476.65 |                                               | 6.47956527…             |
-| Tue 17 Mar | 6,491.65 |                                               | 7.12937823…             |
-| …          |          |                                               |                         |
-| Tue 31 Mar | 6,491.65 |                                               | 16.23358561…            |
+| Day       | Cash     | Today's interest, on cash + Accrued interest  | Accrued interest so far |
+| --------- | -------- | --------------------------------------------- | ----------------------- |
+| Sat 7 Mar | 6,476.65 | 6,476.65 × 0.0001 = 0.647665                  | 0.647665                |
+| Sun 8 Mar | 6,476.65 | (6,476.65 + 0.647665) × 0.0001 = 0.6477297665 | 1.2953947665            |
 
-The rows marked "…" follow the same rule. Without compounding, it would be 10 × $0.647665 + 15 × $0.649165 = $6.47665 + $9.737475 = $16.214125, or $16.21. Compounding adds 2 cents, because each day's interest also earns interest.
+Every later day follows the same rule. Here are all 25, shown to 10 decimal places (the sums keep every digit):
+
+<details>
+<summary>All 25 days, 7 to 31 March</summary>
+
+| Day        | Cash     | Today's interest | Accrued interest so far |
+| ---------- | -------- | ---------------- | ----------------------- |
+| Sat 7 Mar  | 6,476.65 | 0.647665         | 0.647665                |
+| Sun 8 Mar  | 6,476.65 | 0.6477297665     | 1.2953947665            |
+| Mon 9 Mar  | 6,476.65 | 0.6477945395     | 1.9431893060            |
+| Tue 10 Mar | 6,476.65 | 0.6478593189     | 2.5910486249            |
+| Wed 11 Mar | 6,476.65 | 0.6479241049     | 3.2389727298            |
+| Thu 12 Mar | 6,476.65 | 0.6479888973     | 3.8869616270            |
+| Fri 13 Mar | 6,476.65 | 0.6480536962     | 4.5350153232            |
+| Sat 14 Mar | 6,476.65 | 0.6481185015     | 5.1831338247            |
+| Sun 15 Mar | 6,476.65 | 0.6481833134     | 5.8313171381            |
+| Mon 16 Mar | 6,476.65 | 0.6482481317     | 6.4795652698            |
+| Tue 17 Mar | 6,491.65 | 0.6498129565     | 7.1293782264            |
+| Wed 18 Mar | 6,491.65 | 0.6498779378     | 7.7792561642            |
+| Thu 19 Mar | 6,491.65 | 0.6499429256     | 8.4291990898            |
+| Fri 20 Mar | 6,491.65 | 0.6500079199     | 9.0792070097            |
+| Sat 21 Mar | 6,491.65 | 0.6500729207     | 9.7292799304            |
+| Sun 22 Mar | 6,491.65 | 0.6501379280     | 10.3794178584           |
+| Mon 23 Mar | 6,491.65 | 0.6502029418     | 11.0296208002           |
+| Tue 24 Mar | 6,491.65 | 0.6502679621     | 11.6798887623           |
+| Wed 25 Mar | 6,491.65 | 0.6503329889     | 12.3302217511           |
+| Thu 26 Mar | 6,491.65 | 0.6503980222     | 12.9806197733           |
+| Fri 27 Mar | 6,491.65 | 0.6504630620     | 13.6310828353           |
+| Sat 28 Mar | 6,491.65 | 0.6505281083     | 14.2816109436           |
+| Sun 29 Mar | 6,491.65 | 0.6505931611     | 14.9322041047           |
+| Mon 30 Mar | 6,491.65 | 0.6506582204     | 15.5828623251           |
+| Tue 31 Mar | 6,491.65 | 0.6507232862     | 16.2335856113           |
+
+</details>
+
+Without compounding, it would be 10 × $0.647665 + 15 × $0.649165 = $6.47665 + $9.737475 = $16.214125, or $16.21 (rounded to cents, half to even). Compounding adds 2 cents, because each day's interest also earns interest.
 
 On Tuesday 31 March, the last day of the month, the Accrued interest is paid. It becomes recorded money, so it's rounded once to whole cents, half to even, the rule [ADR 0013](../adr/0013-money-shares-prices-and-rates-are-separate-types.md) names for a total built from many parts: $16.23358561… becomes **$16.23**.
 
@@ -436,7 +471,7 @@ Cash at the Close of 31 March: $6,491.65 + $16.23 = **$6,507.88**.
 
 **Short answer:** because the rounding errors add up, and Dana would be paid the wrong amount.
 
-Each day's interest is about 65 cents. Rounded to $0.65 every day, 25 days make 25 × $0.65 = $16.25, against the exact $16.23. That's the same trap [ADR 0013](../adr/0013-money-shares-prices-and-rates-are-separate-types.md) shows for a fee: keep every step at full precision and round once, when the number becomes recorded money.
+Each day's interest is about 65 cents. Rounded to cents, half to even, it's $0.65 every day, and 25 days make 25 × $0.65 = $16.25, against the exact $16.23. That's the same mistake [ADR 0013](../adr/0013-money-shares-prices-and-rates-are-separate-types.md) shows for a fee: keep every step at full precision and round once, when the number becomes recorded money.
 
 ## Part 6: In the real world (Level 3)
 
@@ -499,7 +534,7 @@ The world starts with the simplest kind: ordinary cash dividends of less than 25
 
 ### How do real sweeps set their rate?
 
-**Short answer:** a money market fund's rate follows short-term interest rates, while a bank sweep's rate is set by the firm, is often much lower, and can earn the firm more.
+**Short answer:** a money market fund's rate follows short-term interest rates, while a bank sweep's rate is set by the firm, is often lower, and can earn the firm more.
 
 The SEC lists the "three most common" choices for cash waiting to be invested ([SEC: Cash Sweep Programs](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins/cash-sweep-programs-uninvested-cash-your-investment-accounts-investor-bulletin), 14 May 2025). FDIC and SIPC are the two kinds of protection [the ledger primer](01-ledger-positions-and-dates.md) explains in Part 1 ("Isn't a bank enough?"):
 
@@ -521,7 +556,7 @@ A money market fund sweep also explains the $1.00 price. Most money market funds
 
 **Short answer:** the world's sweep is a simplification, called a bank sweep but paying a Sweep rate that follows Treasury yields, the way a money market fund's does.
 
-The world's Cash sweep is named Larkspur Bank Sweep ([the Custodian feed primer](03-custodian-feed-and-ingestion.md), Part 3), and its Sweep rate comes from Treasury yields ([docs/product.md](../product.md)). A real bank sweep's rate is the firm's choice and often far lower. A Sweep rate that follows Treasury bills, less a margin, is closer to a money market fund's. #47 decides how far below Treasury yields the world's Sweep rate sits, and, since yields are published only on Business days, which rate a Saturday or Sunday uses.
+The world's Cash sweep is named Larkspur Bank Sweep ([the Custodian feed primer](03-custodian-feed-and-ingestion.md), Part 3), and its Sweep rate comes from Treasury yields ([docs/product.md](../product.md)). A real bank sweep's rate is the firm's choice, and the SEC says bank sweeps "often pay less interest" than money market fund sweeps, whose dividends "generally reflect short term interest rates". A Sweep rate that follows Treasury bills, less a margin, is closer to a money market fund's. #47 decides how far below Treasury yields the world's Sweep rate sits, and, since yields are published only on Business days, which rate a Saturday or Sunday uses.
 
 Two more things the world leaves out: tiers (a higher rate for a bigger balance), and rates that differ between Accounts.
 
@@ -530,6 +565,8 @@ Two more things the world leaves out: tiers (a higher rate for a bigger balance)
 ### What do #45, #46 and #47 store, and what do they work out?
 
 **Short answer:** they store a few fixed inputs, and every price, dividend and interest payment is worked out from them, the same way every time.
+
+What follows is what this primer's examples assume. The exact recipes are for #45, #46 and #47 to decide, and their issues list what's still open.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/market-inputs.dark.svg">
@@ -550,14 +587,14 @@ Two more things the world leaves out: tiers (a higher rate for a bigger balance)
 **Turned into Transactions by the Close** (#48's primer, built in #49):
 
 - **A dividend** on each Pay date, for each Account holding the Security, by Trade date, at the Close of the Business day before the Ex-dividend date: shares × amount per share, rounded to cents, half to even.
-- **An interest payment** once a month: the Accrued interest rounded once to cents, half to even. This primer pays it on the last day of the month, a Business day in March 2026. When a month ends on a weekend, #47 decides whether the Saturday and Sunday are paid with that month or the next.
+- **An interest Transaction** once a month: the Accrued interest rounded once to cents, half to even. This primer pays it on the last day of the month, a Business day in March 2026. When a month ends on a weekend, #47 decides whether the Saturday and Sunday are paid with that month or the next.
 
 Prices are then stored, one per Security per Business day, as the ledger primer described (Part 7). Positions and Market value are still worked out from the Ledger and those prices, never stored.
 
 Two rules come with it:
 
 - **The same seed, Pin and date always give the same day.** No price, dividend or interest payment reads today's date or downloads anything while it runs.
-- **The tests use these numbers.** The tables in Parts 3 to 5 are fixtures: given the same Factor returns, yields, exposures and dividend, the code must produce the same prices, the same $15.00 and the same $16.23.
+- **These numbers can become tests.** The recipes in Parts 3 to 5 are this primer's proposal; #46 and #47 decide the world's. Where they keep a recipe, its table is a ready-made test: given the same Factor returns, yields, exposures and dividend, the code produces the same prices, the same $15.00 and the same $16.23.
 
 ## Recap
 
@@ -573,7 +610,7 @@ Two rules come with it:
 10. The **Cash sweep** earns **Accrued interest** every calendar day, at the **Sweep rate** ÷ 365, compounded, and paid once a month, rounded once to cents.
 11. Real Factor returns are revised, so the world uses a **Factor file** with a **Pin**, and resamples past Returns, seeded by the date, after the file ends.
 12. Factor returns count dividends, so the world takes each dividend off the price on its Ex-dividend date, or would pay it twice.
-13. Real bank sweeps often pay far less than money market funds. The world's sweep takes its rate from Treasury yields: a labelled simplification.
+13. Real bank sweeps often pay less than money market funds (FINRA: they "can pay far less"). The world's sweep takes its rate from Treasury yields: a labelled simplification.
 
 ## Check yourself
 
@@ -666,6 +703,6 @@ Friday 13 March, the Business day before the Record date, because Sunday isn't a
 <details>
 <summary>13. (Level 3) Is the world's Larkspur Bank Sweep realistic?</summary>
 
-Partly. A real bank sweep's rate is set by the firm, often far below short-term Treasury rates, and the firm can earn from the difference. The world takes its Sweep rate from Treasury yields, which is closer to a money market fund. It's a labelled simplification, and #47 decides how far below Treasury yields the rate sits.
+Partly. A real bank sweep's rate is set by the firm, often below what money market funds pay (which follows short-term rates), and the firm can earn from the difference. The world takes its Sweep rate from Treasury yields, which is closer to a money market fund. It's a labelled simplification, and #47 decides how far below Treasury yields the rate sits.
 
 </details>
