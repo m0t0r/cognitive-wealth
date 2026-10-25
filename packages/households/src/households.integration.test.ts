@@ -3,11 +3,11 @@ import type { Database } from "@repo/db";
 import { household, organization } from "@repo/db/schema";
 import { test } from "@repo/db/testing";
 import { listHouseholds } from "./households";
+import { z } from "zod";
 import { seedDevWorld } from "./seed";
 
-const UUID = expect.stringMatching(
-  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-);
+// A `publicId`: the database defaults it to `uuidv7()`.
+const UUID = expect.schemaMatching(z.uuidv7());
 
 async function seededFirms(db: Database) {
   await seedDevWorld(

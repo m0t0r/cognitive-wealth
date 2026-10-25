@@ -8,6 +8,7 @@ import {
   organization,
   person,
   user,
+  worldSeed,
 } from "@repo/db/schema";
 import { WORLD_FIRM_SLUG } from "@repo/db/seed-data";
 import { test } from "@repo/db/testing";
@@ -18,17 +19,52 @@ import { InvalidWorldError, type World, parseWorld } from "./world";
 const readWorld = (path = "v0.json"): unknown =>
   JSON.parse(readFileSync(new URL(`../../../world/${path}`, import.meta.url), "utf8"));
 
-// Every row of every CRM table, in a stable order.
+// Every row of every CRM table, and the seed's record of the world it loaded, in a stable order.
 async function crmRows(db: Database) {
-  const [households, people, members, accounts, roles] = await Promise.all([
+  const [households, people, members, accounts, roles, seeds] = await Promise.all([
     db.select().from(household).orderBy(asc(household.id)),
     db.select().from(person).orderBy(asc(person.id)),
     db.select().from(householdMember).orderBy(asc(householdMember.id)),
     db.select().from(custodialAccount).orderBy(asc(custodialAccount.id)),
     db.select().from(accountRole).orderBy(asc(accountRole.id)),
+    db.select().from(worldSeed).orderBy(asc(worldSeed.id)),
   ]);
-  return { households, people, members, accounts, roles };
+  return { households, people, members, accounts, roles, seeds };
 }
+
+// What an Advisor might do to the Reyes Household in the app: rename it and add a Dependent.
+async function editInTheApp(db: Database) {
+  const [reyes] = await db
+    .update(household)
+    .set({ name: "Reyes Family" })
+    .where(eq(household.seedKey, "reyes"))
+    .returning();
+  const [child] = await db
+    .insert(person)
+    .values({ firmId: reyes!.firmId, firstName: "Sam", lastName: "Reyes", bornOn: "2015-06-01" })
+    .returning();
+  await db.insert(householdMember).values({
+    firmId: reyes!.firmId,
+    householdId: reyes!.id,
+    personId: child!.id,
+    role: "dependent",
+  });
+}
+
+const okafor: World["crm"]["households"][number] = {
+  key: "okafor",
+  name: "The Okafor Household",
+  relationship_status: "prospect",
+  primary: {
+    key: "ada-okafor",
+    first_name: "Ada",
+    last_name: "Okafor",
+    born_on: "1985-11-30",
+    account_roles: [],
+  },
+  co_client: null,
+  dependents: [],
+};
 
 async function larkspurId(db: Database) {
   const [firm] = await db
@@ -88,7 +124,7 @@ describe("seedDevWorld", () => {
     const firmId = await larkspurId(orm);
 
     const rows = Object.values(await crmRows(orm)).flat();
-    expect(rows).toHaveLength(11);
+    expect(rows).toHaveLength(12);
     expect(new Set(rows.map((row) => row.firmId))).toEqual(new Set([firmId]));
   });
 
@@ -166,23 +202,49 @@ describe("seedDevWorld", () => {
   test("adds a Household the world file gained since the last run", async ({ orm }) => {
     await seedDevWorld(orm, readWorld());
     const world = parseWorld(readWorld());
-    world.crm.households.push({
-      key: "okafor",
-      name: "The Okafor Household",
-      relationship_status: "prospect",
-      primary: {
-        key: "ada-okafor",
-        first_name: "Ada",
-        last_name: "Okafor",
-        born_on: "1985-11-30",
-        account_roles: [],
-      },
-      co_client: null,
-      dependents: [],
-    });
+    world.crm.households.push(okafor);
 
     expect((await seedDevWorld(orm, world)).crm).toEqual({
       added: { households: 1, people: 1, householdMembers: 1, accounts: 0, accountRoles: 0 },
     });
+  });
+
+  // The fingerprint: the database records which CRM half the Firm was seeded from, so a rerun can
+  // tell the world file changing from someone editing the rows in the app.
+  test("leaves app edits alone when the world file hasn't changed", async ({ orm }) => {
+    await seedDevWorld(orm, readWorld());
+    await editInTheApp(orm);
+    const edited = await crmRows(orm);
+
+    expect((await seedDevWorld(orm, readWorld())).crm).toEqual({
+      added: { households: 0, people: 0, householdMembers: 0, accounts: 0, accountRoles: 0 },
+    });
+    expect(await crmRows(orm)).toEqual(edited);
+    expect(edited.households.map((h) => h.name)).toEqual(["Reyes Family"]);
+  });
+
+  test("refuses when the world file changed and its rows were edited in the app", async ({
+    orm,
+  }) => {
+    await seedDevWorld(orm, readWorld());
+    await editInTheApp(orm);
+    const edited = await crmRows(orm);
+    const world = parseWorld(readWorld());
+    world.crm.households.push(okafor);
+
+    await expect(seedDevWorld(orm, world)).rejects.toThrow(
+      new SeedConflict("Household reyes is already seeded with other details"),
+    );
+    expect(await crmRows(orm)).toEqual(edited);
+  });
+
+  test("remembers the new world once it loads", async ({ orm }) => {
+    await seedDevWorld(orm, readWorld());
+    const world = parseWorld(readWorld());
+    world.crm.households.push(okafor);
+    await seedDevWorld(orm, world);
+    await editInTheApp(orm);
+
+    expect((await seedDevWorld(orm, world)).crm.added.households).toBe(0);
   });
 });

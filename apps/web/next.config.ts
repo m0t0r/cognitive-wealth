@@ -12,7 +12,14 @@ const nextConfig: NextConfig = {
   // Trace from the monorepo root so workspace packages land in the standalone output.
   outputFileTracingRoot: join(import.meta.dirname, "../.."),
   poweredByHeader: false,
-  transpilePackages: ["@repo/design-system", "@repo/db", "@repo/auth", "@repo/email"],
+  transpilePackages: [
+    "@repo/design-system",
+    "@repo/db",
+    "@repo/auth",
+    "@repo/email",
+    // `@repo/db/schema` takes the Registration types from its generated Zod schemas.
+    "@repo/custodian-client",
+  ],
   // Page CSPs carry a per-request nonce, so `proxy.ts` sets those.
   async headers() {
     return [

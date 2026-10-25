@@ -3,15 +3,14 @@
 // this side checks the same file without Python. The schema checks each field on its own; the
 // few rules that need the whole file at once are repeated here from `WorldFile`'s validator, with
 // the same paths, and `world/invalid/` holds a file breaking each one for both sides' tests.
-import { Ajv2020, type ErrorObject } from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
+import { readFileSync } from "node:fs";
 import type {
   AccountRoleKind,
   HouseholdRole,
   RegistrationType,
   RelationshipStatus,
 } from "@repo/db/schema/households";
-import schema from "../../../world/schema.json" with { type: "json" };
+import { z } from "zod";
 
 // The parsed file's types, written by hand from `world/schema.json`. `world.test.ts` checks that
 // the schema's enums are the values the tables accept.
@@ -62,32 +61,34 @@ export class InvalidWorldError extends Error {
   }
 }
 
-// `useDefaults` fills in what the schema defaults (`co_client`, `dependents`, `account_roles`), so
-// a parsed World always has them.
-const ajv = new Ajv2020({ useDefaults: true });
-addFormats(ajv, ["date"]);
-const validate = ajv.compile<World>(schema);
+// The committed schema as Zod, which fills in what it defaults (`co_client`, `dependents`,
+// `account_roles`), so a parsed World always has them. `fromJSONSchema` can't know the output's
+// type, so `z.custom` names it; it checks nothing, the schema already has.
+// It's read rather than imported because a JSON import widens `"type": "string"` to `string`,
+// which Zod's `JSONSchema` type rejects.
+const schema: z.core.JSONSchema.JSONSchema = JSON.parse(
+  readFileSync(new URL("../../../world/schema.json", import.meta.url), "utf8"),
+);
+const worldSchema = z.fromJSONSchema(schema).pipe(z.custom<World>());
 
 /**
  * `json` as a World, or an `InvalidWorldError` naming the first bad field the way the custodian's
  * Pydantic models do (`custodian.accounts.1.registration_type`, counting from 0).
  */
 export function parseWorld(json: unknown): World {
-  const world = structuredClone(json);
-  if (!validate(world)) throw schemaError(validate.errors![0]!);
-  checkRules(world);
-  return world;
+  const parsed = worldSchema.safeParse(json);
+  if (!parsed.success) throw schemaError(parsed.error.issues[0]!);
+  checkRules(parsed.data);
+  return parsed.data;
 }
 
-function schemaError({ instancePath, keyword, params, message }: ErrorObject): InvalidWorldError {
-  const path = instancePath.split("/").slice(1);
-  // Ajv reports a missing or unknown field against the object that holds it.
-  if (keyword === "required") path.push(String(params.missingProperty));
-  if (keyword === "additionalProperties") {
-    path.push(String(params.additionalProperty));
-    return new InvalidWorldError(path.join("."), "isn't a known field");
+function schemaError(issue: z.core.$ZodIssue): InvalidWorldError {
+  const path = issue.path.map(String);
+  // Zod reports an unknown field against the object that holds it.
+  if (issue.code === "unrecognized_keys") {
+    return new InvalidWorldError([...path, issue.keys[0]!].join("."), "isn't a known field");
   }
-  return new InvalidWorldError(path.join("."), message ?? keyword);
+  return new InvalidWorldError(path.join("."), issue.message);
 }
 
 /** Each Person in `household` with the path of their field, such as "co_client" or "dependents.0". */
