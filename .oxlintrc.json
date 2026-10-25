@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "import", "react", "jsx-a11y"],
-  "jsPlugins": ["eslint-plugin-turbo"],
+  "jsPlugins": ["eslint-plugin-turbo", "./packages/lint-rules/src/index.ts"],
   "categories": {
     "correctness": "error",
     "suspicious": "warn",
@@ -86,6 +86,14 @@
     "jsx-a11y/tabindex-no-positive": "error"
   },
   "overrides": [
+    {
+      // Named arguments (CLAUDE.md, "Code conventions"): a parameter type of more than 3 members
+      // gets a name. Only here for now; the rest of the repo follows in a later issue.
+      "files": ["packages/portfolio/**"],
+      "rules": {
+        "repo/max-inline-param-type-members": ["error", { "max": 3 }]
+      }
+    },
     {
       "files": ["apps/web/**"],
       "plugins": ["nextjs"]
