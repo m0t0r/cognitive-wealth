@@ -14,7 +14,10 @@ app=${2:?app url, e.g. http://localhost:3000}
 ip=${3:?client ip, e.g. 10.77.0.1}
 session=${4:-verify}
 main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-state="$main/.dev/auth/$email.json"
+# dev:sign-in saves to the checkout it runs from, so a worktree's own session comes first: one in
+# the main checkout may belong to another task's server and database.
+state="$(git rev-parse --show-toplevel)/.dev/auth/$email.json"
+[ -f "$state" ] || state="$main/.dev/auth/$email.json"
 pidfile="$main/.dev/verify/chrome.pid"
 mkdir -p "$main/.dev/verify"
 
