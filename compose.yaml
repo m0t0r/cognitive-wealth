@@ -124,7 +124,7 @@ services:
 
   redis:
     <<: *hardening
-    image: redis:8.8.3-alpine@sha256:dc95ea2fcf5d5c4253be0f967c28143d0f625846197eed2fd32c748eb99abfca
+    image: redis:8.10.2-alpine@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
     # The image's `redis` user, so nothing runs as root (the script replaces the image entrypoint).
     user: "999:1000"
     entrypoint: ["/bin/sh", "/usr/local/bin/cw-redis-entrypoint.sh"]
