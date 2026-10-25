@@ -24,7 +24,7 @@ From the repo root:
 | `pnpm --filter web dev`                        | `next dev` at `https://cognitive-wealth.localhost` (portless)                                                        |
 | `pnpm dev:sign-in owner@cognitive-wealth.test` | signs a seeded user in through the real email flow, for `agent-browser --state` ([guide](../../docs/dev-sign-in.md)) |
 | `pnpm --filter web test`                       | unit (`*.test.ts`) and UI (`*.test.tsx`) tests                                                                       |
-| `pnpm --filter web test:integration`           | integration tests against PGlite (`*.integration.test.ts`)                                                           |
+| `pnpm --filter web test:integration`           | integration tests against Postgres (`*.integration.test.ts`)                                                         |
 | `pnpm --filter web check-types`                | `next typegen`, then `tsc --noEmit`                                                                                  |
 | `pnpm e2e`                                     | builds the app and runs the Playwright suite in `apps/web-e2e` (needs Docker)                                        |
 

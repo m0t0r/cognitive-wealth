@@ -1,7 +1,4 @@
-import { test as dbTest } from "@repo/db/testing";
-import { createTestAuth, internalIdKeys } from "./testing";
-
-const test = dbTest.extend("t", ({ orm }) => createTestAuth({ orm }));
+import { authTest as test, internalIdKeys } from "./testing";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 

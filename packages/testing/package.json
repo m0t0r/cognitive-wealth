@@ -6,7 +6,6 @@
   "exports": {
     "./vitest": "./src/vitest.ts",
     "./react": "./src/react.tsx",
-    "./pglite": "./src/pglite.ts",
     "./postgres": "./src/postgres.ts",
     "./compose": "./src/compose.ts",
     "./reaper": "./src/reaper.ts",
@@ -23,7 +22,6 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.5.11",
     "@testcontainers/postgresql": "12.2.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",

@@ -52,13 +52,13 @@ The Custodian feed's tables (`custodian_delivery`, `security`, `custodial_transa
 
 Every environment that serves the app runs the production build with `NODE_ENV=production`, except `pnpm dev`. They differ by explicit settings, never by an environment name ([ADR 0008](adr/0008-production-mode-everywhere.md)).
 
-| Environment                     | App                                                                                                                               | Postgres, Redis, Mail                                   | Isolation                                              |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------ |
-| `pnpm dev`                      | `next dev` through portless, `https://cognitive-wealth.localhost` (a worktree gets `https://<branch>.cognitive-wealth.localhost`) | Compose services from the main checkout, on loopback    | one shared dev database                                |
-| `docker compose up`             | the `web` image, `http://localhost:3000`, and the `custodian` image, `http://127.0.0.1:8000`                                      | Compose, on internal networks                           | one stack                                              |
-| Verification (`verifier-web`)   | host production build, a port pair per checkout (after and before; the main checkout's is `:3100` and `:3101`)                    | `compose.verify.yaml`, in memory                        | a fresh database per server, named per worktree        |
-| `pnpm e2e`                      | one standalone server per Playwright worker                                                                                       | Testcontainers                                          | a database per worker, tables truncated per test       |
-| `pnpm test`, `test:integration` | none                                                                                                                              | PGlite; `pgTest` on Testcontainers, one per package run | a cloned (PGlite) or template-copied database per test |
+| Environment                     | App                                                                                                                               | Postgres, Redis, Mail                                | Isolation                                                  |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- |
+| `pnpm dev`                      | `next dev` through portless, `https://cognitive-wealth.localhost` (a worktree gets `https://<branch>.cognitive-wealth.localhost`) | Compose services from the main checkout, on loopback | one shared dev database                                    |
+| `docker compose up`             | the `web` image, `http://localhost:3000`, and the `custodian` image, `http://127.0.0.1:8000`                                      | Compose, on internal networks                        | one stack                                                  |
+| Verification (`verifier-web`)   | host production build, a port pair per checkout (after and before; the main checkout's is `:3100` and `:3101`)                    | `compose.verify.yaml`, in memory                     | a fresh database per server, named per worktree            |
+| `pnpm e2e`                      | one standalone server per Playwright worker                                                                                       | Testcontainers                                       | a database per worker, tables truncated per test           |
+| `pnpm test`, `test:integration` | none                                                                                                                              | Testcontainers, one Postgres for the root run        | a template-copied database per test, per-package templates |
 
 How to start each one is in [CLAUDE.md](../CLAUDE.md#commands) and [docs/dev-sign-in.md](dev-sign-in.md).
 
@@ -97,6 +97,7 @@ How to start each one is in [CLAUDE.md](../CLAUDE.md#commands) and [docs/dev-sig
 | [0015](adr/0015-positions-counted-by-trade-date.md)                  | Positions count from the Trade date; the Settlement date never changes one                               |
 | [0016](adr/0016-settled-cash-and-market-value-rules.md)              | Settled cash counts money in from its Settlement date; unpriced Securities have no Market value          |
 | [0017](adr/0017-custodian-feed-format.md)                            | The Custodian feed's format; Transaction IDs set by whoever records a row, so a rebuild matches          |
+| [0018](adr/0018-integration-tests-on-real-postgres.md)               | TypeScript integration tests run on a real Postgres, one server for the root run; PGlite is gone         |
 
 How sign-in, sessions and tenancy work today, with their own diagrams, is in [docs/auth.md](auth.md).
 

@@ -1,4 +1,3 @@
-import { test as dbTest } from "@repo/db/testing";
 import { auditEvent, invitation, member } from "@repo/db/schema";
 import { parseInvitationEmail } from "@repo/testing/mailpit";
 import { and, asc, eq } from "drizzle-orm";
@@ -22,7 +21,7 @@ import {
 } from "./tenant";
 import { consumeRateLimit } from "./rate-limit";
 import { INVITE_LIMIT } from "./tenant";
-import { createTestAuth, internalIdKeys as internalKeys, type TestAuth } from "./testing";
+import { authTest, internalIdKeys as internalKeys, type TestAuth } from "./testing";
 
 /**
  * Acme: Ada (owner), Bob (admin), Cy (member). Globex: Ada (owner). Ada joined Acme last, so her
@@ -60,9 +59,7 @@ async function seedWorld(t: TestAuth) {
   };
 }
 
-const test = dbTest
-  .extend("t", ({ orm }) => createTestAuth({ orm }))
-  .extend("world", ({ t }) => seedWorld(t));
+const test = authTest.extend("world", ({ t }) => seedWorld(t));
 
 /** The verified tenant viewer the reads take; fails the test without one. */
 async function tenantViewer(t: TestAuth, headers: Headers) {

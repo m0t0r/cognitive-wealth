@@ -1,7 +1,7 @@
 # Never built. This file only pins the image Testcontainers starts beside every test container:
 # its reaper (Ryuk), which removes a run's containers when the test process exits. Both harnesses
 # read the `FROM` line below instead of copying it, so this is the one place it lives:
-# - TypeScript: `reaperImage()` in packages/testing/src/reaper.ts (pgTest, e2e)
+# - TypeScript: `reaperImage()` in packages/testing/src/reaper.ts (integration tests, e2e)
 # - Python: `reaper_image()` in apps/custodian/tests/integration/postgres.py
 #
 # Dependabot's `docker` entry for this directory bumps the tag and digest weekly, like every other

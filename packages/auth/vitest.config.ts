@@ -1,3 +1,3 @@
 import { defineVitestConfig } from "@repo/testing/vitest";
 
-export default defineVitestConfig();
+export default defineVitestConfig({ integrationGlobalSetup: "./src/postgres-setup.ts" });

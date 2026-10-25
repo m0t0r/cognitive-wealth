@@ -9,11 +9,11 @@ const EXCLUDE = ["**/node_modules/**", "**/.next/**", "**/dist/**"];
  * Shared Vitest config. Each package gets three projects:
  * - `unit`: `*.test.ts` in Node
  * - `ui`: `*.test.tsx` in happy-dom, for React Testing Library + user-event
- * - `integration`: `*.integration.test.{ts,tsx}` in Node (PGlite). Opt a file into the DOM
- *   with a `// @vitest-environment happy-dom` docblock.
+ * - `integration`: `*.integration.test.{ts,tsx}` in Node, on a real Postgres. Opt a file into
+ *   the DOM with a `// @vitest-environment happy-dom` docblock.
  *
- * `integrationGlobalSetup` runs only for the integration project: a package whose tests need a
- * real Postgres names its `postgresGlobalSetup` file there (`@repo/testing/postgres`).
+ * `integrationGlobalSetup` runs only for the integration project: a package with integration
+ * tests names its `postgresGlobalSetup` file there (`@repo/testing/postgres`).
  */
 export function defineVitestConfig({
   integrationGlobalSetup,

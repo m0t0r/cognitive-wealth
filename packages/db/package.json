@@ -14,7 +14,8 @@
     "./schema": "./src/schema/index.ts",
     "./schema/*": "./src/schema/*.ts",
     "./seed-data": "./src/cli/seed-data.ts",
-    "./testing": "./src/testing.ts"
+    "./testing": "./src/testing.ts",
+    "./postgres-setup": "./src/postgres-setup.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",
@@ -33,7 +34,6 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.11",
     "@repo/testing": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "26.6.5",
