@@ -11,12 +11,24 @@
 //     subagent worktree's cleanup, so the next session edge catches those, and `rm -rf` too.
 //     SessionStart sweeps in the background, so it never delays a session.
 //
+// Nobody sees a session edge's output (SessionStart's sweep is detached, SessionEnd's stderr goes
+// nowhere), so those sweeps record a failure in the main checkout's
+// `.dev/worktree-env/sweep-failed.txt`, and the next SessionStart hands it to Claude as
+// `additionalContext`; any sweep that succeeds clears it. SessionStart also says at once when the
+// main checkout has no `packages/dev-env/node_modules`, the usual cause (a pull without install).
+//
 // Only this project's own `pnpm dev:prune` runs (from the main checkout, found through
 // CLAUDE_PROJECT_DIR), never a script named by the command. A checkout without
 // `packages/dev-env` (before it merged) has nothing to sweep. `pnpm dev` sweeps on start too.
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+
+// The detached SessionStart sweep: `teardown-worktree.mjs --record <main checkout>`.
+if (process.argv[2] === "--record") {
+  sweep({ main: process.argv[3], record: true });
+  process.exit(0);
+}
 
 const input = JSON.parse(readFileSync(0, "utf8"));
 const { hook_event_name: event, tool_name: tool, tool_input: args = {} } = input;
@@ -76,6 +88,46 @@ function removesWorktrees(command) {
   });
 }
 
+// Declarations, not arrow consts: `--record` above calls `sweep` before this line runs.
+function failureFile(main) {
+  return join(main, ".dev/worktree-env/sweep-failed.txt");
+}
+
+function installFix(main) {
+  return (
+    "The main checkout's dependencies aren't installed: ask the user to run " +
+    `\`! pnpm -C ${main} install --frozen-lockfile\`, then run \`pnpm dev:prune\`.`
+  );
+}
+
+// Runs the main checkout's `pnpm dev:prune`. Returns null when it succeeds, or what failed and how
+// to fix it. A session edge's sweep (`record`) keeps that for the next SessionStart; any success
+// clears it.
+function sweep({ main, record }) {
+  try {
+    const out = execFileSync("node", [join(main, "packages/dev-env/src/cli/prune.ts")], {
+      cwd: main,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 50_000,
+    });
+    process.stderr.write(out);
+    rmSync(failureFile(main), { force: true });
+    return null;
+  } catch (error) {
+    const report = [error.stderr, error.stdout].filter(Boolean).join("").trim() || error.message;
+    // The main checkout pulled a dependency it never installed (a fast-forward doesn't install).
+    const failure = /ERR_MODULE_NOT_FOUND/.test(report)
+      ? `${report} ${installFix(main)}`
+      : `${report} Fix the cause, then run \`pnpm dev:prune\` from the main checkout until it succeeds.`;
+    if (record) {
+      mkdirSync(dirname(failureFile(main)), { recursive: true });
+      writeFileSync(failureFile(main), `${failure}\n`);
+    }
+    return failure;
+  }
+}
+
 const wanted =
   event === "SessionStart" ||
   event === "SessionEnd" ||
@@ -90,38 +142,45 @@ const script = main && join(main, "packages/dev-env/src/cli/prune.ts");
 if (!script || !existsSync(script)) process.exit(0);
 
 if (event === "SessionStart") {
-  // Detached and unwaited, so the session starts at once; the next session edge retries a failure.
-  spawn("node", [script], { cwd: main, detached: true, stdio: "ignore" }).unref();
+  const notes = [];
+  if (existsSync(failureFile(main))) {
+    notes.push(
+      `The last session's sweep failed: ${readFileSync(failureFile(main), "utf8").trim()}`,
+    );
+  }
+  if (!existsSync(join(main, "packages/dev-env/node_modules"))) notes.push(installFix(main));
+  if (notes.length > 0) {
+    console.log(
+      JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "SessionStart",
+          additionalContext:
+            "Removed worktrees' dev environments (databases, Redis keys) may still be on the " +
+            `verification services. ${notes.join(" ")}`,
+        },
+      }),
+    );
+  }
+  // Detached and unwaited, so the session starts at once; it records its result for the next one.
+  spawn("node", [import.meta.filename, "--record", main], {
+    cwd: main,
+    detached: true,
+    stdio: "ignore",
+  }).unref();
   process.exit(0);
 }
 
-try {
-  const out = execFileSync("node", [script], {
-    cwd: main,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 50_000,
-  });
-  process.stderr.write(out);
-} catch (error) {
-  const report = [error.stderr, error.stdout].filter(Boolean).join("").trim() || error.message;
-  // The main checkout pulled a dependency it never installed (a fast-forward doesn't install).
-  const fix = /ERR_MODULE_NOT_FOUND/.test(report)
-    ? `The main checkout's dependencies aren't installed: ask the user to run ` +
-      `\`! pnpm -C ${main} install --frozen-lockfile\`, then run`
-    : "Fix the cause, then run";
-  if (event === "PostToolUse") {
-    // The removal already happened; `block` hands the reason to Claude so it retries the sweep.
-    console.log(
-      JSON.stringify({
-        decision: "block",
-        reason:
-          "The worktree is removed, but its dev environment couldn't be torn down, so its " +
-          `database or Redis keys are still there: ${report} ${fix} ` +
-          "`pnpm dev:prune` from the main checkout until it succeeds.",
-      }),
-    );
-  } else {
-    process.stderr.write(`pnpm dev:prune failed: ${report}\n${fix} \`pnpm dev:prune\`.\n`);
-  }
+const failure = sweep({ main, record: event === "SessionEnd" });
+if (failure && event === "PostToolUse") {
+  // The removal already happened; `block` hands the reason to Claude so it retries the sweep.
+  console.log(
+    JSON.stringify({
+      decision: "block",
+      reason:
+        "The worktree is removed, but its dev environment couldn't be torn down, so its " +
+        `database or Redis keys are still there: ${failure}`,
+    }),
+  );
+} else if (failure) {
+  process.stderr.write(`pnpm dev:prune failed: ${failure}\n`);
 }
