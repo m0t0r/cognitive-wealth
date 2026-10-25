@@ -41,12 +41,104 @@ export function resourcesOfToken(token: string): WorktreeResources {
   return { token, database: `wt_${token}`, redisPrefix: `cw:wt:${token}:` };
 }
 
+/**
+ * What the verifier-web skill's runs from one checkout use: a port pair (the working tree and a
+ * `--ref` build), a database per server and an agent-browser session. Keyed on the worktree's
+ * token, so runs from different worktrees never touch each other's.
+ */
+export type VerifyResources = {
+  token: string;
+  ports: { head: number; ref: number };
+  databases: { head: string; ref: string };
+  session: string;
+};
+
+/** Port pairs from 3100 up; the first is the main checkout's. Pair n is 3100 + 2n and the next. */
+const VERIFY_BASE_PORT = 3100;
+const VERIFY_PAIRS = 400;
+
+/** The verification databases of `token`, e.g. one read back from a leftover of a gone worktree. */
+export function verifyDatabasesOf(token: string): VerifyResources["databases"] {
+  return { head: `verify_${token}_head`, ref: `verify_${token}_ref` };
+}
+
+/** A worktree's agent-browser session, so two worktrees' cookies never share a tab. */
+export const verifySessionOf = (token: string) => `verify-${token}`;
+
+/** The main checkout's token: it has no hash, so it never matches a worktree's (`TOKEN`). */
+const MAIN_TOKEN = "main";
+
+/** The names for the worktree `id`, or for the main checkout when `id` is undefined. */
+export function verifyResources(id: string | undefined): VerifyResources {
+  const token = id === undefined ? MAIN_TOKEN : worktreeResources(id).token;
+  // The token's hash picks one of the pairs after the main checkout's: with at most a few
+  // worktrees at a time, two rarely share one, and a run refuses rather than share.
+  const pair =
+    id === undefined ? 0 : 1 + (Number.parseInt(token.slice(-8), 16) % (VERIFY_PAIRS - 1));
+  const head = VERIFY_BASE_PORT + 2 * pair;
+  return {
+    token,
+    ports: { head, ref: head + 1 },
+    databases: verifyDatabasesOf(token),
+    session: id === undefined ? "verify" : verifySessionOf(token),
+  };
+}
+
 /** The token of a database a worktree's setup created, or undefined for any other database. */
 export function tokenOfDatabase(name: string): string | undefined {
   return DATABASE.exec(name)?.[1];
 }
 
+const VERIFY_DATABASE = new RegExp(`^verify_(${TOKEN})_(?:head|ref)$`);
+const REF_CHECKOUT = new RegExp(`^(${TOKEN})-[0-9a-f]+$`);
+
+/**
+ * The token of a worktree's verification database, or undefined for any other database, the main
+ * checkout's included: prune must never take that one for an orphan.
+ */
+export function tokenOfVerifyDatabase(name: string): string | undefined {
+  return VERIFY_DATABASE.exec(name)?.[1];
+}
+
+/** The token of a worktree's `--ref` checkout (`<token>-<sha>`), from its directory name. */
+export function tokenOfRefCheckout(name: string): string | undefined {
+  return REF_CHECKOUT.exec(name)?.[1];
+}
+
 /** The token of a key under a worktree's Redis prefix, or undefined for any other key. */
 export function tokenOfRedisKey(key: string): string | undefined {
   return REDIS_KEY.exec(key)?.[1];
+}
+
+const STATE_DIR = new RegExp(`^(${TOKEN})$`);
+
+type OrphanTokensArgs = {
+  /** The tokens of the worktrees git still lists. */
+  live: Set<string>;
+  databases: string[];
+  redisKeys: string[];
+  /** The directories under the main checkout's `.dev/verify/`. */
+  stateDirs: string[];
+  /** The directories under the main checkout's `.dev/worktrees/`. */
+  refCheckouts: string[];
+};
+
+/**
+ * The tokens of worktrees that are gone but left something behind, each once. Anything not named
+ * after a worktree's token, the main checkout's verification state included, is never one.
+ */
+export function orphanTokens({
+  live,
+  databases,
+  redisKeys,
+  stateDirs,
+  refCheckouts,
+}: OrphanTokensArgs): string[] {
+  const found = new Set([
+    ...databases.flatMap((name) => tokenOfDatabase(name) ?? tokenOfVerifyDatabase(name) ?? []),
+    ...redisKeys.flatMap((key) => tokenOfRedisKey(key) ?? []),
+    ...stateDirs.flatMap((name) => STATE_DIR.exec(name)?.[1] ?? []),
+    ...refCheckouts.flatMap((name) => tokenOfRefCheckout(name) ?? []),
+  ]);
+  return [...found.difference(live)];
 }

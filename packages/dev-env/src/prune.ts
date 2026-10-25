@@ -1,20 +1,21 @@
 // The sweep that keeps worktree environments from outliving their worktrees: tears down every one
 // whose worktree git no longer lists, however it went (a removal hook, the session exit prompt, a
 // subagent's cleanup, `rm -rf`). It finds them from the records and, so a lost record can't hide
-// anything, from the databases, Redis keys and running `pnpm dev` processes themselves. Only
+// anything, from the databases, Redis keys, verifier-web state and `--ref` checkouts named after a
+// worktree's token, and running `pnpm dev` processes themselves. Only
 // worktrees that are gone are touched, so it's safe to run at any time. Node runs the CLIs that
 // import this directly (type stripping), so relative imports keep their `.ts` extension.
 import { dirname } from "node:path";
 import { liveWorktrees } from "./checkout.ts";
 import {
   WORKTREE_REDIS_PATTERN,
+  orphanTokens,
   resourcesOfToken,
-  tokenOfDatabase,
-  tokenOfRedisKey,
   worktreeResources,
 } from "./names.ts";
 import { readRecords } from "./registry.ts";
 import { connectAdmin, connectJanitor, isRefused } from "./services.ts";
+import { namesIn, refCheckoutsDir, verifyDir } from "./verify.ts";
 import {
   type Server,
   type TeardownTarget,
@@ -23,11 +24,11 @@ import {
   tearDown,
 } from "./teardown.ts";
 
-async function databaseTokens(mainCheckout: string): Promise<string[]> {
+async function databaseNames(mainCheckout: string): Promise<string[]> {
   const { client, close } = connectAdmin(mainCheckout);
   try {
     const rows = await client<{ datname: string }[]>`select datname from pg_database`;
-    return rows.flatMap(({ datname }) => tokenOfDatabase(datname) ?? []);
+    return rows.map(({ datname }) => datname);
   } catch (error) {
     // The verification Postgres keeps its data in memory: if it isn't running, nothing is left.
     if (isRefused(error)) return [];
@@ -37,7 +38,7 @@ async function databaseTokens(mainCheckout: string): Promise<string[]> {
   }
 }
 
-async function redisTokens(mainCheckout: string): Promise<string[]> {
+async function worktreeRedisKeys(mainCheckout: string): Promise<string[]> {
   let janitor;
   try {
     janitor = await connectJanitor(mainCheckout);
@@ -46,29 +47,35 @@ async function redisTokens(mainCheckout: string): Promise<string[]> {
     throw error;
   }
   try {
-    return (await janitor.keys(WORKTREE_REDIS_PATTERN)).flatMap(
-      (key) => tokenOfRedisKey(key) ?? [],
-    );
+    return await janitor.keys(WORKTREE_REDIS_PATTERN);
   } finally {
     await janitor.close();
   }
 }
 
-/** What's left of worktrees that are gone: environments, and servers found only by process. */
+/**
+ * What's left of worktrees that are gone: environments (with what the verifier-web skill left for
+ * them), and servers found only by process.
+ */
 export async function findOrphans(mainCheckout: string) {
   const worktrees = liveWorktrees(mainCheckout);
   const live = new Set(worktrees.map(({ id }) => worktreeResources(id).token));
 
-  const targets = new Map<string, TeardownTarget>();
-  for (const token of [
-    ...(await databaseTokens(mainCheckout)),
-    ...(await redisTokens(mainCheckout)),
-  ]) {
-    targets.set(token, resourcesOfToken(token));
-  }
+  const tokens = orphanTokens({
+    live,
+    databases: await databaseNames(mainCheckout),
+    redisKeys: await worktreeRedisKeys(mainCheckout),
+    stateDirs: namesIn(verifyDir(mainCheckout)),
+    refCheckouts: namesIn(refCheckoutsDir(mainCheckout)),
+  });
+  const targets = new Map<string, TeardownTarget>(
+    tokens.map((token) => [token, resourcesOfToken(token)]),
+  );
   // A record carries the server too, so it wins over a target found by name.
-  for (const record of readRecords(mainCheckout)) targets.set(record.token, record);
-  const environments = [...targets.values()].filter(({ token }) => !live.has(token));
+  for (const record of readRecords(mainCheckout)) {
+    if (!live.has(record.token)) targets.set(record.token, record);
+  }
+  const environments = [...targets.values()];
 
   // A `pnpm dev` whose record was lost is found by its working directory (`<checkout>/apps/web`)
   // instead: one that's in no live checkout belongs to a worktree that's gone.

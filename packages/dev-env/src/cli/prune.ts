@@ -19,7 +19,10 @@ async function main() {
     console.log("Would tear down (their worktrees are gone):");
     for (const { database, redisPrefix, server } of environments) {
       const pid = server ? `, pnpm dev pid ${server.pid}` : "";
-      console.log(`  ${database}, Redis keys under ${redisPrefix}${pid}`);
+      console.log(
+        `  ${database}, Redis keys under ${redisPrefix}${pid}, and its verifier-web servers, ` +
+          "databases, --ref checkouts and Chrome",
+      );
     }
     for (const { pid, cwd } of servers) console.log(`  pnpm dev pid ${pid} (in ${cwd})`);
     return;

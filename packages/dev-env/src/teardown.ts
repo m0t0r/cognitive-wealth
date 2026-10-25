@@ -1,12 +1,13 @@
 // Removes what a worktree's setup created: its `pnpm dev` server, its database and its Redis keys,
-// then its record. Node runs the CLIs that import this directly (type stripping), so relative
-// imports keep their `.ts` extension.
+// and what the verifier-web skill left for it (`verify.ts`), then its record. Node runs the CLIs
+// that import this directly (type stripping), so relative imports keep their `.ts` extension.
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { setTimeout as sleep } from "node:timers/promises";
-import type { WorktreeResources } from "./names.ts";
+import { type WorktreeResources, verifyDatabasesOf, verifySessionOf } from "./names.ts";
+import { alive, commandOf, stop } from "./processes.ts";
 import { deleteRecord } from "./registry.ts";
 import { connectJanitor, dropDatabase, isRefused } from "./services.ts";
+import { releaseChrome, removeRefCheckouts, stopVerifyServers } from "./verify.ts";
 
 /** A running `pnpm dev`: the `dev.ts` wrapper and, when known, `next dev`'s process group. */
 export type Server = { pid: number; group?: number | undefined };
@@ -14,7 +15,6 @@ export type Server = { pid: number; group?: number | undefined };
 /** What to remove: the names, and the `pnpm dev` if one is recorded or found running. */
 export type TeardownTarget = WorktreeResources & { server?: Server | undefined };
 
-const STOP_TIMEOUT_MS = 10_000;
 const WRAPPER = "dev-env/src/cli/dev.ts";
 
 /**
@@ -57,48 +57,6 @@ function cwdOf(pid: number): string | undefined {
 /** The running `pnpm dev` of the checkout at `path`, if any. */
 export function runningServerOf(path: string): Server | undefined {
   return runningServers().find(({ cwd }) => cwd === join(path, "apps/web"));
-}
-
-/** The command line of `pid`, or undefined when no such process is running. */
-function commandOf(pid: number): string | undefined {
-  try {
-    return execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" }).trim();
-  } catch {
-    return undefined;
-  }
-}
-
-function alive(pid: number) {
-  try {
-    // Signal 0 checks the process (or, for a negative pid, the group) exists without touching it.
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForExit({ pid, deadline }: { pid: number; deadline: number }) {
-  if (!alive(pid)) return true;
-  if (Date.now() > deadline) return false;
-  await sleep(100);
-  return waitForExit({ pid, deadline });
-}
-
-/** SIGTERM, then SIGKILL after a grace period. Returns false if it still runs. */
-async function stop(pid: number) {
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    return true;
-  }
-  if (await waitForExit({ pid, deadline: Date.now() + STOP_TIMEOUT_MS })) return true;
-  try {
-    process.kill(pid, "SIGKILL");
-  } catch {
-    return true;
-  }
-  return waitForExit({ pid, deadline: Date.now() + STOP_TIMEOUT_MS });
 }
 
 /**
@@ -165,13 +123,29 @@ export async function tearDown({
   mainCheckout: string;
   target: TeardownTarget;
 }): Promise<string[]> {
+  const { token } = target;
+  const verifyDatabases = verifyDatabasesOf(token);
   const steps: Array<[string, () => Promise<string>]> = [
     [
       "stop pnpm dev",
       async () => (target.server ? stopServer(target.server) : "no pnpm dev was running"),
     ],
+    ["stop the verification servers", () => stopVerifyServers({ mainCheckout, token })],
+    [
+      "release the shared Chrome",
+      () => releaseChrome({ mainCheckout, token, session: verifySessionOf(token) }),
+    ],
     ["drop the database", () => removeDatabase({ mainCheckout, database: target.database })],
+    [
+      "drop the verification databases",
+      async () =>
+        [
+          await removeDatabase({ mainCheckout, database: verifyDatabases.head }),
+          await removeDatabase({ mainCheckout, database: verifyDatabases.ref }),
+        ].join(", "),
+    ],
     ["delete the Redis keys", () => deleteKeys({ mainCheckout, prefix: target.redisPrefix })],
+    ["remove the --ref checkouts", async () => removeRefCheckouts({ mainCheckout, token })],
   ];
   const done: string[] = [];
   const failed: string[] = [];
