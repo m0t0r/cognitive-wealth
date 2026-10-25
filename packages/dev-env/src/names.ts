@@ -33,7 +33,11 @@ export function worktreeResources(id: string): WorktreeResources {
       .slice(0, MAX_SLUG)
       .replace(/_+$/, "") || "worktree";
   const hash = createHash("sha256").update(id).digest("hex").slice(0, 8);
-  const token = `${slug}_${hash}`;
+  return resourcesOfToken(`${slug}_${hash}`);
+}
+
+/** The names for `token`, e.g. one read back from a database or key whose worktree is gone. */
+export function resourcesOfToken(token: string): WorktreeResources {
   return { token, database: `wt_${token}`, redisPrefix: `cw:wt:${token}:` };
 }
 

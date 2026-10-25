@@ -7,19 +7,19 @@ import { parseArgs } from "node:util";
 import { checkoutAt, worktreeIdAt } from "../checkout.ts";
 import { worktreeResources } from "../names.ts";
 import { readRecord, readRecords } from "../registry.ts";
-import type { TeardownTarget } from "../teardown.ts";
-import { tearDown } from "../teardown.ts";
+import { type TeardownTarget, runningServerOf, tearDown } from "../teardown.ts";
 
 const USAGE = "Usage: pnpm dev:teardown [--worktree <path>]";
 
 function targetFor({ mainCheckout, path }: { mainCheckout: string; path: string }) {
   const id = worktreeIdAt(path);
-  if (id) {
-    const resources = worktreeResources(id);
-    return readRecord({ mainCheckout, token: resources.token }) ?? resources;
-  }
-  // The worktree may already be gone from disk: its record still says where it was.
-  return readRecords(mainCheckout).find((record) => record.path === path);
+  const target: TeardownTarget | undefined = id
+    ? (readRecord({ mainCheckout, token: worktreeResources(id).token }) ?? worktreeResources(id))
+    : // The worktree may already be gone from disk: its record still says where it was.
+      readRecords(mainCheckout).find((record) => record.path === path);
+  // A server running without a record (lost, or never written) is found in the process table.
+  if (target && !target.server) return { ...target, server: runningServerOf(path) };
+  return target;
 }
 
 async function main() {
@@ -38,7 +38,7 @@ async function main() {
         `Run it inside a worktree, or pass --worktree <path>. ${USAGE}`,
     );
   }
-  const target: TeardownTarget | undefined = targetFor({ mainCheckout: here.mainCheckout, path });
+  const target = targetFor({ mainCheckout: here.mainCheckout, path });
   if (!target) {
     console.log(`${path} is no worktree and has no record: nothing to tear down.`);
     return;

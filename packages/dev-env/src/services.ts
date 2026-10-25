@@ -78,6 +78,25 @@ export function connectAdmin(mainCheckout: string) {
   );
 }
 
+/** Drops `database` if it exists; `with (force)` ends open connections, which would block it. */
+export async function dropDatabase({
+  mainCheckout,
+  database,
+}: {
+  mainCheckout: string;
+  database: string;
+}): Promise<boolean> {
+  const { client, close } = connectAdmin(mainCheckout);
+  try {
+    const [existing] = await client`select 1 from pg_database where datname = ${database}`;
+    if (!existing) return false;
+    await client.unsafe(`drop database "${database}" with (force)`);
+    return true;
+  } finally {
+    await close();
+  }
+}
+
 /**
  * The verification Redis as `janitor`. compose.verify.yaml gives it `redis_password` too, so the
  * throwaway stack needs no secret of its own.
