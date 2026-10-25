@@ -8,7 +8,7 @@ type Node = Parameters<NonNullable<Visitor["TSTypeLiteral"]>>[0]["parent"];
 
 // Functions whose parameters count. Function types (`TSFunctionType`) and interface or type-literal
 // method signatures (`TSMethodSignature`) are left out: they describe a function, not define one.
-const FUNCTIONS = new Set([
+const FUNCTION_NODES = new Set([
   "FunctionDeclaration",
   "FunctionExpression",
   "ArrowFunctionExpression",
@@ -26,7 +26,7 @@ function functionOf(param: Node): Node | undefined {
     node = node.parent;
   }
   const fn = node.parent;
-  if (!fn || !FUNCTIONS.has(fn.type) || !("params" in fn)) return undefined;
+  if (!fn || !FUNCTION_NODES.has(fn.type) || !("params" in fn)) return undefined;
   return (fn.params as Node[]).includes(node) ? fn : undefined;
 }
 

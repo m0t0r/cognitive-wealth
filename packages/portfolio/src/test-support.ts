@@ -58,12 +58,12 @@ export function editedFeedSource({
 // A Manifest's files, keeping its other fields as they are.
 const ManifestFiles = z.looseObject({ files: z.array(ManifestFile) });
 
-interface RewrittenDeliveryInput {
+type RewrittenDeliveryArgs = {
   base: FeedSource;
   asOf: string;
   files?: Record<string, string>;
   editManifest?: (json: Record<string, unknown>) => Record<string, unknown>;
-}
+};
 
 /**
  * `base`'s Delivery for `asOf` with some files' text replaced, and a Manifest rewritten to match
@@ -75,7 +75,7 @@ export async function rewrittenDelivery({
   asOf,
   files = {},
   editManifest = (json) => json,
-}: RewrittenDeliveryInput): Promise<FeedSource> {
+}: RewrittenDeliveryArgs): Promise<FeedSource> {
   const json = ManifestFiles.parse(
     JSON.parse(await textOf({ source: base, key: `${asOf}/manifest.json` })),
   );
