@@ -54,6 +54,22 @@ Sign-in is passwordless and invite-only ([ADR 0001](adr/0001-better-auth-passwor
 
 To stop the stack, run `docker compose -f compose.yaml -f compose.dev.yaml down`. The database volume survives; add `-v` to start over (the seed then needs to run again).
 
+### In a git worktree
+
+The steps above set up the main checkout, whose data is yours. A linked worktree never uses that stack: `pnpm dev` there (`@repo/dev-env`'s wrapper, `web`'s `dev:app`) first gives the worktree an environment of its own on the verification services (`compose.verify.yaml`, kept in memory), started from the main checkout if they aren't running:
+
+- **Postgres:** its own database `wt_<token>` on `:5433`, made from the empty template, migrated and seeded the first time, and migrated again on every start, so a migration on the branch reaches only that worktree.
+- **Redis:** its own key prefix `cw:wt:<token>:` on `:6380`.
+- **Mailpit:** shared by every worktree, SMTP on `:1026` and UI on <http://127.0.0.1:8026>. The harness picks each email out by recipient and time, so a clash takes two worktrees signing in as the same user at the same moment, and then it fails loudly: the token belongs to the other worktree's database.
+
+`<token>` comes from the worktree's directory, not its branch, so renaming the branch keeps the same data. Setup writes the worktree's own `apps/web/.env.local` (with absolute paths into the main checkout's `.secrets/`), which the database CLIs (`db:seed`, `db:studio`, `org:create`, `custodian:ingest`) read too; `pnpm dev:env` does the setup without starting the app. The app is at `https://<branch>.cognitive-wealth.localhost` (portless prints it), and `dev:sign-in` there finds the verification Mailpit through `.env.local`:
+
+```sh
+pnpm dev:sign-in owner@cognitive-wealth.test --app https://<branch>.cognitive-wealth.localhost
+```
+
+Removing the worktree tears all of it down: the `teardown-worktree` hook runs `pnpm dev:teardown` before `ExitWorktree` with `remove` or `git worktree remove`, which stops its `pnpm dev` and deletes its database and Redis keys, and refuses the removal if that fails. Run `pnpm dev:teardown` yourself to start a worktree over (the next `pnpm dev` sets it up again), and `pnpm dev:prune [--dry-run]` from anywhere to remove what's left of worktrees deleted some other way.
+
 ## 2. Sign in as an agent
 
 ```sh
@@ -61,7 +77,7 @@ pnpm dev:sign-in owner@cognitive-wealth.test
 agent-browser --state .dev/auth/owner@cognitive-wealth.test.json open https://cognitive-wealth.localhost
 ```
 
-`dev:sign-in` runs the real flow (request the email, read it from Mailpit, verify the token as the confirm page does) and saves the session cookies to `.dev/auth/<email>.json` (gitignored, mode 0600). The same file works as a Playwright `storageState`. `--state <file>` saves elsewhere, `--app <url>` targets another local app (such as a worktree's `https://<branch>.cognitive-wealth.localhost`), and `--help` lists the rest. It only talks to local hosts.
+`dev:sign-in` runs the real flow (request the email, read it from Mailpit, verify the token as the confirm page does) and saves the session cookies to `.dev/auth/<email>.json` (gitignored, mode 0600). The same file works as a Playwright `storageState`. `--state <file>` saves elsewhere, `--app <url>` targets another local app (such as a worktree's `https://<branch>.cognitive-wealth.localhost`), `--mailpit <url>` another Mailpit (by default `MAILPIT_URL`, from the shell or else this checkout's `apps/web/.env.local`), and `--help` lists the rest. It only talks to local hosts.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/dev-sign-in.dark.svg">

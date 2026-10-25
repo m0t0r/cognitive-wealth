@@ -9,7 +9,8 @@
 // When the teardown fails, it denies the removal with the teardown's own report, so a worktree
 // never disappears while its resources live on; fix the cause (or run `pnpm dev:teardown` by hand)
 // and remove it again. A checkout without `packages/dev-env` (before it merged) has nothing to tear
-// down. `pnpm dev:prune` catches removals that bypass this (a manual `rm -rf`, a session's exit
+// down. The teardown runs before the removal is approved, so a removal the user then declines
+// still loses its environment; the next `pnpm dev` there recreates it. `pnpm dev:prune` catches removals that bypass this (a manual `rm -rf`, a session's exit
 // prompt). Output goes to stderr: it's for the transcript, not the model.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -93,13 +94,20 @@ if (tool === "ExitWorktree" && args.action === "remove") {
   targets = removedWorktrees(args.command ?? "");
 }
 
+// Only this project's own teardown ever runs, and only for worktrees of this project's repo: a
+// `git -C /elsewhere worktree remove` mustn't make the hook execute some other checkout's code
+// before the command is even approved.
+const projectDir = process.env.CLAUDE_PROJECT_DIR ?? resolve(import.meta.dirname, "../..");
+const projectCommon = git(projectDir, "rev-parse", "--path-format=absolute", "--git-common-dir");
+const main = projectCommon && dirname(projectCommon);
+const script = main && join(main, "packages/dev-env/src/cli/teardown.ts");
+
 const failures = [];
 for (const { path, base } of targets) {
-  const common = git(base, "rev-parse", "--path-format=absolute", "--git-common-dir");
-  if (!common) continue;
-  const main = dirname(common);
-  const script = join(main, "packages/dev-env/src/cli/teardown.ts");
-  if (!existsSync(script)) continue;
+  if (!script || !existsSync(script)) break;
+  if (git(base, "rev-parse", "--path-format=absolute", "--git-common-dir") !== projectCommon) {
+    continue;
+  }
   try {
     const out = execFileSync("node", [script, "--worktree", path], {
       cwd: main,

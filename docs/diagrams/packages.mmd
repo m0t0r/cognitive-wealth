@@ -8,6 +8,7 @@ flowchart TB
   households["@repo/households<br/>Households, world file, seed, DTOs"]
   portfolio["@repo/portfolio<br/>Ingestion of the Custodian feed"]
   testing["@repo/testing<br/>Vitest config, PGlite, sign-in harness"]
+  devenv["@repo/dev-env<br/>a worktree's own dev database and Redis prefix"]
   custodian["custodian<br/>FastAPI, Python, uv"]
   client["@repo/custodian-client<br/>Orval fetch client, Zod schemas"]
 
@@ -25,5 +26,9 @@ flowchart TB
   e2e -.-> db
   e2e -.-> email
   e2e -.-> testing
+
+  web -.->|"pnpm dev"| devenv
+  devenv -.-> db
+  devenv -.-> testing
 
   client -.->|"generated from openapi.json"| custodian
