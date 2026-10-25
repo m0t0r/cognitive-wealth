@@ -5,9 +5,12 @@
 #
 #   start-app.sh [--port <n>] [--ref <git ref>]
 #
-# Without --ref it serves the working tree on :3100. With --ref (say the PR's base, for "before"
-# captures) it checks that ref out into .dev/worktrees/<sha>, builds it there and serves it on
-# :3101, each from its own database migrated by that ref's own migrations.
+# Without --ref it serves the working tree; with --ref (say the PR's base, for "before" captures)
+# it checks that ref out into .dev/worktrees/<token>-<sha>, builds it there and serves it, each from
+# its own database migrated by that ref's own migrations. Every checkout has its own port pair, its
+# own databases and its own state in the main checkout's .dev/verify/<token>/, all named by
+# @repo/dev-env (verify-names.ts), so runs from different worktrees never touch each other's, and
+# worktree teardown removes them. The main checkout keeps :3100 and :3101.
 # Turbo restores an unchanged build from its cache, so a rerun costs seconds, not a rebuild.
 set -euo pipefail
 
@@ -20,27 +23,54 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+eval "$(node "$(git rev-parse --show-toplevel)/packages/dev-env/src/cli/verify-names.ts")"
+main=$VERIFY_MAIN
 # The main checkout holds .secrets/ and runs Compose, so a worktree never recreates the services.
-main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 compose=(docker compose --project-directory "$main" -f "$main/compose.yaml" -f "$main/compose.verify.yaml")
 secrets="$main/.secrets"
 
 if [ -n "$ref" ]; then
+  role=ref
   sha=$(git rev-parse --short "$ref^{commit}")
-  app="$main/.dev/worktrees/$sha"
-  port=${port:-3101}
-  if [ ! -d "$app" ]; then
-    git -C "$main" worktree add --detach "$app" "$sha" >/dev/null
-  fi
-  (cd "$app" && pnpm install --frozen-lockfile --prefer-offline --silent)
+  app="$VERIFY_REF_CHECKOUTS/$VERIFY_TOKEN-$sha"
+  port=${port:-$VERIFY_REF_PORT}
+  database=$VERIFY_REF_DATABASE
 else
-  app=$(git rev-parse --show-toplevel)
-  port=${port:-3100}
+  role=head
+  app=$VERIFY_TOP
+  port=${port:-$VERIFY_PORT}
+  database=$VERIFY_DATABASE
 fi
 url="http://localhost:$port"
-out="$main/.dev/verify"
+out=$VERIFY_STATE
+pidfile="$out/server-$role.pid"
+log="$out/server-$role.log"
 mkdir -p "$out"
-database="verify_$port"
+
+# Only a server this checkout recorded for this role is ours to replace: the pid must still be a
+# standalone web server (Next renames its title to `next-server (v…)` once it starts).
+ours=""
+if [ -f "$pidfile" ]; then
+  pid=$(cat "$pidfile")
+  cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
+  if [[ "$cmd" == "next-server "* || "$cmd" == node*"/.next/standalone/apps/web/server.js"* ]]; then
+    ours=$pid
+  fi
+fi
+
+# Before anything destructive: a port held by anything but our own server is refused, so a clash
+# with another worktree's server leaves its database and process alone.
+listener=$(lsof -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -1 || true)
+if [ -n "$listener" ] && [ "$listener" != "$ours" ]; then
+  cmd=$(ps -o command= -p "$listener" 2>/dev/null || true)
+  echo "Port $port is taken by another process (pid $listener: ${cmd:0:120}), perhaps another worktree's server. Nothing was changed; pass --port with a free one." >&2
+  exit 1
+fi
+
+if [ -n "$ref" ] && [ ! -d "$app" ]; then
+  git -C "$main" worktree add --detach "$app" "$sha" >/dev/null
+fi
+[ -z "$ref" ] || (cd "$app" && pnpm install --frozen-lockfile --prefer-offline --silent)
 
 "${compose[@]}" up -d --wait db redis mailpit >/dev/null
 
@@ -69,15 +99,10 @@ rm -rf "$standalone/.next/static" "$standalone/public"
 cp -R "$web/.next/static" "$standalone/.next/static"
 cp -R "$web/public" "$standalone/public"
 
-# Replace the server this script started on this port last time; refuse anything else there.
-pidfile="$out/server-$port.pid"
-if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-  kill "$(cat "$pidfile")"
-  while kill -0 "$(cat "$pidfile")" 2>/dev/null; do sleep 0.2; done
-fi
-if lsof -t -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "Port $port is taken by another process; pass --port with a free one." >&2
-  exit 1
+# Replace our own server from last time (on this port or another); never anyone else's.
+if [ -n "$ours" ]; then
+  kill "$ours"
+  while kill -0 "$ours" 2>/dev/null; do sleep 0.2; done
 fi
 
 # The production container's environment (compose.yaml's `web`), pointed at the verify services.
@@ -87,13 +112,13 @@ env -i PATH="$PATH" HOME="$HOME" \
   DATABASE_URL="postgres://app@localhost:5433/$database" \
   DATABASE_PASSWORD_FILE="$secrets/db_app_password" \
   REDIS_URL=redis://app@localhost:6380 REDIS_PASSWORD_FILE="$secrets/redis_password" \
-  REDIS_KEY_PREFIX="cw:v$port-$(date +%s):" \
+  REDIS_KEY_PREFIX="cw:v:$VERIFY_TOKEN:$role:$(date +%s):" \
   EMAIL_TRANSPORT=smtp SMTP_URL=smtp://localhost:1026 \
   EMAIL_FROM="Cognitive Wealth <no-reply@cognitive-wealth.localhost>" \
   AUTH_TRUSTED_IP_HEADER=x-forwarded-for \
-  nohup node "$app/apps/web/.next/standalone/apps/web/server.js" >"$out/server-$port.log" 2>&1 &
+  nohup node "$app/apps/web/.next/standalone/apps/web/server.js" >"$log" 2>&1 &
 echo $! >"$pidfile"
 
 for _ in $(seq 60); do curl -sf "$url/api/health" >/dev/null && { echo "$url"; exit 0; }; sleep 0.5; done
-echo "Server didn't become healthy; see $out/server-$port.log" >&2
+echo "Server didn't become healthy; see $log" >&2
 exit 1

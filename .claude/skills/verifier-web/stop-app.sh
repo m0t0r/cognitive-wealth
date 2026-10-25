@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Stops what start-app.sh started, from the main checkout or any worktree: each server whose pid it
-# recorded in the main checkout's .dev/verify/, after checking that pid is still a standalone web
-# server, then the --ref checkouts it built in .dev/worktrees/. The verify Compose project keeps running.
+# Stops what start-app.sh started from this checkout, and only that: each server whose pid it
+# recorded in the main checkout's .dev/verify/<token>/, after checking that pid is still a
+# standalone web server, then the --ref checkouts it built in .dev/worktrees/<token>-<sha>. Other
+# worktrees' servers and checkouts are left alone; a removed worktree's go with its teardown
+# (pnpm dev:prune). The verify Compose project keeps running.
 #
 #   stop-app.sh
 set -euo pipefail
 
-main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+eval "$(node "$(git rev-parse --show-toplevel)/packages/dev-env/src/cli/verify-names.ts")"
 
-for pidfile in "$main"/.dev/verify/server-*.pid; do
+for pidfile in "$VERIFY_STATE"/server-*.pid; do
   [ -f "$pidfile" ] || continue
   pid=$(cat "$pidfile")
   cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
@@ -22,8 +24,8 @@ for pidfile in "$main"/.dev/verify/server-*.pid; do
   rm -f "$pidfile"
 done
 
-for checkout in "$main"/.dev/worktrees/*/; do
+for checkout in "$VERIFY_REF_CHECKOUTS/$VERIFY_TOKEN"-*/; do
   [ -d "$checkout" ] || continue
-  git -C "$main" worktree remove --force "$checkout"
+  git -C "$VERIFY_MAIN" worktree remove --force "$checkout"
   echo "removed ${checkout%/}"
 done
