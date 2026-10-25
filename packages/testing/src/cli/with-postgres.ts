@@ -24,12 +24,11 @@ const child = spawn(command, args, {
   env: { ...process.env, [SHARED_POSTGRES_ENV]: JSON.stringify(server) },
 });
 
-// Ctrl-C reaches the command too (same process group); wait for it to finish its own cleanup
-// (dropping test databases) before the server goes. A `kill` aimed at this process alone is
-// passed on.
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => child.kill(signal));
-}
+// Ctrl-C reaches the command too (same process group), so don't pass it on: a second SIGINT can
+// make turbo kill its tasks before they drop their test databases. Just wait for the command to
+// finish before the server goes. A SIGTERM aimed at this process alone is passed on.
+process.on("SIGINT", () => {});
+process.on("SIGTERM", () => child.kill("SIGTERM"));
 
 const code = await new Promise<number>((resolve) => {
   child.on("error", (error) => {
