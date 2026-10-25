@@ -20,7 +20,15 @@ Measured on 2026-10-25 on an Apple M2 Pro (12 cores) with Docker 29.8.2 (8 GB fo
 | `pnpm --filter @repo/auth test:integration` (111 tests)              | 11.92 s (11.75 to 13.75) | 7.56 s (7.54 to 7.66)    | −37%   |
 | root `pnpm test:integration --force` (10 turbo tasks, custodian too) | 29.26 s (26.10 to 29.94) | 15.90 s (14.36 to 16.41) | −46%   |
 
-The rule allowed up to 15.5 s for `@repo/auth`. The likely reason it got faster: PGlite migrates its template in every Vitest worker, in single-threaded WebAssembly, while the real server migrates once per package and copies the template per test natively. The root run's "after" figure includes `@repo/testing`'s two new harness tests; the one for `with-postgres.ts` starts a server of its own.
+The rule allowed up to 15.5 s for `@repo/auth`. Its real-Postgres runs used #154's harness as it was, with no tuning: only the tests' import and the package's global setup changed. The likely reason it got faster: PGlite migrates its template in every Vitest worker, in single-threaded WebAssembly, while the real server migrates once per package and copies the template per test natively. The root run's "after" figure also includes `@repo/testing`'s two new harness tests, so if anything it understates the gain.
+
+## What PGlite couldn't test
+
+The three gaps #83 listed, each of which the real server closes:
+
+1. **The production driver.** The app uses postgres.js; PGlite's tests used `drizzle-orm/pglite`, which parses results its own way.
+2. **The real roles and logins.** On PGlite, `app` existed only if a test created it by hand, and was reached with `set role`, never a password login with `01-roles.sh`'s grants.
+3. **Concurrency.** PGlite is one connection, so races between requests, row locks and `SKIP LOCKED` couldn't be tested.
 
 ## What moving found
 
@@ -51,4 +59,6 @@ No difference in how `bigint`, `numeric` or timestamps are parsed showed up.
 - Every TypeScript integration run needs Docker, including one package run on its own.
 - When turbo finds every task in its cache, the root run still starts the server for nothing (about 1.5 seconds).
 - Postgres runs with `max_connections=500`, since several packages' workers, each test with its own pools, share one server.
+- One test starts a second TypeScript-side server during the root run, on purpose: `with-postgres.ts`'s own test, which checks that the runner starts and stops one.
+- Ctrl-C reaches turbo directly, and the runner doesn't pass it on a second time, which could make turbo kill its tasks before they drop their databases. Turbo exits 0 when interrupted, so an interrupted root run does too.
 - A new package with integration tests adds the same `postgres-setup.ts` and `vitest.config.ts` lines as the others.

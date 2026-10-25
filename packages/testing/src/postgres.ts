@@ -47,19 +47,25 @@ declare module "vitest" {
   }
 }
 
-/** Room for `databasePrefix` and a 32-character id within Postgres's 63-byte identifiers. */
-const MAX_PACKAGE_KEY = 20;
+/** `test_db_<key>_` and a 32-character id must fit Postgres's 63-byte identifiers. */
+const MAX_PACKAGE_KEY = 22;
 
 /**
  * `@repo/auth` → `repo_auth`: names the package's template and prefixes its test databases, so
  * packages sharing a server can't touch each other's (the leftover check finds only its own).
+ * Never shortened, since two shortened names could collide.
  */
 function packageKey(name: string): string {
-  return name
+  const key = name
     .toLowerCase()
     .replaceAll(/[^a-z0-9]+/g, "_")
-    .replaceAll(/^_+|_+$/g, "")
-    .slice(0, MAX_PACKAGE_KEY);
+    .replaceAll(/^_+|_+$/g, "");
+  if (key.length > MAX_PACKAGE_KEY) {
+    throw new Error(
+      `Package name ${name} is too long for its test databases' names (at most ${MAX_PACKAGE_KEY} characters as ${key})`,
+    );
+  }
+  return key;
 }
 
 async function packageName(root: string): Promise<string> {
