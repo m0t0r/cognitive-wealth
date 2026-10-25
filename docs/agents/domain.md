@@ -54,6 +54,10 @@ If your output contradicts an existing ADR, surface it explicitly rather than si
 
 When a decision depends on how finance works in the real world (how a Reversal counts toward Settled cash, what Market value uses on a day with no price, how a total rounds), don't put it to the maintainer as a preference: they aren't a finance expert. Research it against primary sources (regulations, custodian documents) with `/mattpocock-skills:research`, save it in `docs/research/`, have a reviewer subagent fact-check it, and bring the maintainer the cited answer. This holds in every skill that asks questions (`triage`, `grilling`, `domain-modeling`). Ask the maintainer only about real product or engineering trade-offs, and say which kind each question is.
 
+## A new ADR is listed in two places
+
+An ADR in `docs/adr/` adds, in the same commit, its row to the Decisions table in `docs/architecture.md` and its node (with an edge from each ADR it builds on) to `docs/diagrams/decisions.mmd`, re-rendered with `pnpm docs:diagrams`, and updates the diagram's `alt` text there. A consequence that promises work in another issue matches what that issue's spec asks for.
+
 ## Worked numbers in ADRs and issue briefs
 
 When an ADR gives a worked example, name the rule that produces each rounded figure (which value rounds, to how many places, in which direction), and have the reviewer recompute it. An issue brief that copies a figure from an ADR cites that rule too, so its acceptance criterion can't be met by guessing one.
