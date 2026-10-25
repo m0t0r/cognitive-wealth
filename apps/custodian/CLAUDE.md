@@ -124,3 +124,5 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 | `_, schemas = f()`: unpack a tuple, `_` for the part not used  | `const [, schemas] = f()`                                 |
 | `[(m, "serialization") for m in models]`: a list comprehension | `models.map((m) => [m, "serialization"])`                 |
 | `rf"\d{{{n}}}"`: raw f-string, where `{{` is a literal `{`     | a `String.raw` template literal with `${n}`               |
+| `if match := pattern.search(text):` (assign, then test)        | `const match = pattern.exec(text); if (match) …`          |
+| `re.compile(r"^FROM …$", re.MULTILINE)`: `^` per line          | the `m` flag: `/^FROM …$/m`                               |

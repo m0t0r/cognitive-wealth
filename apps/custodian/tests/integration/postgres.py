@@ -6,6 +6,7 @@ and scram-sha-256 passwords. It is never the dev database: its passwords are ran
 in memory, and Testcontainers' reaper removes it when the run ends.
 """
 
+import re
 import secrets
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -25,11 +26,13 @@ __all__ = [
     "CUSTODIAN",
     "EMPTY_DATABASE",
     "MIGRATED_DATABASE",
+    "REAPER_PIN",
     "Database",
     "PostgresServer",
     "Role",
     "alembic_config",
     "migrated_database",
+    "reaper_image",
     "start_migrated_postgres",
     "start_postgres",
 ]
@@ -44,11 +47,26 @@ MIGRATED_DATABASE = "custodian_migrated"
 
 type Role = Literal["migrator", "app"]
 
-# Testcontainers' reaper, pinned by digest as in apps/web-e2e (its default is an old tag).
-testcontainers_config.ryuk_image = (
-    "testcontainers/ryuk:0.14.0"
-    "@sha256:7c1a8a9a47c780ed0f983770a662f80deb115d95cce3e2daa3d12115b8cd28f0"
-)
+REAPER_PIN = REPO_ROOT / "docker/testcontainers/Dockerfile"
+"""Pins Testcontainers' reaper for both harnesses; Dependabot bumps it (see the file's header)."""
+
+# `re.MULTILINE` makes `^` and `$` match at each line, so comment lines can't match.
+_PINNED = re.compile(r"^FROM\s+(testcontainers/ryuk:[^@\s]+@sha256:[0-9a-f]+)\s*$", re.MULTILINE)
+
+
+def reaper_image(file: Path = REAPER_PIN) -> str:
+    """The reaper image, `tag@digest`, from the pin file's `FROM` line.
+
+    The TypeScript harness reads the same line (packages/testing/src/reaper.ts).
+    """
+    # `:=` assigns and tests in one step, like `if ((match = …))` in TypeScript.
+    if match := _PINNED.search(file.read_text()):
+        return match.group(1)
+    raise LookupError(f"{file} must pin testcontainers/ryuk by tag@digest")
+
+
+# Testcontainers' reaper (its default is an old tag): the one pin both harnesses share.
+testcontainers_config.ryuk_image = reaper_image()
 
 
 def compose_image() -> str:

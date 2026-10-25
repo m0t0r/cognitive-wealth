@@ -3,13 +3,8 @@ import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runMigrations } from "@repo/db/migrator";
-import {
-  databaseUrl,
-  newPasswords,
-  pinReaperImage,
-  secret,
-  startPostgres,
-} from "@repo/testing/postgres";
+import { databaseUrl, newPasswords, secret, startPostgres } from "@repo/testing/postgres";
+import { pinReaperImage } from "@repo/testing/reaper";
 import { TEMPLATE_DATABASE } from "./support/database";
 import { startMailpit } from "./support/mailpit";
 import { startRedis } from "./support/redis";

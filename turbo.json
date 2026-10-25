@@ -45,6 +45,11 @@
     },
     "test": {
       "dependsOn": ["transit"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/compose.yaml",
+        "$TURBO_ROOT$/docker/testcontainers/**"
+      ],
       "outputs": []
     },
     "test:integration": {
@@ -53,7 +58,8 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/compose.yaml",
-        "$TURBO_ROOT$/packages/db/docker/**"
+        "$TURBO_ROOT$/packages/db/docker/**",
+        "$TURBO_ROOT$/docker/testcontainers/**"
       ],
       "outputs": []
     },
