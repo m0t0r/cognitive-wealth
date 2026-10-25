@@ -44,7 +44,7 @@
       }
     ],
     "turbo/no-undeclared-env-vars": "error",
-    // Named arguments (CLAUDE.md, "Code conventions"): at most `db` and one object.
+    // Named arguments (CLAUDE.md, "Code conventions"): at most `db` (or `auth`) and one object.
     "max-params": ["error", { "max": 2 }],
     "typescript/no-floating-promises": "error",
     "typescript/no-misused-promises": "error",
