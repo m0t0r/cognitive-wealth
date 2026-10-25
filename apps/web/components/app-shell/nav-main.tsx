@@ -1,6 +1,6 @@
 "use client";
 
-import { Home01Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
+import { Home01Icon, House03Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   SidebarGroup,
@@ -15,7 +15,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const SECTIONS = [
-  { label: "Workspace", items: [{ href: "/", label: "Home", icon: Home01Icon }] },
+  {
+    label: "Workspace",
+    items: [
+      { href: "/", label: "Home", icon: Home01Icon },
+      { href: "/households", label: "Households", icon: House03Icon },
+    ],
+  },
   {
     label: "Settings",
     items: [{ href: "/settings/members", label: "Members", icon: UserGroupIcon }],

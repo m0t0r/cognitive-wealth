@@ -8,7 +8,7 @@ import { seedUser, uniqueEmail } from "../support/seed";
 // apps/web/lib/format.test.ts. Here: the page an Advisor reaches after a real seed and Ingestion,
 // and its 404s through the real stack.
 
-test("an Advisor opens the Household from home and reads its Positions as of the latest As-of date", async ({
+test("an Advisor opens the Household from the sidebar and reads its Positions as of the latest As-of date", async ({
   page,
   db,
   signIn,
@@ -22,6 +22,11 @@ test("an Advisor opens the Household from home and reads its Positions as of the
   await signIn(email);
 
   await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: "Households" })
+    .click();
+  await expect(page).toHaveURL("/households");
   await page.getByRole("link", { name: "The Reyes Household" }).click();
 
   await expect(page).toHaveURL(`/households/${publicId}`);

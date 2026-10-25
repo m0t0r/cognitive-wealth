@@ -70,6 +70,15 @@ export const SIGNED_IN_ROUTES: SignedInRoute[] = [
     },
   },
   {
+    // World file v0's Household in the list.
+    name: "/households",
+    async setUp(db, email) {
+      const user = await seedUser(db, { email, name: "Ada Advisor" });
+      await seedIngestedWorld(db, { advisor: { user, firm: "larkspur", role: "owner" } });
+      return "/households";
+    },
+  },
+  {
     // World file v0's Household after both example Deliveries, so its Positions tables render.
     name: "/households/[publicId]",
     async setUp(db, email) {
