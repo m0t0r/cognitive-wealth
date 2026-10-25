@@ -330,8 +330,7 @@ async function refuseChangedRows(
 
 // The same items in any order. Sets, since a row the world file lists twice is still one row.
 function sameItems(a: string[], b: string[]) {
-  const [left, right] = [new Set(a), new Set(b)];
-  return left.size === right.size && [...left].every((item) => right.has(item));
+  return new Set(a).symmetricDifference(new Set(b)).size === 0;
 }
 
 /** The ids of the Firm's rows whose `key` column holds one of `keys`, by that key. */

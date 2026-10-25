@@ -44,8 +44,8 @@ export async function listHouseholds(db: Database, firmId: number): Promise<Publ
       .orderBy(asc(custodialAccount.accountNumber), asc(accountRole.startsOn), asc(accountRole.id)),
   ]);
 
-  const rolesOf = groupBy(roles, (row) => row.personId);
-  const membersOf = groupBy(members, (row) => row.householdId);
+  const rolesOf = Map.groupBy(roles, (row) => row.personId);
+  const membersOf = Map.groupBy(members, (row) => row.householdId);
   // The Primary first, then the Co-client, then the Dependents.
   const inRoleOrder = (rows: typeof members) =>
     HOUSEHOLD_ROLES.flatMap((role) => rows.filter((row) => row.role === role));
@@ -63,16 +63,4 @@ export async function listHouseholds(db: Database, firmId: number): Promise<Publ
       ),
     ),
   );
-}
-
-// `Map.groupBy`, which the ES2022 lib the packages target doesn't have.
-function groupBy<T, K>(items: readonly T[], keyOf: (item: T) => K): Map<K, T[]> {
-  const groups = new Map<K, T[]>();
-  for (const item of items) {
-    const key = keyOf(item);
-    const group = groups.get(key);
-    if (group) group.push(item);
-    else groups.set(key, [item]);
-  }
-  return groups;
 }
