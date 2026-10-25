@@ -8,6 +8,8 @@
     "apps/custodian/fixtures/feed/**",
     // Orval's output, compared byte for byte with a fresh generation by generated.test.ts.
     "packages/custodian-client/src/generated/**",
+    // drizzle-kit writes and reads its snapshots and journal; db:generate leaves them unformatted.
+    "packages/db/migrations/meta/**",
     "**/.next/**",
     "**/next-env.d.ts",
     ".agents/**",
