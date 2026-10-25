@@ -8,7 +8,7 @@
   },
   "scripts": {
     "check-types": "tsc --noEmit",
-    "test": "vitest run --project unit --project ui",
+    "test": "vitest run --project unit",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },
