@@ -1,6 +1,6 @@
 import type { NamedOnAccount, OverviewPerson } from "@repo/households";
 import { ACCOUNT_ROLE_LABELS, REGISTRATION_TYPE_LABELS, personName } from "@/lib/households";
-import { MaskedEnding } from "./account-section";
+import { MaskedEnding } from "./masked-ending";
 
 type NamedOnSectionProps = {
   /** The Household's People; only those with Named-on Accounts are shown. */

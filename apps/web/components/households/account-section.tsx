@@ -9,6 +9,7 @@ import {
 } from "@repo/design-system/components/table";
 import { formatIsoDate, formatMoney, formatPrice, formatShares } from "@/lib/format";
 import { ACCOUNT_ROLE_LABELS, REGISTRATION_TYPE_LABELS, personName } from "@/lib/households";
+import { MaskedEnding } from "./masked-ending";
 
 type AccountSectionProps = {
   account: OverviewAccount;
@@ -59,23 +60,12 @@ export function AccountSection({ account, asOf }: AccountSectionProps) {
   );
 }
 
-/** "••••0001" on its own line under the Account's name. */
+/** "••••0001" on its own line under the Account's name, read out as "ending in 0001". */
 function MaskedAccountNumber({ ending }: { ending: string }) {
   return (
     <span className="mt-1 block text-sm font-normal text-muted-foreground tabular-nums">
       <MaskedEnding ending={ending} />
     </span>
-  );
-}
-
-/** "••••0001", read out as "ending in 0001". */
-export function MaskedEnding({ ending }: { ending: string }) {
-  return (
-    <>
-      <span aria-hidden="true">••••</span>
-      <span className="sr-only">ending in </span>
-      {ending}
-    </>
   );
 }
 

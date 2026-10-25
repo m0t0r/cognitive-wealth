@@ -95,12 +95,14 @@ test("a member's Named-on Account is listed under them and never counted", async
   ).toHaveText([
     /^Traditional IRA ••••\s*ending in\s*0003\s*Beneficiary · The Grace Reyes Household$/,
   ]);
-  await expect(
+  // The figures count the Household's two Accounts and their five Positions, nothing of the IRA's.
+  const figure = (term: string) =>
     page
       .getByRole("term")
-      .filter({ hasText: /^Accounts$/ })
-      .locator("xpath=following-sibling::dd[1]"),
-  ).toHaveText("2");
+      .filter({ hasText: new RegExp(`^${term}$`) })
+      .locator("xpath=following-sibling::dd[1]");
+  await expect(figure("Accounts")).toHaveText("2");
+  await expect(figure("Positions")).toHaveText("5");
   expect(await page.content()).not.toContain("CW-00000");
 });
 
