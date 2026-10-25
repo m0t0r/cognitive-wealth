@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import tls from "node:tls";
+import { parseEnv } from "node:util";
 import { createMailpit, parseSignInEmail } from "../mailpit.ts";
 import { requestSignInEmail, signIn } from "../sign-in.ts";
 import { parseDevSignInArgs, USAGE } from "./args.ts";
@@ -25,6 +26,15 @@ function trustPortlessCa(app: URL) {
     return;
   }
   tls.setDefaultCACertificates([...tls.getCACertificates("default"), readFileSync(ca, "utf8")]);
+}
+
+/**
+ * `MAILPIT_URL` from this checkout's `apps/web/.env.local`: a worktree's names the shared
+ * verification Mailpit its `pnpm dev` sends to (`@repo/dev-env`), the main checkout's the dev one.
+ */
+function webEnvMailpit(): string | undefined {
+  const file = join(REPO_ROOT, "apps/web/.env.local");
+  return existsSync(file) ? parseEnv(readFileSync(file, "utf8")).MAILPIT_URL : undefined;
 }
 
 async function saveState(file: string, state: unknown) {
@@ -49,7 +59,7 @@ async function main() {
   );
   const mailpitUrl = localUrl(
     "Mailpit",
-    values.mailpit ?? (process.env.MAILPIT_URL || DEFAULT_MAILPIT),
+    values.mailpit ?? (process.env.MAILPIT_URL || webEnvMailpit() || DEFAULT_MAILPIT),
   ).toString();
   const appUrl = app.origin;
   trustPortlessCa(app);

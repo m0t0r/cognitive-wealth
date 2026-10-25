@@ -1,3 +1,4 @@
 # Gitignored files Claude Code copies into every worktree it creates (.gitignore syntax).
 # .secrets/ stays in the main checkout, which runs Compose for every worktree.
-apps/web/.env.local
+# apps/web/.env.local isn't copied: the main checkout's points at the shared dev stack, and a
+# worktree writes its own (`pnpm dev`, or `pnpm dev:env`) for its own database and Redis prefix.

@@ -78,7 +78,7 @@ const where = relative(main, cwd) || ".";
 const reason = [
   `This repo's agents work in a git worktree, not the main checkout (${main}, cwd ${where}).`,
   "Call EnterWorktree with a short kebab-case name for the task, then redo this step there;",
-  "it branches from origin/dev, copies apps/web/.env.local and runs pnpm install.",
+  "it branches from origin/dev and runs pnpm install.",
   "See 'Worktrees' in CLAUDE.md. If the user explicitly wants this done in the main checkout,",
   "ask them to restart Claude with CLAUDE_MAIN_CHECKOUT=1.",
 ].join(" ");

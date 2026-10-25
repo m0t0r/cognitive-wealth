@@ -1,5 +1,7 @@
-# Throwaway backing services for runtime verification (`.claude/skills/verifier-web`): their own
-# Compose project, ports and in-memory storage, so verification never touches the dev stack's data.
+# Throwaway backing services for runtime verification (`.claude/skills/verifier-web`) and for
+# `pnpm dev` in a git worktree (`packages/dev-env`): their own Compose project, ports and in-memory
+# storage, so neither ever touches the dev stack's data. A worktree gets a database `wt_<token>`
+# and the Redis prefix `cw:wt:<token>:`, which `pnpm dev:teardown` removes.
 #   docker compose -f compose.yaml -f compose.verify.yaml up -d --wait db redis mailpit
 # Postgres on 127.0.0.1:5433, Redis on :6380, Mailpit SMTP on :1026 and UI/API on :8026. Each
 # verification server gets a fresh database cloned from the empty `cognitive_wealth` (which carries
@@ -26,6 +28,9 @@ services:
     ports: !override
       - "127.0.0.1:6380:6379"
     networks: [data, host-access]
+    # Adds the `janitor` user (SCAN and DEL on `cw:*`), which `pnpm dev:teardown` and `dev:prune`
+    # delete a worktree's keys with.
+    secrets: !override [redis_password, redis_janitor_password]
 
   mailpit:
     ports: !override
@@ -34,3 +39,9 @@ services:
 
 networks:
   host-access: {}
+
+secrets:
+  # The app's password, reused: this stack is throwaway, on loopback and in memory, so a separate
+  # secret wouldn't protect anything, and reusing it means `.secrets/` needs no new file.
+  redis_janitor_password:
+    file: ./.secrets/redis_password
