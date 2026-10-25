@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { REPO_ROOT } from "./compose";
+import { REPO_ROOT } from "./compose.ts";
 
 /** Pins Testcontainers' reaper for both harnesses; Dependabot bumps it (see the file's header). */
 const PIN_FILE = join(REPO_ROOT, "docker/testcontainers/Dockerfile");

@@ -294,11 +294,11 @@ describe("households", () => {
   test("accept every Registration type the Custodian's contract has, and no others", async ({
     orm,
   }) => {
-    const { rows } = await orm.execute<{ definition: string }>(
+    const [constraintRow] = await orm.execute<{ definition: string }>(
       sql`select pg_get_constraintdef(oid) as definition from pg_constraint
           where conname = 'custodial_account_registration_type_check'`,
     );
-    const allowed = [...rows[0]!.definition.matchAll(/'([^']+)'::text/g)].map((m) => m[1]);
+    const allowed = [...constraintRow!.definition.matchAll(/'([^']+)'::text/g)].map((m) => m[1]);
 
     expect(new Set(allowed)).toEqual(new Set(RegistrationType.options));
   });
@@ -457,11 +457,11 @@ describe("custodian feed", () => {
   ])(
     "$constraint accepts the contract's kinds, and no others",
     async ({ constraint, options }, { orm }) => {
-      const { rows } = await orm.execute<{ definition: string }>(
+      const [constraintRow] = await orm.execute<{ definition: string }>(
         sql`select pg_get_constraintdef(oid) as definition from pg_constraint
             where conname = ${constraint}`,
       );
-      const allowed = [...rows[0]!.definition.matchAll(/'([^']+)'::text/g)].map((m) => m[1]);
+      const allowed = [...constraintRow!.definition.matchAll(/'([^']+)'::text/g)].map((m) => m[1]);
 
       expect(new Set(allowed)).toEqual(new Set(options));
     },

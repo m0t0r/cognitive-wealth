@@ -352,9 +352,6 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
-      '@electric-sql/pglite':
-        specifier: ^0.5.11
-        version: 0.5.11
       '@repo/testing':
         specifier: workspace:*
         version: link:../testing
@@ -414,9 +411,6 @@ importers:
         specifier: ^0.0.1
         version: 0.0.1
     devDependencies:
-      '@electric-sql/pglite':
-        specifier: ^0.5.11
-        version: 0.5.11
       '@repo/testing':
         specifier: workspace:*
         version: link:../testing
@@ -595,9 +589,6 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
-      '@electric-sql/pglite':
-        specifier: ^0.5.11
-        version: 0.5.11
       '@repo/testing':
         specifier: workspace:*
         version: link:../testing
@@ -653,9 +644,6 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
-      '@electric-sql/pglite':
-        specifier: ^0.5.11
-        version: 0.5.11
       '@repo/households':
         specifier: workspace:*
         version: link:../households
@@ -677,9 +665,6 @@ importers:
 
   packages/testing:
     dependencies:
-      '@electric-sql/pglite':
-        specifier: ^0.5.11
-        version: 0.5.11
       '@testcontainers/postgresql':
         specifier: 12.2.1
         version: 12.2.1
@@ -6319,7 +6304,8 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
-  '@electric-sql/pglite@0.5.11': {}
+  '@electric-sql/pglite@0.5.11':
+    optional: true
 
   '@emnapi/runtime@1.11.3':
     dependencies:

@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { auditEvent, user } from "./schema";
-import { pgTest as test } from "./testing";
+import { test } from "./testing";
 
 const INSUFFICIENT_PRIVILEGE = { cause: { code: "42501" } };
 

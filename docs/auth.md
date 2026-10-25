@@ -2,7 +2,7 @@
 
 How sign-in, sessions and tenancy work today. The decisions behind them, and why, are ADRs [0001](adr/0001-better-auth-passwordless-invite-only.md) to [0008](adr/0008-production-mode-everywhere.md), and where auth sits in the platform is in [docs/architecture.md](architecture.md). This file describes current behaviour: update it, and its diagrams in `docs/diagrams/`, in the same change as the code. Values the code states plainly (column lists, plugin options, DTO fields) live only in the code (`packages/auth/src/auth.ts`, `packages/db/src/schema/`).
 
-Packages: `@repo/auth` is framework-agnostic (takes `Headers`, returns DTOs or typed `Result`s); `apps/web/lib/auth/*` adapts it to `next/headers` and `redirect()`. `createAuth(deps)` is a factory, so tests inject PGlite, a memory mailer and memory storage.
+Packages: `@repo/auth` is framework-agnostic (takes `Headers`, returns DTOs or typed `Result`s); `apps/web/lib/auth/*` adapts it to `next/headers` and `redirect()`. `createAuth(deps)` is a factory, so tests inject a test database, a memory mailer and memory storage.
 
 ## Better Auth setup
 
@@ -32,7 +32,7 @@ What the schema files don't make obvious:
 - `user.email` is stored lowercase.
 - `member.role` and `invitation.role` hold exactly one of `owner`, `admin`, `member` (CHECK constraints, migration `0003_role_check`). Better Auth stores a comma-separated list when asked for several roles; nothing may write one.
 - `member` is unique on `(organization_id, user_id)`.
-- `audit_event` is append-only for the `app` role: migration `0002_audit_append_only` revokes `update` and `delete` when that role exists (guarded, since PGlite has no `app` role).
+- `audit_event` is append-only for the `app` role: migration `0002_audit_append_only` revokes `update` and `delete` when that role exists (guarded, so a database without that role still migrates).
 - IDs: see [ADR 0003](adr/0003-internal-bigint-ids-public-uuids.md).
 
 ## Sign-in request

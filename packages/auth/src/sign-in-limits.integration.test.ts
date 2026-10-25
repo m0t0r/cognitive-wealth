@@ -1,15 +1,12 @@
 // Sign-in email limits and the device cookie (docs/auth.md, "Sign-in email limits"). Parsing the
 // cookie and its value layout are owned by device.test.ts; here, what needs Better Auth.
-import { test as dbTest } from "@repo/db/testing";
 import { auditEvent, invitation, verification } from "@repo/db/schema";
 import { parseSetCookies } from "@repo/testing/sign-in";
 import { eq } from "drizzle-orm";
 import { AUTH_BASE_PATH, DEVICE_COOKIE_NAMES } from "./constants";
 import { DEVICE_COOKIE_MAX_AGE } from "./device";
 import { createMemoryStorage } from "./storage/memory";
-import { createTestAuth, TEST_BASE_URL, type TestAuth } from "./testing";
-
-const test = dbTest.extend("t", ({ orm }) => createTestAuth({ orm }));
+import { authTest as test, createTestAuth, TEST_BASE_URL, type TestAuth } from "./testing";
 
 const ADA = "ada@example.com";
 const ATTACKER = "203.0.113.66";

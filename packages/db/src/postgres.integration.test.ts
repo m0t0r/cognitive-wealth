@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { pgTest } from "./testing";
+import { test } from "./testing";
 import { user } from "./schema";
 
 const INSUFFICIENT_PRIVILEGE = { cause: { code: "42501" } };
 
 describe("the real-Postgres test database", () => {
-  pgTest("signs app in with its password, and app can't change the schema", async ({ orm }) => {
+  test("signs app in with its password, and app can't change the schema", async ({ orm }) => {
     expect([...(await orm.execute(sql`select current_user as role`))]).toEqual([{ role: "app" }]);
 
     await expect(orm.execute(sql`create table scratch (id int)`)).rejects.toMatchObject(
@@ -13,14 +13,14 @@ describe("the real-Postgres test database", () => {
     );
   });
 
-  pgTest("lets migrator change the schema", async ({ migratorOrm }) => {
+  test("lets migrator change the schema", async ({ migratorOrm }) => {
     await migratorOrm.execute(sql`create table scratch (id int)`);
 
     const owner = sql`select tableowner as owner from pg_tables where tablename = 'scratch'`;
     expect([...(await migratorOrm.execute(owner))]).toEqual([{ owner: "migrator" }]);
   });
 
-  pgTest("shows one connection's committed row to another", async ({ connect }) => {
+  test("shows one connection's committed row to another", async ({ connect }) => {
     const first = connect("app");
     const second = connect("app");
     // Two pools, so two server processes, not one connection reused.
@@ -39,7 +39,7 @@ describe("the real-Postgres test database", () => {
 
 // Both insert the same unique email at once: each passes only on its own database.
 describe.concurrent("each test's own database", () => {
-  pgTest.for(["first", "second"])("keeps the %s test's rows to itself", async (_name, { orm }) => {
+  test.for(["first", "second"])("keeps the %s test's rows to itself", async (_name, { orm }) => {
     await orm.insert(user).values({ name: "Ada", email: "ada@example.com" });
 
     expect(await orm.select({ email: user.email }).from(user)).toEqual([

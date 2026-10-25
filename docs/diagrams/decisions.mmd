@@ -16,6 +16,7 @@ flowchart LR
   a15["0015 Positions counted<br/>by trade date"]
   a16["0016 Settled cash and<br/>Market value rules"]
   a17["0017 Custodian feed format,<br/>Transaction IDs"]
+  a18["0018 Integration tests<br/>on real Postgres"]
 
   ir["incident-response.md"]
   host["Hosting must keep<br/>after() work alive"]
@@ -43,3 +44,5 @@ flowchart LR
   a3 -->|"id stays inside"| a17
   a15 -->|"Positions as known<br/>that day"| a17
   a16 -->|"line values, no total"| a17
+  a11 -->|"Testcontainers, like<br/>the custodian's tests"| a18
+  a18 -->|"real app logins"| rls

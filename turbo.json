@@ -54,7 +54,7 @@
     },
     "test:integration": {
       "dependsOn": ["transit"],
-      "passThroughEnv": ["DOCKER_*", "TESTCONTAINERS_*", "RYUK_*"],
+      "passThroughEnv": ["DOCKER_*", "TESTCONTAINERS_*", "RYUK_*", "TEST_POSTGRES_SERVER"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/compose.yaml",

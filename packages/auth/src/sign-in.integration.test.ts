@@ -1,7 +1,6 @@
 // Sign-in through Better Auth and the route handler. Pure request rules (allowlist matching,
 // Sec-Fetch and Origin checks, body validation, response stripping, callback sanitizing) are owned
 // by route-handler.test.ts and callback-path.test.ts; each gets one wiring case here.
-import { test as dbTest } from "@repo/db/testing";
 import {
   auditEvent,
   invitation,
@@ -14,9 +13,7 @@ import {
 import { parseSetCookies } from "@repo/testing/sign-in";
 import { eq, sql } from "drizzle-orm";
 import { getViewer, switchOrganization } from "./tenant";
-import { createTestAuth, TEST_BASE_URL, type TestAuth } from "./testing";
-
-const test = dbTest.extend("t", ({ orm }) => createTestAuth({ orm }));
+import { authTest as test, TEST_BASE_URL, type TestAuth } from "./testing";
 
 const verifyPath = (token: string) => `/magic-link/verify?token=${encodeURIComponent(token)}`;
 

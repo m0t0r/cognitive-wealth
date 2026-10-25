@@ -1,6 +1,7 @@
-// Test wiring: Better Auth over a test's PGlite database with a memory mailer and storage. Only
+// Test wiring: Better Auth over a test's database with a memory mailer and storage. Only
 // for tests (it imports dev dependencies).
 import type { Database } from "@repo/db";
+import { test as dbTest } from "@repo/db/testing";
 import { member, organization, user } from "@repo/db/schema";
 import type { EmailMessage } from "@repo/email";
 import { createMemoryMailer } from "@repo/email/testing";
@@ -232,3 +233,14 @@ export function createTestAuth({ orm, ...overrides }: { orm: Database } & Partia
 }
 
 export type TestAuth = ReturnType<typeof createTestAuth>;
+
+/**
+ * `@repo/db/testing`'s `test` with a `t` fixture: `createTestAuth` on the test's `orm`. Its cleanup
+ * waits for background tasks (`settle`) before the database's pools close, so a sign-in a test
+ * didn't wait on can't run its queries on a closed connection after the test.
+ */
+export const authTest = dbTest.extend("t", ({ orm }, { onCleanup }) => {
+  const t = createTestAuth({ orm });
+  onCleanup(() => t.settle());
+  return t;
+});

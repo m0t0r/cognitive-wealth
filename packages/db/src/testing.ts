@@ -1,28 +1,17 @@
-import { createDatabaseTest } from "@repo/testing/pglite";
 import { type Role, createPostgresTest } from "@repo/testing/postgres";
-import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import { connect as connectPool } from "./connect";
-import { migrationsFolder } from "./migrations-folder";
-
-/**
- * A `test` whose `orm` fixture is Drizzle over an isolated Postgres per test (`db` is the raw
- * PGlite). Migrations run once per worker into a template; each test gets its own clone.
- */
-export const test = createDatabaseTest(async (client) => {
-  await migrate(drizzle({ client }), { migrationsFolder });
-}).extend("orm", ({ db }) => drizzle({ client: db }));
 
 // postgres.js's Drizzle type, so `execute` returns rows rather than the shared `Database`'s unknown.
 type PostgresDatabase = ReturnType<typeof connectPool>["db"];
 
 /**
- * Like `test`, on a real Postgres (`@repo/testing/postgres`) through the app's postgres.js driver,
- * for what PGlite can't show: password logins as the production roles, several connections.
- * `orm` signs in as `app` and `migratorOrm` as `migrator`; `connect(role)` opens another pool of
- * its own. Every pool closes after the test. Slower than `test`, so use it only when needed.
+ * A `test` whose `orm` fixture is Drizzle over a database of its own on a real Postgres
+ * (`@repo/testing/postgres`), through the app's postgres.js driver, signed in with a password as
+ * the production roles: `orm` as `app`, `migratorOrm` as `migrator`; `connect(role)` opens
+ * another pool of its own, for tests that need several connections. Every pool closes after the
+ * test. The package's `vitest.config.ts` names `@repo/db/postgres-setup` as its global setup.
  */
-export const pgTest = createPostgresTest()
+export const test = createPostgresTest()
   .extend("connect", ({ database }, { onCleanup }) => {
     const pools: (() => Promise<void>)[] = [];
     onCleanup(async () => {
