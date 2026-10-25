@@ -97,7 +97,7 @@ pnpm org:create --name Umbrella --slug umbrella-corp --owner owner@cognitive-wea
 
 It creates the owner if they don't exist yet (an empty name, which they set at `/welcome` on first sign-in), the organization and the owner membership in one transaction, plus an `org.created` audit event, and prints the organization's `publicId` and slug. A taken slug fails without writing anything. To add other people, sign in as an owner or admin and invite them from `/settings/members`; the invitation email lands in Mailpit too.
 
-`org:create` is also how organizations are created in production. Without `DATABASE_URL` it reads `DATABASE_URL` and `DATABASE_PASSWORD_FILE` from `apps/web/.env.local`; set them explicitly to target another database (it prints the database it connects to, without the password):
+`org:create` is also how organizations are created in production. Without `DATABASE_URL` it reads `DATABASE_URL` and `DATABASE_PASSWORD_FILE` from `apps/web/.env.local` (in the main checkout only: a git worktree refuses that shared dev database); set them explicitly to target another database (it prints the database it connects to, without the password):
 
 ```sh
 DATABASE_URL=postgres://app@db.internal:5432/cognitive_wealth \

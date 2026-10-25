@@ -7,7 +7,13 @@ import { join } from "node:path";
 import { connectionUrl } from "../config.ts";
 import { describeDatabaseUrl, loadWebEnvFallback } from "./env.ts";
 
-const envFile = loadWebEnvFallback();
+let envFile: string | undefined;
+try {
+  envFile = loadWebEnvFallback();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+}
 const url = connectionUrl();
 if (!url) {
   console.error("DATABASE_URL is not set, and apps/web/.env.local doesn't set it either.");

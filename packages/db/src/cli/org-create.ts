@@ -21,7 +21,7 @@ name on first sign-in). Prints the organization's publicId and slug.
   --owner <email>  The owner's email address (stored lowercase).
 
 Connects with DATABASE_URL (and DATABASE_PASSWORD_FILE, if set). When DATABASE_URL is unset, both
-are read from apps/web/.env.local, the pnpm dev database.`;
+are read from apps/web/.env.local, the pnpm dev database, except in a git worktree.`;
 
 async function main() {
   // `pnpm org:create -- --name …` passes the separator through; parseArgs would treat the rest
