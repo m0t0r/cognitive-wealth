@@ -264,7 +264,7 @@ End of day: cash is $2,000.00 + $10,000.00 − $6,010.00 = **$5,990.00**. Stock 
 
 #### Tuesday 3 March: a dividend
 
-The Bond Fund pays its holders 3 cents a share. Dana holds 300 shares: 300 × $0.03 = $9.00. (How a fund decides who gets a dividend is a topic for a later primer. Here it's just cash arriving.)
+The Bond Fund pays its holders 3 cents a share. Dana holds 300 shares: 300 × $0.03 = $9.00. (How a fund decides who gets a dividend is in [a later primer](04-prices-dividends-and-the-cash-sweep.md), Part 4. Here it's just cash arriving.)
 
 | #   | Date      | Kind     | Security  | Shares | Price | Cash  |
 | --- | --------- | -------- | --------- | ------ | ----- | ----- |
@@ -483,7 +483,7 @@ Some days have no price. Markets are shut at weekends, so on Saturday 7 March th
 
 Cash in an Account doesn't sit in a drawer. Each night, the Custodian moves it into a **Cash sweep**: a bank deposit or a money market fund that pays a little interest. Row 11's $1.15 is that interest. (Real sweeps work out interest every day and usually pay it once a month; the example pays it on Friday to keep the week short.)
 
-The sweep is treated as one more Security, priced at exactly $1.00. Then Dana's $6,476.65 of cash is simply 6,476.65 shares of the sweep, worth $6,476.65. That's the last row in the table above. Every cash leg of every Transaction moves sweep shares up or down, so the same adding-up that counts fund shares also counts cash. How the sweep's interest is set comes in a later primer.
+The sweep is treated as one more Security, priced at exactly $1.00. Then Dana's $6,476.65 of cash is simply 6,476.65 shares of the sweep, worth $6,476.65. That's the last row in the table above. Every cash leg of every Transaction moves sweep shares up or down, so the same adding-up that counts fund shares also counts cash. How the sweep's interest is set is in [the primer on prices, dividends and the cash sweep](04-prices-dividends-and-the-cash-sweep.md) (Part 5).
 
 ### Does it all add up?
 
@@ -557,7 +557,7 @@ This is why each Transaction stores its own Settlement date, rather than the cod
 
 **Short answer:** it's decided on one day and paid on a later day.
 
-In Dana's week the dividend simply arrived. In reality a fund announces a dividend in advance. Whoever holds the shares at a cut-off date gets it, and the cash is paid days or weeks later. So a dividend has its own dates, separate from Trade and Settlement. The primer on prices, dividends and the cash sweep (#44) covers them.
+In Dana's week the dividend simply arrived. In reality a fund announces a dividend in advance. Whoever holds the shares at a cut-off date gets it, and the cash is paid days or weeks later. So a dividend has its own dates, separate from Trade and Settlement. [The primer on prices, dividends and the cash sweep](04-prices-dividends-and-the-cash-sweep.md) covers them (Part 4).
 
 ### How do real Custodians send corrections?
 
@@ -643,7 +643,7 @@ Four rules make those filled-in days as trustworthy as if they had happened on t
 
 This is also how real systems recover. A real Custodian doesn't stop, but an advisor's software does: an outage, a failed nightly job, a holiday. Real platforms recover the same way, by fetching the daily files they missed and reading them in order. So a week away from the project is a free rehearsal of recovering from an outage.
 
-One wrinkle: the real market history that prices are built from ends on some date. For days after that, the simulation draws returns at random from the past, using the date itself as the seed, so those days are still the same every time, just not real. The primers on prices (#44) and the Close (#48) cover both. Catching up is built in #50, after a single day's Close in #49.
+One wrinkle: the real market history that prices are built from ends on some date. For days after that, the simulation draws returns at random from the past, using the date itself as the seed, so those days are still the same every time, just not real. [The primer on prices](04-prices-dividends-and-the-cash-sweep.md) (Part 6) and the primer on the Close (#48) cover both. Catching up is built in #50, after a single day's Close in #49.
 
 ## Recap
 

@@ -204,6 +204,14 @@ _Avoid_: Balance (for a Position)
 Where the Custodian keeps an Account's uninvested cash overnight, such as a bank deposit or a money market fund, earning interest. It is a Security worth exactly $1.00 a share, so cash is a Position like any other.
 _Avoid_: Cash balance, money market (when the sweep is meant)
 
+**Sweep rate**:
+The yearly interest rate the Cash sweep pays. Interest builds up every calendar day at the Sweep rate ÷ 365 (366 in a leap year) and is paid once a month.
+_Avoid_: Sweep yield, APY (a different measure)
+
+**Accrued interest**:
+Interest earned but not yet paid, kept at full precision. It becomes an interest Transaction, rounded once to cents, when it is paid.
+_Avoid_: Pending interest
+
 **Business day**:
 A weekday on which US markets are open.
 _Avoid_: Trading day, working day
@@ -256,6 +264,60 @@ Comparing the Positions Cognitive Wealth rebuilt from Transactions with the Posi
 **Break**:
 A difference Reconciliation found, kept until someone resolves it.
 _Avoid_: Mismatch, discrepancy
+
+## Market
+
+**Return**:
+A gain or loss over a time, as a percentage of the value at the start. Returns compound: each day's price is the day before's × (1 + that day's Return).
+_Avoid_: Performance (for one day's change), yield
+
+**Total return**:
+A Return that counts the dividends paid as well as the change in price, unlike a price return, which counts the price only.
+_Avoid_: Return (when dividends are meant to count)
+
+**NAV**:
+Net asset value: what a fund holds minus what it owes, usually given per share. Mutual funds and exchange-traded funds work it out each Business day, and their prices are based on it.
+_Avoid_: Fund value
+
+**Factor return**:
+One day's Return of a force that moves many Securities at once, such as the whole market, small against big companies, or value against growth, as published by Kenneth French's data library.
+_Avoid_: Index return, benchmark
+
+**Factor exposure**:
+How strongly a Security follows a factor: an exposure of 1.1 to the market moves 1.1% for each 1% the market beats the risk-free Return.
+_Avoid_: Beta (fine for the market alone), loading, weight
+
+**Security catalog**:
+The simulated Custodian's own list of the Securities in the world, with what drives each one's price, such as its Factor exposures. The Security master is the feed file that sends Securities to Cognitive Wealth.
+_Avoid_: Security master (for the catalog), universe
+
+**Factor file**:
+The one copy of the Fama-French Factor returns the simulated Custodian prices from: downloaded into a local cache, never committed, and checked against its Pin.
+_Avoid_: Market data, price history
+
+**Pin**:
+The committed address and Content hash of the Factor file. The Custodian refuses to start when its cached copy doesn't match; moving the Pin is a deliberate rebuild of the world.
+_Avoid_: Lock, version
+
+**Treasury yield**:
+What lending to the US government earns in a year, as a percentage, buying its debt at that day's price and holding it until it is repaid. Published by the US Treasury each Business day. When yields rise, bond prices fall.
+_Avoid_: Interest rate (alone), risk-free rate
+
+**Declaration date**:
+The day a company or fund announces a dividend: its amount per share, Record date and Pay date. The Ex-dividend date then follows from exchange rules.
+_Avoid_: Announcement date
+
+**Record date**:
+The day whose end decides who is on the books as a holder, and so is paid a dividend. For an ordinary dividend, that's everyone who bought before the Ex-dividend date.
+_Avoid_: Date of record (fine in speech)
+
+**Ex-dividend date**:
+The first day a share is bought without its next dividend: a buyer on or after it doesn't get the dividend, the seller does. Under T+1 it is usually the Record date, or the Business day before it when the Record date isn't a Business day; a dividend of 25% or more of the price has a later one. The price drops by the dividend on this day.
+_Avoid_: Ex-date (fine in speech)
+
+**Pay date**:
+The day a dividend's cash is paid, and the day the Custodian writes the dividend Transaction.
+_Avoid_: Payment date; payable date (the SEC's word for it)
 
 ## Wealth and fees
 

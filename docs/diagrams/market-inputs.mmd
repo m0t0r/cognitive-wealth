@@ -1,0 +1,26 @@
+flowchart LR
+  subgraph fixed["Fixed inputs, changed only on purpose"]
+    ff["Factor file<br/>checked against its Pin"]
+    ty["Treasury yields"]
+    cat["Security catalog<br/>Factor exposures (#45)"]
+    sched["Dividend schedule<br/>four dates, amount per share (#47)"]
+  end
+  subgraph daily["Worked out each day"]
+    ret["Each Security's Return<br/>(Business days)"]
+    px["Price<br/>previous × (1 + Return)<br/>− dividend"]
+    rate["Sweep rate"]
+    acc["Accrued interest<br/>every calendar day"]
+  end
+  subgraph close["Written by the Close"]
+    int["interest Transaction<br/>once a month"]
+    div["dividend Transaction<br/>on the Pay date"]
+  end
+  ff --> ret
+  cat --> ret
+  ty --> ret
+  ret --> px
+  sched -->|"on the Ex-dividend date"| px
+  sched -->|"Positions at the Close<br/>before the Ex-dividend date"| div
+  ty --> rate
+  rate --> acc
+  acc -->|"rounded once to cents"| int
