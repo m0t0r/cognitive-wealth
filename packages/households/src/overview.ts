@@ -53,6 +53,7 @@ export async function getHouseholdOverview(
   // the Positions describe, or, before the first Delivery, by today (UTC).
   const today = new Date().toISOString().slice(0, 10);
   const rolesOn = sql<string>`coalesce((${latestAsOf}), ${today}::date)`;
+  const started = lte(accountRole.startsOn, rolesOn);
   const [[found], members, owned, [latest]] = await Promise.all([
     db.select().from(household).where(thisHousehold),
     db
@@ -78,7 +79,7 @@ export async function getHouseholdOverview(
         and(
           eq(accountRole.firmId, firmId),
           inArray(accountRole.role, HOUSEHOLD_ACCOUNT_ROLES),
-          lte(accountRole.startsOn, rolesOn),
+          started,
         ),
       )
       .orderBy(asc(custodialAccount.accountNumber)),
@@ -101,7 +102,7 @@ export async function getHouseholdOverview(
               and(
                 eq(accountRole.firmId, firmId),
                 inArray(accountRole.accountId, accountIds),
-                lte(accountRole.startsOn, asOf ?? today),
+                started,
               ),
             )
             .orderBy(asc(accountRole.startsOn), asc(accountRole.id)),

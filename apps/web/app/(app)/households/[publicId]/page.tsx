@@ -8,7 +8,7 @@ import { cache } from "react";
 import { AccountCard } from "@/components/households/account-card";
 import { requireAppViewer } from "@/lib/auth/viewer";
 import { formatIsoDate } from "@/lib/format";
-import { HOUSEHOLD_ROLE_LABELS, RELATIONSHIP_STATUS_LABELS } from "@/lib/households";
+import { HOUSEHOLD_ROLE_LABELS, RELATIONSHIP_STATUS_LABELS, personName } from "@/lib/households";
 
 // The metadata and the page both need the Household: one lookup per request.
 const householdOverview = cache(async (publicId: string) => {
@@ -70,9 +70,7 @@ export default async function HouseholdPage({ params }: PageProps<"/households/[
                   key={person.publicId}
                   className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3 sm:px-6"
                 >
-                  <span className="font-medium wrap-anywhere">
-                    {person.firstName} {person.lastName}
-                  </span>
+                  <span className="font-medium wrap-anywhere">{personName(person)}</span>
                   <span className="text-muted-foreground">
                     {HOUSEHOLD_ROLE_LABELS[person.householdRole]}
                   </span>

@@ -35,20 +35,27 @@ test("an Advisor opens the Household from home and reads its Positions as of the
   const people = page.getByRole("region", { name: "People" }).getByRole("listitem");
   await expect(people).toHaveText([/Dana Reyes\s*Primary/, /Jordan Reyes\s*Co-client/]);
 
-  // 6 March's Positions, as the Custodian's positions.csv has them, never 2 March's.
+  // 6 March's Positions, as the Custodian's positions.csv has them, never 2 March's. The rendered
+  // text: the phone-only price line is in the DOM but hidden at this width.
   const joint = page.getByRole("table", { name: "Joint ending in 0001" });
-  await expect(joint.getByRole("row")).toHaveText([
-    /Security\s*Shares\s*Price\s*Market value/,
-    /Larkspur Bond Fund\s*LKBF\s*300\s*\$10\.02\s*\$3,006\.00/,
-    /Larkspur Stock Fund\s*LKSF\s*30\s*\$153\.40\s*\$4,602\.00/,
-    /Larkspur Bank Sweep\s*SWEEP\s*6,476\.65\s*\$1\.00\s*\$6,476\.65/,
-  ]);
+  await expect(joint.getByRole("row")).toHaveText(
+    [
+      /Security\s*Shares\s*Price\s*Market value/,
+      /Larkspur Bond Fund\s*LKBF\s*300\s*\$10\.02\s*\$3,006\.00/,
+      /Larkspur Stock Fund\s*LKSF\s*30\s*\$153\.40\s*\$4,602\.00/,
+      /Larkspur Bank Sweep\s*SWEEP\s*6,476\.65\s*\$1\.00\s*\$6,476\.65/,
+    ],
+    { useInnerText: true },
+  );
   const ira = page.getByRole("table", { name: "Traditional IRA ending in 0002" });
-  await expect(ira.getByRole("row")).toHaveText([
-    /Security\s*Shares\s*Price\s*Market value/,
-    /Larkspur Stock Fund\s*LKSF\s*20\s*\$153\.40\s*\$3,068\.00/,
-    /Larkspur Bank Sweep\s*SWEEP\s*2,995\s*\$1\.00\s*\$2,995\.00/,
-  ]);
+  await expect(ira.getByRole("row")).toHaveText(
+    [
+      /Security\s*Shares\s*Price\s*Market value/,
+      /Larkspur Stock Fund\s*LKSF\s*20\s*\$153\.40\s*\$3,068\.00/,
+      /Larkspur Bank Sweep\s*SWEEP\s*2,995\s*\$1\.00\s*\$2,995\.00/,
+    ],
+    { useInnerText: true },
+  );
   await expect(page.getByText("Dana Reyes, Owner · Jordan Reyes, Beneficiary")).toBeVisible();
 
   // The account numbers stay on the server, masked to their last four.

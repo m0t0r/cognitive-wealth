@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@repo/design-system/components/table";
 import { formatIsoDate, formatMoney, formatPrice, formatShares } from "@/lib/format";
-import { ACCOUNT_ROLE_LABELS, REGISTRATION_TYPE_LABELS } from "@/lib/households";
+import { ACCOUNT_ROLE_LABELS, REGISTRATION_TYPE_LABELS, personName } from "@/lib/households";
 
 type AccountCardProps = {
   account: OverviewAccount;
@@ -27,9 +27,7 @@ type AccountCardProps = {
 export function AccountCard({ account, asOf }: AccountCardProps) {
   const headingId = `account-${account.publicId}`;
   const roles = account.roles
-    .map(
-      ({ person, role }) => `${person.firstName} ${person.lastName}, ${ACCOUNT_ROLE_LABELS[role]}`,
-    )
+    .map(({ person, role }) => `${personName(person)}, ${ACCOUNT_ROLE_LABELS[role]}`)
     .join(" · ");
 
   return (
@@ -99,7 +97,7 @@ function PositionsTable({
               {formatShares(position.shares)}
               {/* On a phone the Price column folds in here, so every figure stays on screen. */}
               <span className="block text-muted-foreground sm:hidden">
-                {position.price === null ? "No price" : `at ${formatPrice(position.price)}`}
+                {position.price === null ? <NoPrice /> : `at ${formatPrice(position.price)}`}
               </span>
             </TableCell>
             <TableCell className="hidden text-end tabular-nums sm:table-cell">
