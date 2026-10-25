@@ -1,4 +1,4 @@
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { Database } from "../index.ts";
 import { member, organization, user } from "../schema/index.ts";
 
@@ -10,8 +10,8 @@ type Role = "owner" | "admin" | "member";
 export const WORLD_FIRM_SLUG = "larkspur";
 
 /**
- * The dev organizations (docs/dev-sign-in.md): the world's Firm, and a second, small Firm that
- * exists to show one Firm can't see another's data (docs/product.md, "The synthetic world").
+ * The dev Firms (docs/dev-sign-in.md): the world's Firm, and a second, small Firm that exists to
+ * show one Firm can't see another's data (docs/product.md, "The synthetic world").
  */
 export const SEED_ORGANIZATIONS = [
   { name: "Larkspur Wealth Partners", slug: WORLD_FIRM_SLUG },
@@ -20,10 +20,12 @@ export const SEED_ORGANIZATIONS = [
 
 type SeedSlug = (typeof SEED_ORGANIZATIONS)[number]["slug"];
 
+/** The slug the world's Firm had before it was Larkspur. */
+const OLD_WORLD_FIRM_SLUG = "acme";
+
 /**
- * The dev users and their roles, by organization slug. `owner@` is the Advisor who owns the
- * world's Firm. In the synthetic world the Advisor is the only User; `admin@` and `member@` exist
- * only to try member management.
+ * The dev users and their roles, by Firm slug. `owner@` is the Advisor who owns the world's Firm;
+ * docs/dev-sign-in.md says why the other two exist.
  */
 export const SEED_USERS: readonly {
   email: string;
@@ -42,15 +44,33 @@ export const SEED_USERS: readonly {
 export interface SeedResult {
   /** Rows this run inserted; rows that already existed are left as they are. */
   added: { users: number; organizations: number; memberships: number };
+  /** Firms this run renamed: the old seeded Acme, turned into Larkspur. */
+  renamed: { organizations: number };
 }
 
 /**
- * Inserts the dev users, organizations and memberships that are missing, in one transaction.
- * Idempotent: rows are keyed on email, slug and (organization, user), and existing ones are left
- * untouched. Writes with Drizzle directly, so Better Auth's sign-up hooks never run.
+ * Inserts the dev users, Firms and memberships that are missing, in one transaction. Idempotent:
+ * rows are keyed on email, slug and (organization, user), and existing ones are left untouched.
+ * Writes with Drizzle directly, so Better Auth's sign-up hooks never run.
+ *
+ * The one exception: a database seeded when the world's Firm was Acme gets that row renamed to
+ * Larkspur, unless Larkspur already exists. Its members, invitations, audit events and sessions
+ * stay with it, so the app keeps opening the same Firm instead of an empty leftover Acme.
  */
 export async function seedDevData(db: Database): Promise<SeedResult> {
   return db.transaction(async (tx) => {
+    const [worldFirm] = await tx
+      .select({ id: organization.id })
+      .from(organization)
+      .where(eq(organization.slug, WORLD_FIRM_SLUG));
+    const renamed = worldFirm
+      ? []
+      : await tx
+          .update(organization)
+          .set(SEED_ORGANIZATIONS[0])
+          .where(eq(organization.slug, OLD_WORLD_FIRM_SLUG))
+          .returning({ id: organization.id });
+
     const users = await tx
       .insert(user)
       .values(SEED_USERS.map(({ email, name }) => ({ email, name, emailVerified: true })))
@@ -109,6 +129,7 @@ export async function seedDevData(db: Database): Promise<SeedResult> {
         organizations: organizations.length,
         memberships: memberships.length,
       },
+      renamed: { organizations: renamed.length },
     };
   });
 }
