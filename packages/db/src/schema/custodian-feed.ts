@@ -3,7 +3,8 @@
 // kept as the Custodian reported them. Firm-scoped like households.ts, with every link a foreign
 // key on (firm_id, id). Every row of a Delivery keeps `arrived_at`, the moment it reached
 // Cognitive Wealth, beside the dates it happened and settled (ADR 0009). Amounts are `numeric` at
-// their type's scale, read and written as strings (ADR 0013).
+// their type's scale, read and written as strings (ADR 0013). An Account or Security with rows here
+// can't be deleted, so its history can't go with it; only deleting the Firm removes them.
 import {
   SecurityKind as SecurityKindSchema,
   TransactionKind as TransactionKindSchema,
@@ -122,7 +123,7 @@ export const custodialTransaction = pgTable(
       name: "custodial_transaction_account_fk",
       columns: [t.firmId, t.accountId],
       foreignColumns: [custodialAccount.firmId, custodialAccount.id],
-    }).onDelete("cascade"),
+    }),
     foreignKey({
       name: "custodial_transaction_security_fk",
       columns: [t.firmId, t.securityId],
@@ -165,7 +166,7 @@ export const custodialPosition = pgTable(
       name: "custodial_position_account_fk",
       columns: [t.firmId, t.accountId],
       foreignColumns: [custodialAccount.firmId, custodialAccount.id],
-    }).onDelete("cascade"),
+    }),
     foreignKey({
       name: "custodial_position_security_fk",
       columns: [t.firmId, t.securityId],

@@ -295,6 +295,25 @@ describe("ingestDelivery", () => {
       expect(await feedRows(orm)).toEqual(before);
     });
 
+    test("a Transaction for an account number the Firm has no Account for", async ({ orm }) => {
+      const firmId = await seededFirm(orm);
+      const source = await rewrittenDelivery(FEED, MONDAY, {
+        "transactions.csv": await mondaysWith(
+          "transactions.csv",
+          "TX-000000012,CW-000002,",
+          "TX-000000012,CW-000077,",
+        ),
+      });
+
+      const result = await ingest(orm, firmId, MONDAY, source);
+
+      expect(result).toMatchObject({
+        status: "refused",
+        reason: "unknown_accounts",
+        message: expect.stringContaining("no Account numbered CW-000077;"),
+      });
+    });
+
     test("another Firm's Accounts", async ({ orm }) => {
       // Globex is seeded too, but the world's Accounts are Larkspur's.
       const globex = await seededFirm(orm, "globex");
