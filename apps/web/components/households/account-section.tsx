@@ -70,7 +70,8 @@ function MaskedAccountNumber({ ending }: { ending: string }) {
   );
 }
 
-const HEAD = "h-auto pb-2 text-xs font-normal tracking-wide text-muted-foreground uppercase";
+const HEAD =
+  "h-auto pb-2 align-bottom text-xs font-normal tracking-wide whitespace-normal text-muted-foreground uppercase sm:whitespace-nowrap";
 
 /** Each Position as the Custodian reported it: Cognitive Wealth does no arithmetic on them yet. */
 function PositionsTable({
@@ -85,10 +86,14 @@ function PositionsTable({
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           <TableHead className={`${HEAD} ps-0`}>Security</TableHead>
-          {/* Fixed widths, so the columns line up from one Account to the next. */}
-          <TableHead className={`${HEAD} w-24 text-end sm:w-28`}>Shares</TableHead>
+          {/* From sm up, fixed widths line the columns up from one Account to the next. On a phone
+              the columns size to their content and the headers may wrap, so nothing is clipped at
+              320px. */}
+          <TableHead className={`${HEAD} px-2 text-end sm:w-28 sm:px-3`}>Shares</TableHead>
           <TableHead className={`${HEAD} hidden w-28 text-end sm:table-cell`}>Price</TableHead>
-          <TableHead className={`${HEAD} w-26 pe-0 text-end sm:w-36`}>Market value</TableHead>
+          <TableHead className={`${HEAD} ps-2 pe-0 text-end sm:w-36 sm:ps-3`}>
+            Market value
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -98,7 +103,7 @@ function PositionsTable({
               <span className="font-medium wrap-break-word">{position.security.name}</span>{" "}
               <span className="text-xs text-muted-foreground">{position.security.identifier}</span>
             </TableCell>
-            <TableCell className="py-3.5 text-end tabular-nums">
+            <TableCell className="px-2 py-3.5 text-end tabular-nums sm:px-3">
               {formatShares(position.shares)}
               {/* On a phone the Price column folds in here, so every figure stays on screen. */}
               <span className="block text-muted-foreground sm:hidden">
@@ -108,7 +113,7 @@ function PositionsTable({
             <TableCell className="hidden py-3.5 text-end text-muted-foreground tabular-nums sm:table-cell">
               {position.price === null ? <NoPrice /> : formatPrice(position.price)}
             </TableCell>
-            <TableCell className="pe-0 py-3.5 text-end font-medium tabular-nums">
+            <TableCell className="ps-2 pe-0 py-3.5 text-end font-medium tabular-nums sm:ps-3">
               {position.marketValue === null ? <NoPrice /> : formatMoney(position.marketValue)}
             </TableCell>
           </TableRow>
