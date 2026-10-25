@@ -109,16 +109,23 @@ export async function seedDevData(db: Database): Promise<SeedResult> {
       ).map((row) => [row.slug, row.id]),
     );
 
+    // The world's Firm's memberships go in last. A first sign-in opens the user's newest membership
+    // (`initialOrganizationId` in @repo/auth), and rows inserted together tie on `createdAt`, so
+    // the higher id wins: this way `owner@` starts in Larkspur, where the world's data is (#147).
     const memberships = await tx
       .insert(member)
       .values(
         SEED_USERS.flatMap(({ email, roles }) =>
-          Object.entries(roles).map(([slug, role]) => ({
+          Object.entries(roles).map(([slug, role]) => ({ email, slug, role })),
+        )
+          .toSorted(
+            (a, b) => Number(a.slug === WORLD_FIRM_SLUG) - Number(b.slug === WORLD_FIRM_SLUG),
+          )
+          .map(({ email, slug, role }) => ({
             organizationId: organizationIds.get(slug)!,
             userId: userIds.get(email)!,
             role,
           })),
-        ),
       )
       .onConflictDoNothing({ target: [member.organizationId, member.userId] })
       .returning({ id: member.id });

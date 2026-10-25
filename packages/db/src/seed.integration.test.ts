@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { asc, count, eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
 import { WORLD_FIRM_SLUG, seedDevData } from "./cli/seed-data";
 import type { Database } from "./index";
 import { member, organization, user } from "./schema";
@@ -64,6 +64,22 @@ describe("seedDevData", () => {
       { name: "Globex", slug: "globex" },
       { name: "Larkspur Wealth Partners", slug: "larkspur" },
     ]);
+  });
+
+  // A first sign-in opens the newest membership (`initialOrganizationId` in @repo/auth), so the
+  // owner should start in the world's Firm, not Globex (#147).
+  test("makes the owner's world-Firm membership the newest", async ({ orm }) => {
+    await seedDevData(orm);
+
+    const [newest] = await orm
+      .select({ slug: organization.slug })
+      .from(member)
+      .innerJoin(user, eq(member.userId, user.id))
+      .innerJoin(organization, eq(member.organizationId, organization.id))
+      .where(eq(user.email, "owner@cognitive-wealth.test"))
+      .orderBy(desc(member.createdAt), desc(member.id))
+      .limit(1);
+    expect(newest).toEqual({ slug: WORLD_FIRM_SLUG });
   });
 
   // The world file is the custodian's input; the seed loads its CRM half into this Firm (#39), so

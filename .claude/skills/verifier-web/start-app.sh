@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs the production build of `web` on the host against the throwaway verification services
 # (compose.verify.yaml), never the dev stack: the standalone server the Docker image runs, without
-# building an image. Each server gets a fresh database and its own Redis key prefix.
+# building an image. Each server gets a fresh database (seeded, with the custodian's example
+# Deliveries ingested) and its own Redis key prefix.
 #
 #   start-app.sh [--port <n>] [--ref <git ref>]
 #
@@ -91,6 +92,24 @@ SQL
   DATABASE_URL="postgres://app@localhost:5433/$database" \
     DATABASE_PASSWORD_FILE="$secrets/db_app_password" pnpm --silent db:seed >/dev/null &&
   pnpm exec turbo build --filter=web --output-logs=errors-only)
+
+# The custodian's example Deliveries, ingested into the world's Firm, so pages that show Positions
+# have data (#147). A ref from before Ingestion has neither the CLI nor the fixtures.
+feed="$app/apps/custodian/fixtures/feed"
+if [ -f "$app/packages/portfolio/src/cli/ingest.ts" ] && [ -d "$feed" ]; then
+  for delivery in "$feed"/*/; do
+    (cd "$app" &&
+      DATABASE_URL="postgres://app@localhost:5433/$database" \
+        DATABASE_PASSWORD_FILE="$secrets/db_app_password" \
+        pnpm --silent custodian:ingest "$(basename "$delivery")" --root "$feed" >/dev/null)
+  done
+fi
+
+# Each run's ids are new, so list the Households' publicIds for URLs, with the database to query.
+households="$out/households-$role.tsv"
+"${compose[@]}" exec -T db sh -c "PGPASSWORD=\"\$(cat /run/secrets/postgres_password)\" psql -qAt -F '	' -U postgres -d $database -c 'select name, public_id from household order by name'" >"$households" 2>/dev/null || true # no table before Households
+echo "Database: postgres://app@localhost:5433/$database (password file $secrets/db_app_password)" >&2
+echo "Households ($(wc -l <"$households" | tr -d ' ')): name and publicId in $households" >&2
 
 # Lay the standalone server out as the Docker image does (and e2e's global setup): Next leaves the
 # client assets and public/ out of .next/standalone, so without them every /_next/static/* 404s.
