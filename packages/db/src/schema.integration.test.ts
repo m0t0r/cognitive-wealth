@@ -1,3 +1,4 @@
+import { RegistrationType } from "@repo/custodian-client/schemas";
 import { eq, sql } from "drizzle-orm";
 import type { Database } from "./index";
 import {
@@ -275,6 +276,20 @@ describe("households", () => {
     await add("dependent");
     await expect(add("primary")).rejects.toMatchObject(UNIQUE_VIOLATION);
     await expect(add("co_client")).rejects.toMatchObject(UNIQUE_VIOLATION);
+  });
+
+  // The migrations froze the list; the Custodian's contract can grow. A new Registration type in
+  // openapi.json fails this until a migration widens the check (Ingestion would fail on it).
+  test("accept every Registration type the Custodian's contract has, and no others", async ({
+    orm,
+  }) => {
+    const { rows } = await orm.execute<{ definition: string }>(
+      sql`select pg_get_constraintdef(oid) as definition from pg_constraint
+          where conname = 'custodial_account_registration_type_check'`,
+    );
+    const allowed = [...rows[0]!.definition.matchAll(/'([^']+)'::text/g)].map((m) => m[1]);
+
+    expect(new Set(allowed)).toEqual(new Set(RegistrationType.options));
   });
 
   test("hold only known statuses, registration types and roles", async ({ orm }) => {

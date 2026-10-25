@@ -23,7 +23,7 @@ CREATE TABLE "custodial_account" (
 	CONSTRAINT "custodial_account_public_id_unique" UNIQUE("public_id"),
 	CONSTRAINT "custodial_account_firm_id_id_unique" UNIQUE("firm_id","id"),
 	CONSTRAINT "custodial_account_firm_id_account_number_unique" UNIQUE("firm_id","account_number"),
-	CONSTRAINT "custodial_account_registration_type_check" CHECK ("custodial_account"."registration_type" in ('individual', 'joint', 'traditional_ira', 'roth_ira', 'custodial', '529'))
+	CONSTRAINT "custodial_account_registration_type_check" CHECK ("custodial_account"."registration_type" in ('529', 'individual', 'joint', 'traditional_ira', 'roth_ira', 'custodial'))
 );
 --> statement-breakpoint
 CREATE TABLE "household" (
@@ -69,6 +69,14 @@ CREATE TABLE "person" (
 	CONSTRAINT "person_firm_id_seed_key_unique" UNIQUE("firm_id","seed_key")
 );
 --> statement-breakpoint
+CREATE TABLE "world_seed" (
+	"id" bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "world_seed_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
+	"firm_id" bigint NOT NULL,
+	"world_hash" text NOT NULL,
+	"seeded_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "world_seed_firm_id_unique" UNIQUE("firm_id")
+);
+--> statement-breakpoint
 ALTER TABLE "account_role" ADD CONSTRAINT "account_role_firm_id_organization_id_fk" FOREIGN KEY ("firm_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "account_role" ADD CONSTRAINT "account_role_person_fk" FOREIGN KEY ("firm_id","person_id") REFERENCES "public"."person"("firm_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "account_role" ADD CONSTRAINT "account_role_account_fk" FOREIGN KEY ("firm_id","account_id") REFERENCES "public"."custodial_account"("firm_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -78,6 +86,7 @@ ALTER TABLE "household_member" ADD CONSTRAINT "household_member_firm_id_organiza
 ALTER TABLE "household_member" ADD CONSTRAINT "household_member_household_fk" FOREIGN KEY ("firm_id","household_id") REFERENCES "public"."household"("firm_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "household_member" ADD CONSTRAINT "household_member_person_fk" FOREIGN KEY ("firm_id","person_id") REFERENCES "public"."person"("firm_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "person" ADD CONSTRAINT "person_firm_id_organization_id_fk" FOREIGN KEY ("firm_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "world_seed" ADD CONSTRAINT "world_seed_firm_id_organization_id_fk" FOREIGN KEY ("firm_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "account_role_account_id_idx" ON "account_role" USING btree ("account_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "household_member_household_id_lead_role_unique" ON "household_member" USING btree ("household_id","role") WHERE "household_member"."role" <> 'dependent';--> statement-breakpoint
 CREATE INDEX "household_member_person_id_idx" ON "household_member" USING btree ("person_id");

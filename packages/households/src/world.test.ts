@@ -4,8 +4,7 @@ import {
   REGISTRATION_TYPES,
   RELATIONSHIP_STATUSES,
 } from "@repo/db/schema/households";
-import { Ajv2020 } from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
+import { z } from "zod";
 import { InvalidWorldError, parseWorld } from "./world";
 
 const WORLD = new URL("../../../world/", import.meta.url);
@@ -19,9 +18,9 @@ const schema: {
     AccountRole: { properties: { role: Enum } };
   };
 } = JSON.parse(readFileSync(new URL("schema.json", WORLD), "utf8"));
-const ajv = new Ajv2020();
-addFormats(ajv, ["date"]);
-const schemaAlone = ajv.compile(schema);
+// The committed schema on its own, without the cross-field rules `parseWorld` adds.
+const schemaOnly = z.fromJSONSchema(schema);
+const schemaAlone = (json: unknown) => schemaOnly.safeParse(json).success;
 
 // Each file breaks one rule (world/invalid/cases.json); the custodian's tests read the same list.
 const cases: { file: string; field: string; caught_by: "schema" | "rules" }[] = JSON.parse(
@@ -54,7 +53,8 @@ describe("parseWorld", () => {
   it("allows the values the tables accept, and no others", () => {
     const { $defs } = schema;
 
-    expect($defs.RegistrationType.enum).toEqual([...REGISTRATION_TYPES]);
+    // From the Custodian's contract, whose enum order differs (Zod lists '529' first).
+    expect(new Set($defs.RegistrationType.enum)).toEqual(new Set(REGISTRATION_TYPES));
     expect($defs.Household.properties.relationship_status.enum).toEqual([...RELATIONSHIP_STATUSES]);
     expect($defs.AccountRole.properties.role.enum).toEqual([...ACCOUNT_ROLES]);
   });

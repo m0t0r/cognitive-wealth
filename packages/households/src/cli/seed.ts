@@ -52,7 +52,8 @@ try {
   console.error(error instanceof Error ? error.message : String(error));
   if (error instanceof SeedConflict) {
     console.error(
-      "world/v0.json changed since this database was seeded, and the seed never overwrites. " +
+      "world/v0.json changed since this database was seeded, and a row seeded from the old " +
+        "file now differs (in the new file, or edited in the app); the seed never overwrites. " +
         "Nothing was written. To load the new world, start the database over " +
         "(docs/dev-sign-in.md: `down -v`), migrate and seed again.",
     );

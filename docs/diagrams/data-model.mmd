@@ -15,6 +15,7 @@ erDiagram
   person ||--o{ household_member : "belongs through"
   person ||--o{ account_role : "holds"
   custodial_account ||--o{ account_role : "is held through"
+  organization ||--o| world_seed : "was seeded from"
 
   user {
     bigint id PK
@@ -113,4 +114,10 @@ erDiagram
     bigint account_id FK "same Firm"
     text role "owner, joint_owner, ..."
     date starts_on
+  }
+  world_seed {
+    bigint id PK
+    bigint firm_id FK, UK
+    text world_hash "SHA-256 of the CRM half"
+    timestamptz seeded_at
   }

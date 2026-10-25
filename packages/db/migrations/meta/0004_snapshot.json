@@ -1,5 +1,5 @@
 {
-  "id": "4b7c0250-c70a-4b3b-bb53-930cf5833dbe",
+  "id": "5a71f986-4155-4df6-9751-7cf2a8458002",
   "prevId": "e4eef78e-0a0c-48a1-9802-3d1f4bb13bff",
   "version": "7",
   "dialect": "postgresql",
@@ -856,7 +856,7 @@
       "checkConstraints": {
         "custodial_account_registration_type_check": {
           "name": "custodial_account_registration_type_check",
-          "value": "\"custodial_account\".\"registration_type\" in ('individual', 'joint', 'traditional_ira', 'roth_ira', 'custodial', '529')"
+          "value": "\"custodial_account\".\"registration_type\" in ('529', 'individual', 'joint', 'traditional_ira', 'roth_ira', 'custodial')"
         }
       },
       "isRLSEnabled": false
@@ -1262,6 +1262,77 @@
           "columns": [
             "firm_id",
             "seed_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.world_seed": {
+      "name": "world_seed",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "world_seed_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "firm_id": {
+          "name": "firm_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "world_hash": {
+          "name": "world_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seeded_at": {
+          "name": "seeded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "world_seed_firm_id_organization_id_fk": {
+          "name": "world_seed_firm_id_organization_id_fk",
+          "tableFrom": "world_seed",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "firm_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "world_seed_firm_id_unique": {
+          "name": "world_seed_firm_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "firm_id"
           ]
         }
       },

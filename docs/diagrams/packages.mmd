@@ -16,6 +16,7 @@ flowchart TB
   auth --> db
   auth --> email
   households --> db
+  db -->|"Registration types"| client
 
   e2e -.-> auth
   e2e -.-> db

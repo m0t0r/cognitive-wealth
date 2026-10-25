@@ -2,6 +2,7 @@
 // "Households" and "Accounts and custody"). Every row carries its Firm in `firm_id`, and every link
 // between two rows is a foreign key on (firm_id, id), so a row can only point at its own Firm's
 // rows. Queries still filter by Firm themselves: there is no row-level security yet (#42).
+import { RegistrationType as RegistrationTypeSchema } from "@repo/custodian-client/schemas";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -14,25 +15,30 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { createdAt, id, publicId, updatedAt } from "./_helpers";
+import { createdAt, id, publicId, timestamptz, updatedAt } from "./_helpers";
 import { organization } from "./organization";
 
 const knownValue = (column: unknown, values: readonly string[]) =>
   sql`${column} in (${sql.raw(values.map((value) => `'${value}'`).join(", "))})`;
 
+// Zod types an enum's `options` as a plain array; Drizzle's `enum` wants a non-empty tuple.
+function nonEmpty<T>(values: readonly T[]): readonly [T, ...T[]] {
+  const [first, ...rest] = values;
+  if (first === undefined) throw new Error("An enum needs at least one value");
+  return [first, ...rest];
+}
+
 /** GLOSSARY.md, "Relationship status". */
 export const RELATIONSHIP_STATUSES = ["prospect", "client", "former_client"] as const;
 /** GLOSSARY.md: "Primary", "Co-client" and "Dependent". */
 export const HOUSEHOLD_ROLES = ["primary", "co_client", "dependent"] as const;
-/** GLOSSARY.md, "Registration type": the ones the world file uses so far. */
-export const REGISTRATION_TYPES = [
-  "individual",
-  "joint",
-  "traditional_ira",
-  "roth_ira",
-  "custodial",
-  "529",
-] as const;
+/**
+ * GLOSSARY.md, "Registration type": the Custodian's fact about an Account, so the list is its
+ * contract's (`RegistrationType` in `apps/custodian/openapi.json`), which Ingestion (#40) parses
+ * `accounts.csv` with. The check constraint is frozen in a migration, so when the contract grows,
+ * a new migration widens it; `schema.integration.test.ts` fails until one does.
+ */
+export const REGISTRATION_TYPES = nonEmpty(RegistrationTypeSchema.options);
 /** GLOSSARY.md, "Account role". */
 export const ACCOUNT_ROLES = [
   "owner",
@@ -195,3 +201,16 @@ export const accountRole = pgTable(
     check("account_role_role_check", knownValue(t.role, ACCOUNT_ROLES)),
   ],
 );
+
+/**
+ * Which world file's CRM half `pnpm db:seed` last loaded into a Firm, as a SHA-256 of it. A rerun
+ * with the same file skips the CRM half, so edits made in the app since are left alone; only a
+ * changed file is compared row by row. Only the seed reads or writes it, and it never leaves the
+ * server, so it has no `public_id`.
+ */
+export const worldSeed = pgTable("world_seed", {
+  id: id(),
+  firmId: firmId().unique(),
+  worldHash: text("world_hash").notNull(),
+  seededAt: timestamptz("seeded_at").notNull().defaultNow(),
+});

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Database } from "@repo/db";
 import {
   accountRole,
@@ -6,6 +7,7 @@ import {
   householdMember,
   organization,
   person,
+  worldSeed,
 } from "@repo/db/schema";
 import { type SeedResult, WORLD_FIRM_SLUG, seedDevData } from "@repo/db/seed-data";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -42,6 +44,11 @@ export interface CrmSeedResult {
  * `pnpm db:seed`: the dev users and Firms (`seedDevData`), then the world file's CRM half loaded
  * into the world's Firm, all in one transaction. The world file is checked first, and a world
  * whose Firm isn't the seeded one is refused, so either way nothing is written.
+ *
+ * The Firm's `world_seed` row remembers which CRM half it was last seeded from. The same file
+ * again skips the CRM half, so edits made in the app since are kept. A changed file adds what's
+ * new and refuses (`SeedConflict`) when a row it seeded before now differs, whether the file or
+ * the app changed it.
  */
 export async function seedDevWorld(
   db: Database,
@@ -61,9 +68,30 @@ export async function seedDevWorld(
         `'${world.crm.firm.name}' isn't the seeded Firm '${firm.name}'`,
       );
     }
-    return { devData, crm: await loadCrmHalf(tx, firm.id, world) };
+    // Seeded from this very file already: whatever differs now was edited in the app, and stays.
+    const worldHash = createHash("sha256").update(JSON.stringify(world.crm)).digest("hex");
+    const [last] = await tx
+      .select({ worldHash: worldSeed.worldHash })
+      .from(worldSeed)
+      .where(eq(worldSeed.firmId, firm.id));
+    if (last?.worldHash === worldHash) return { devData, crm: { added: NOTHING_ADDED } };
+
+    const crm = await loadCrmHalf(tx, firm.id, world);
+    await tx
+      .insert(worldSeed)
+      .values({ firmId: firm.id, worldHash })
+      .onConflictDoUpdate({ target: worldSeed.firmId, set: { worldHash, seededAt: new Date() } });
+    return { devData, crm };
   });
 }
+
+const NOTHING_ADDED: CrmSeedResult["added"] = {
+  households: 0,
+  people: 0,
+  householdMembers: 0,
+  accounts: 0,
+  accountRoles: 0,
+};
 
 /**
  * Adds the CRM half's Households, People, Account roles and the Accounts they name to the Firm
@@ -73,11 +101,7 @@ export async function seedDevWorld(
  */
 async function loadCrmHalf(db: Database, firmId: number, world: World): Promise<CrmSeedResult> {
   const { households } = world.crm;
-  if (households.length === 0) {
-    return {
-      added: { households: 0, people: 0, householdMembers: 0, accounts: 0, accountRoles: 0 },
-    };
-  }
+  if (households.length === 0) return { added: NOTHING_ADDED };
   // Every Household has a Primary, so from here on there are People too.
   const people = households.flatMap((home) =>
     [...householdPeople(home)].map(([, worldPerson, role]) => ({
