@@ -1,9 +1,15 @@
 import type {
   AccountRoleKind,
   HouseholdRole,
+  OverviewPersonName,
   RegistrationType,
   RelationshipStatus,
 } from "@repo/households";
+
+/** "Dana Reyes". */
+export function personName({ firstName, lastName }: OverviewPersonName): string {
+  return `${firstName} ${lastName}`;
+}
 
 // GLOSSARY.md's names for each value, as the page shows them.
 

@@ -159,10 +159,10 @@ describe("getHouseholdOverview", () => {
       identifier: string,
       { shares, price, marketValue }: { shares: string; price: string; marketValue: string },
     ) => {
-      const { name, kind } = SECURITIES.find((s) => s.identifier === identifier)!;
+      const { name } = SECURITIES.find((s) => s.identifier === identifier)!;
       return {
         publicId: UUID,
-        security: { publicId: UUID, identifier, name, kind },
+        security: { publicId: UUID, identifier, name },
         shares,
         price,
         marketValue,

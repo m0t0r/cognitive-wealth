@@ -30,7 +30,11 @@ export async function seedIngestedWorld(
   const firms = await db
     .select({ id: organization.id, slug: organization.slug })
     .from(organization);
-  const firmId = (slug: string) => firms.find((firm) => firm.slug === slug)!.id;
+  const firmId = (slug: string) => {
+    const firm = firms.find((row) => row.slug === slug);
+    if (!firm) throw new Error(`The seed made no Firm with the slug '${slug}'`);
+    return firm.id;
+  };
   await db.insert(member).values({
     organizationId: firmId(advisor.firm),
     userId: advisor.user.id,

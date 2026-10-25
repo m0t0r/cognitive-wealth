@@ -5,7 +5,6 @@ import type {
   HouseholdRole,
   RegistrationType,
   RelationshipStatus,
-  SecurityKind,
   accountRole,
   custodialAccount,
   custodialPosition,
@@ -14,7 +13,7 @@ import type {
   security,
 } from "@repo/db/schema";
 
-export type { AccountRoleKind, HouseholdRole, RegistrationType, RelationshipStatus, SecurityKind };
+export type { AccountRoleKind, HouseholdRole, RegistrationType, RelationshipStatus };
 
 export interface PublicAccount {
   publicId: string;
@@ -128,7 +127,6 @@ export interface PublicSecurity {
   publicId: string;
   identifier: string;
   name: string;
-  kind: SecurityKind;
 }
 
 /** Amounts are the Custodian's own decimal strings (ADR 0013), never recomputed. */
@@ -193,12 +191,7 @@ export function toOverviewPerson({
   row: PersonRow;
   householdRole: HouseholdRole;
 }): OverviewPerson {
-  return {
-    publicId: row.publicId,
-    firstName: row.firstName,
-    lastName: row.lastName,
-    householdRole,
-  };
+  return { ...toOverviewPersonName(row), householdRole };
 }
 
 export function toPublicPosition({
@@ -214,7 +207,6 @@ export function toPublicPosition({
       publicId: security.publicId,
       identifier: security.identifier,
       name: security.name,
-      kind: security.kind,
     },
     shares: row.shares,
     price: row.price,
