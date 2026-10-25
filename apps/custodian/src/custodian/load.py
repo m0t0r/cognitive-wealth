@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from custodian.cli import script_args
 from custodian.database import engine_from_env
 from custodian.ledger_fixture import (
     LEDGER_V0_PATH,
@@ -224,7 +225,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="world:load", description=__doc__)
     parser.add_argument("--world", type=Path, default=WORLD_V0_PATH)
     parser.add_argument("--ledger", type=Path, default=LEDGER_V0_PATH)
-    arguments = parser.parse_args(argv)
+    arguments = parser.parse_args(script_args(argv))
     world_path: Path = arguments.world
     ledger_path: Path = arguments.ledger
     try:

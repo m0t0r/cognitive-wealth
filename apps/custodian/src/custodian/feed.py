@@ -22,7 +22,6 @@ import argparse
 import csv
 import hashlib
 import io
-import sys
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
@@ -32,6 +31,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, aliased
 
+from custodian.cli import script_args
 from custodian.database import engine_from_env
 from custodian.feed_store import FeedStore, LocalFeedStore
 from custodian.market_value import market_value_as_of
@@ -296,12 +296,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="feed:write", description=__doc__)
     parser.add_argument("--date", type=date.fromisoformat, required=True, help="the As-of date")
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="where Deliveries go")
-    args = list(sys.argv[1:] if argv is None else argv)
-    # pnpm passes on the `--` of `pnpm feed:write -- --date …`, after which argparse would read
-    # `--date` as a positional argument, so a leading one is dropped.
-    if args[:1] == ["--"]:
-        args = args[1:]
-    arguments = parser.parse_args(args)
+    arguments = parser.parse_args(script_args(argv))
     as_of: date = arguments.date
     root: Path = arguments.root
 
