@@ -6,15 +6,25 @@ import { member, organization, user } from "../schema/index.ts";
 // can't import it.
 type Role = "owner" | "admin" | "member";
 
-/** The dev organizations (docs/dev-sign-in.md). */
+/** The slug of the Firm the world file's CRM half belongs to (`crm.firm` in `world/v0.json`). */
+export const WORLD_FIRM_SLUG = "larkspur";
+
+/**
+ * The dev organizations (docs/dev-sign-in.md): the world's Firm, and a second, small Firm that
+ * exists to show one Firm can't see another's data (docs/product.md, "The synthetic world").
+ */
 export const SEED_ORGANIZATIONS = [
-  { name: "Acme", slug: "acme" },
+  { name: "Larkspur Wealth Partners", slug: WORLD_FIRM_SLUG },
   { name: "Globex", slug: "globex" },
 ] as const;
 
 type SeedSlug = (typeof SEED_ORGANIZATIONS)[number]["slug"];
 
-/** The dev users and their roles, by organization slug. */
+/**
+ * The dev users and their roles, by organization slug. `owner@` is the Advisor who owns the
+ * world's Firm. In the synthetic world the Advisor is the only User; `admin@` and `member@` exist
+ * only to try member management.
+ */
 export const SEED_USERS: readonly {
   email: string;
   name: string;
@@ -23,10 +33,10 @@ export const SEED_USERS: readonly {
   {
     email: "owner@cognitive-wealth.test",
     name: "Olivia Owner",
-    roles: { acme: "owner", globex: "owner" },
+    roles: { larkspur: "owner", globex: "owner" },
   },
-  { email: "admin@cognitive-wealth.test", name: "Adam Admin", roles: { acme: "admin" } },
-  { email: "member@cognitive-wealth.test", name: "Mia Member", roles: { acme: "member" } },
+  { email: "admin@cognitive-wealth.test", name: "Adam Admin", roles: { larkspur: "admin" } },
+  { email: "member@cognitive-wealth.test", name: "Mia Member", roles: { larkspur: "member" } },
 ];
 
 export interface SeedResult {

@@ -30,11 +30,15 @@ Sign-in is passwordless and invite-only ([ADR 0001](adr/0001-better-auth-passwor
    pnpm db:seed
    ```
 
-   | Email                          | Name         | Roles                          |
-   | ------------------------------ | ------------ | ------------------------------ |
-   | `owner@cognitive-wealth.test`  | Olivia Owner | owner of Acme, owner of Globex |
-   | `admin@cognitive-wealth.test`  | Adam Admin   | admin of Acme                  |
-   | `member@cognitive-wealth.test` | Mia Member   | member of Acme                 |
+   | Email                          | Name         | Roles                                              |
+   | ------------------------------ | ------------ | -------------------------------------------------- |
+   | `owner@cognitive-wealth.test`  | Olivia Owner | owner of Larkspur Wealth Partners, owner of Globex |
+   | `admin@cognitive-wealth.test`  | Adam Admin   | admin of Larkspur Wealth Partners                  |
+   | `member@cognitive-wealth.test` | Mia Member   | member of Larkspur Wealth Partners                 |
+
+   Larkspur Wealth Partners (slug `larkspur`) is the world file's Firm, and `owner@` is its Advisor. Globex is the small second Firm that shows one Firm can't see another's data ([docs/product.md](product.md), "The synthetic world"). In the synthetic world the Advisor is the only User: `admin@` and `member@` exist only to try member management.
+
+   A database seeded before Larkspur replaced Acme keeps its Acme rows, since the seed only adds what's missing. To drop them, start over with an empty database (`down -v`, below) and seed again.
 
    The seed refuses to run when `NODE_ENV=production` or when the `DATABASE_URL` host isn't `localhost`, `127.0.0.1`, `::1` or `*.localhost`.
 
