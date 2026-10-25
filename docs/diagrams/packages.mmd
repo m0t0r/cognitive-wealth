@@ -15,6 +15,7 @@ flowchart TB
   web --> auth
   web --> ds
   web --> db
+  web --> households
   auth --> db
   auth --> email
   households --> db
@@ -26,6 +27,8 @@ flowchart TB
   e2e -.-> db
   e2e -.-> email
   e2e -.-> testing
+  e2e -.-> households
+  e2e -.-> portfolio
 
   web -.->|"pnpm dev"| devenv
   devenv -.-> db

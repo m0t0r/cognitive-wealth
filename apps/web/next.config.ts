@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
     "@repo/db",
     "@repo/auth",
     "@repo/email",
+    "@repo/households",
     // `@repo/db/schema` takes the Registration types from its generated Zod schemas.
     "@repo/custodian-client",
   ],

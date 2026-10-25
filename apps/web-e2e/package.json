@@ -17,6 +17,8 @@
     "@repo/auth": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/email": "workspace:*",
+    "@repo/households": "workspace:*",
+    "@repo/portfolio": "workspace:*",
     "@repo/testing": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@testcontainers/postgresql": "12.2.1",

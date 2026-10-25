@@ -96,7 +96,7 @@ The source that is right when two systems disagree. For holdings and transaction
 _Avoid_: Source of truth (when the owner matters)
 
 **Account**:
-A custodial account at a Custodian, identified by the Custodian's account number. Linked to People through Account roles, not owned by a Household.
+A custodial account at a Custodian, identified by the Custodian's account number. Linked to People through Account roles, not owned by a Household: a Household's Accounts are the ones its People own or jointly own ([research](docs/research/household-accounts.md)).
 _Avoid_: Portfolio, login
 
 **Account role**:
