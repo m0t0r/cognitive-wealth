@@ -37,8 +37,7 @@ export function buildPairs({ before = [], after = [], labels = [] }) {
   if (before.length !== 0 && before.length !== after.length) {
     throw new Error("Provide either no --before files or one --before file for every --after file");
   }
-  if (labels.length > after.length)
-    throw new Error("Provide at most one --label for every --after file");
+  if (labels.length > after.length) throw new Error("Provide at most one --label for every --after file");
 
   return after.map((afterFile, index) => ({
     before: before.length ? before[index] : null,
@@ -62,11 +61,7 @@ function githubAttachmentUrl(value) {
   } catch {
     throw new Error(`Invalid GitHub attachment URL: "${value}"`);
   }
-  if (
-    url.protocol !== "https:" ||
-    url.hostname !== "github.com" ||
-    !url.pathname.startsWith("/user-attachments/assets/")
-  ) {
+  if (url.protocol !== "https:" || url.hostname !== "github.com" || !url.pathname.startsWith("/user-attachments/assets/")) {
     throw new Error(`Expected a https://github.com/user-attachments/assets/... URL: "${value}"`);
   }
   return url.href;
@@ -82,12 +77,7 @@ function renderImagePair(pair, cwd, lines) {
       "",
     );
   } else {
-    lines.push(
-      `| Preview${suffix} |`,
-      "|:---:|",
-      `| ${imageRef(pair.after, "Preview", cwd)} |`,
-      "",
-    );
+    lines.push(`| Preview${suffix} |`, "|:---:|", `| ${imageRef(pair.after, "Preview", cwd)} |`, "");
   }
 }
 
@@ -96,12 +86,7 @@ function renderVideoPair(pair, cwd, lines) {
   if (pair.before) {
     lines.push(`**Before${suffix}**`, "", imageRef(pair.before, "Before", cwd), "");
   }
-  lines.push(
-    `**${pair.before ? "After" : "Preview"}${suffix}**`,
-    "",
-    imageRef(pair.after, pair.before ? "After" : "Preview", cwd),
-    "",
-  );
+  lines.push(`**${pair.before ? "After" : "Preview"}${suffix}**`, "", imageRef(pair.after, pair.before ? "After" : "Preview", cwd), "");
 }
 
 function renderVideoTablePair(pair, lines) {
@@ -111,14 +96,8 @@ function renderVideoTablePair(pair, lines) {
   lines.push("<table>", "  <tr>");
   if (beforeUrl) lines.push(`    <th>Before${suffix}</th>`);
   lines.push(`    <th>${beforeUrl ? "After" : "Preview"}${suffix}</th>`, "  </tr>", "  <tr>");
-  if (beforeUrl)
-    lines.push(`    <td><video src="${beforeUrl}" width="100%" controls></video></td>`);
-  lines.push(
-    `    <td><video src="${afterUrl}" width="100%" controls></video></td>`,
-    "  </tr>",
-    "</table>",
-    "",
-  );
+  if (beforeUrl) lines.push(`    <td><video src="${beforeUrl}" width="100%" controls></video></td>`);
+  lines.push(`    <td><video src="${afterUrl}" width="100%" controls></video></td>`, "  </tr>", "</table>", "");
 }
 
 export function formatMarkdown(pairs, { attribution, cwd = process.cwd() } = {}) {
@@ -129,9 +108,7 @@ export function formatMarkdown(pairs, { attribution, cwd = process.cwd() } = {})
     const beforeKind = pair.before ? mediaKind(pair.before) : null;
     const afterKind = mediaKind(pair.after);
     if (beforeKind && beforeKind !== afterKind) {
-      throw new Error(
-        `Before and after must use the same media type: "${pair.before}" and "${pair.after}"`,
-      );
+      throw new Error(`Before and after must use the same media type: "${pair.before}" and "${pair.after}"`);
     }
     if (afterKind === "image") renderImagePair(pair, cwd, lines);
     else renderVideoPair(pair, cwd, lines);
@@ -150,14 +127,7 @@ export function formatVideoTables(pairs, { attribution } = {}) {
 }
 
 export function attachList(pairs, { cwd = process.cwd() } = {}) {
-  return [
-    ...new Set(
-      pairs
-        .flatMap((pair) => [pair.before, pair.after])
-        .filter(Boolean)
-        .map((file) => localRef(file, cwd)),
-    ),
-  ];
+  return [...new Set(pairs.flatMap((pair) => [pair.before, pair.after]).filter(Boolean).map((file) => localRef(file, cwd)))];
 }
 
 export function replaceMarkedBlock(body, block) {
@@ -209,20 +179,13 @@ function main(argv) {
   });
 
   const localMode = (values.after?.length ?? 0) > 0 || (values.before?.length ?? 0) > 0;
-  const videoTableMode =
-    (values["after-video-url"]?.length ?? 0) > 0 || (values["before-video-url"]?.length ?? 0) > 0;
+  const videoTableMode = (values["after-video-url"]?.length ?? 0) > 0 || (values["before-video-url"]?.length ?? 0) > 0;
   if (localMode === videoTableMode) {
-    throw new Error(
-      "Provide local --after files or final --after-video-url attachments, but not both",
-    );
+    throw new Error("Provide local --after files or final --after-video-url attachments, but not both");
   }
 
   const pairs = videoTableMode
-    ? buildPairs({
-        before: values["before-video-url"],
-        after: values["after-video-url"],
-        labels: values.label,
-      })
+    ? buildPairs({ before: values["before-video-url"], after: values["after-video-url"], labels: values.label })
     : buildPairs({ before: values.before, after: values.after, labels: values.label });
   if (!videoTableMode) validateFiles(pairs, process.cwd());
 
