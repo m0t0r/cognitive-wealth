@@ -164,7 +164,7 @@
       "price_driver": {
         "type": "treasury",
         "tenor": "2y",
-        "duration": "1.9",
+        "duration": "1.85",
         "own_volatility": "0.005"
       }
     },
@@ -176,7 +176,7 @@
       "price_driver": {
         "type": "treasury",
         "tenor": "5y",
-        "duration": "4.8",
+        "duration": "4.83",
         "own_volatility": "0.007"
       }
     },
@@ -188,8 +188,8 @@
       "price_driver": {
         "type": "treasury",
         "tenor": "20y",
-        "duration": "13.6",
-        "own_volatility": "0.016"
+        "duration": "13.57",
+        "own_volatility": "0.025"
       }
     },
     {
@@ -200,7 +200,7 @@
       "price_driver": {
         "type": "treasury",
         "tenor": "7y",
-        "duration": "5.8",
+        "duration": "5.77",
         "own_volatility": "0.019"
       }
     },
@@ -220,7 +220,7 @@
         "treasury": {
           "weight": "0.40",
           "tenor": "7y",
-          "duration": "5.8"
+          "duration": "5.77"
         },
         "own_volatility": "0.010"
       }
@@ -241,7 +241,7 @@
         "treasury": {
           "weight": "0.60",
           "tenor": "7y",
-          "duration": "5.8"
+          "duration": "5.77"
         },
         "own_volatility": "0.012"
       }

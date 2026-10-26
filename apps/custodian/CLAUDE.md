@@ -150,3 +150,4 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 | `Field(discriminator="type")` on `A \| B`: picks by `type`     | `z.discriminatedUnion("type", [a, b])`                    |
 | `Annotated[Decimal, Field(gt=0)]`: a type with a constraint    | `z.number().positive()`, as a named schema                |
 | `BeforeValidator(f)`: `f` sees the raw value before parsing    | `z.preprocess(f, schema)`                                 |
+| `Counter(xs)`: how many times each item occurs, as a dict      | `Map.groupBy(xs, (x) => x)`, then each group's length     |

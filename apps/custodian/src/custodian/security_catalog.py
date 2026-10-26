@@ -8,6 +8,9 @@ Each number in it comes from research into the real kind of fund or company the 
 modelled on, in docs/research/security-catalog.md; each entry names the section its numbers come
 from. The catalog is a market input (ADR 0019): the build record keeps its SHA-256, so it holds
 the numbers alone, never a date it was written.
+
+Every Security is a US one, a labelled simplification: the only market inputs are US Factor
+returns and US Treasury yields, so nothing in them moves when another country's market falls alone.
 """
 
 from collections.abc import Mapping
