@@ -12,6 +12,8 @@
     "./internal-ids": "./src/internal-ids.ts",
     "./mailpit": "./src/mailpit.ts",
     "./sign-in": "./src/sign-in.ts",
+    "./dev-sign-in": "./src/dev-sign-in.ts",
+    "./fake-mailpit": "./src/fake-mailpit.ts",
     "./redis-janitor": "./src/redis-janitor.ts"
   },
   "scripts": {

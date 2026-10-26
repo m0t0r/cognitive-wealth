@@ -388,22 +388,22 @@ importers:
       '@repo/portfolio':
         specifier: workspace:*
         version: link:../portfolio
+      '@repo/testing':
+        specifier: workspace:*
+        version: link:../testing
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@electric-sql/pglite@0.5.11)(kysely@0.29.7)(postgres@3.4.9)
       incur:
         specifier: 0.7.1
         version: 0.7.1
     devDependencies:
-      '@repo/testing':
-        specifier: workspace:*
-        version: link:../testing
       '@repo/typescript-config':
         specifier: workspace:*
         version: link:../typescript-config
       '@types/node':
         specifier: 26.6.5
         version: 26.6.5
-      drizzle-orm:
-        specifier: 0.45.4
-        version: 0.45.4(@electric-sql/pglite@0.5.11)(kysely@0.29.7)(postgres@3.4.9)
       typescript:
         specifier: 7.0.2
         version: 7.0.2
