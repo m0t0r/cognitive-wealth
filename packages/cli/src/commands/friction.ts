@@ -9,7 +9,7 @@ import { Cli, z } from "incur";
 import { CliError } from "@repo/db/cli/cli-error";
 import type { Dependencies } from "../dependencies.ts";
 import { refusal } from "../refusal.ts";
-import { shellQuoted } from "./org.ts";
+import { shellQuoted } from "../shell-quoted.ts";
 
 const issueNumber = z.coerce.number().int().positive();
 
