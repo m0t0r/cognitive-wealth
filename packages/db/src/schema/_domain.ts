@@ -1,7 +1,7 @@
 // Column and constraint helpers shared by the tables Cognitive Wealth owns (households.ts,
 // custodian-feed.ts).
 import { sql } from "drizzle-orm";
-import { bigint } from "drizzle-orm/pg-core";
+import { bigint, pgPolicy } from "drizzle-orm/pg-core";
 import { organization } from "./organization";
 
 /** A check that `column` holds one of `values`, for a text column with a fixed list. */
@@ -20,3 +20,19 @@ export const firmId = () =>
   bigint("firm_id", { mode: "number" })
     .notNull()
     .references(() => organization.id, { onDelete: "cascade" });
+
+/**
+ * Row-level security for a table with `firmId()` (ADR 0020): `app` sees and writes only the rows of
+ * the transaction's Firm, `app.firm_id`, which `withFirm` (`@repo/db`) sets. `current_firm_id()`
+ * (migration 0006) raises "Firm not set" when it's missing, so a query run outside `withFirm` fails
+ * instead of finding nothing. Goes in every Firm-scoped table's extra config; drizzle-kit enables
+ * RLS on a table that has a policy.
+ */
+export const firmIsolation = () =>
+  pgPolicy("firm_isolation", {
+    as: "permissive",
+    for: "all",
+    to: "app",
+    using: sql`firm_id = current_firm_id()`,
+    withCheck: sql`firm_id = current_firm_id()`,
+  });

@@ -72,9 +72,9 @@ describe("listHouseholds", () => {
     );
   });
 
-  test("leaves out other Firms' Households", async ({ orm }) => {
+  test("leaves out other Firms' Households", async ({ orm, migratorOrm }) => {
     const { larkspur, globex } = await seededFirms(orm);
-    await orm
+    await migratorOrm
       .insert(household)
       .values({ firmId: globex, name: "Globex Household", relationshipStatus: "prospect" });
 

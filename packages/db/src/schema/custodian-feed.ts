@@ -20,7 +20,7 @@ import {
   text,
   unique,
 } from "drizzle-orm/pg-core";
-import { firmId, knownValue, nonEmpty } from "./_domain";
+import { firmId, firmIsolation, knownValue, nonEmpty } from "./_domain";
 import { createdAt, id, publicId, timestamptz, updatedAt } from "./_helpers";
 import { custodialAccount } from "./households";
 
@@ -58,6 +58,7 @@ export const custodianDelivery = pgTable(
     arrivedAt: arrivedAt(),
   },
   (t) => [
+    firmIsolation(),
     unique("custodian_delivery_firm_id_id_unique").on(t.firmId, t.id),
     unique("custodian_delivery_firm_id_as_of_date_unique").on(t.firmId, t.asOfDate),
   ],
@@ -80,6 +81,7 @@ export const security = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
+    firmIsolation(),
     unique("security_firm_id_id_unique").on(t.firmId, t.id),
     unique("security_firm_id_identifier_unique").on(t.firmId, t.identifier),
     check("security_kind_check", knownValue(t.kind, SECURITY_KINDS)),
@@ -114,6 +116,7 @@ export const custodialTransaction = pgTable(
     arrivedAt: arrivedAt(),
   },
   (t) => [
+    firmIsolation(),
     foreignKey({
       name: "custodial_transaction_delivery_fk",
       columns: [t.firmId, t.deliveryId],
@@ -157,6 +160,7 @@ export const custodialPosition = pgTable(
     arrivedAt: arrivedAt(),
   },
   (t) => [
+    firmIsolation(),
     foreignKey({
       name: "custodial_position_delivery_fk",
       columns: [t.firmId, t.deliveryId],
@@ -194,6 +198,7 @@ export const securityPrice = pgTable(
     arrivedAt: arrivedAt(),
   },
   (t) => [
+    firmIsolation(),
     foreignKey({
       name: "security_price_delivery_fk",
       columns: [t.firmId, t.deliveryId],

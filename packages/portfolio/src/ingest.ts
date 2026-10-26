@@ -9,6 +9,7 @@ import {
   TransactionRow,
 } from "@repo/custodian-client/schemas";
 import type { Database } from "@repo/db";
+import { withFirm } from "@repo/db/firm";
 import {
   custodialAccount,
   custodialPosition,
@@ -142,37 +143,44 @@ async function ingestOnce(
   { firmId, asOf, source }: { firmId: number; asOf: string; source: FeedSource },
 ): Promise<IngestionResult> {
   try {
-    return await db.transaction(async (tx) => {
-      const manifestBytes = await source.get(deliveryKey({ asOf, name: "manifest.json" }));
-      if (!manifestBytes) {
-        throw new Refusal({ reason: "not_delivered", message: `No manifest.json for ${asOf} yet` });
-      }
-      const manifestSha256 = sha256(manifestBytes);
+    // One transaction for the Firm, under its row-level security (ADR 0020).
+    return await withFirm(db, {
+      firmId,
+      query: async (tx) => {
+        const manifestBytes = await source.get(deliveryKey({ asOf, name: "manifest.json" }));
+        if (!manifestBytes) {
+          throw new Refusal({
+            reason: "not_delivered",
+            message: `No manifest.json for ${asOf} yet`,
+          });
+        }
+        const manifestSha256 = sha256(manifestBytes);
 
-      const [earlier] = await tx
-        .select({ manifestSha256: custodianDelivery.manifestSha256 })
-        .from(custodianDelivery)
-        .where(and(eq(custodianDelivery.firmId, firmId), eq(custodianDelivery.asOfDate, asOf)));
-      if (earlier?.manifestSha256 === manifestSha256) {
-        return { status: "already_ingested", asOf, manifestSha256 } as const;
-      }
-      if (earlier) {
-        throw new Refusal({
-          reason: "restatement",
-          message:
-            `A different Delivery for ${asOf} was already ingested (Manifest ` +
-            `${earlier.manifestSha256}, now ${manifestSha256}); restatements aren't handled yet`,
-        });
-      }
+        const [earlier] = await tx
+          .select({ manifestSha256: custodianDelivery.manifestSha256 })
+          .from(custodianDelivery)
+          .where(and(eq(custodianDelivery.firmId, firmId), eq(custodianDelivery.asOfDate, asOf)));
+        if (earlier?.manifestSha256 === manifestSha256) {
+          return { status: "already_ingested", asOf, manifestSha256 } as const;
+        }
+        if (earlier) {
+          throw new Refusal({
+            reason: "restatement",
+            message:
+              `A different Delivery for ${asOf} was already ingested (Manifest ` +
+              `${earlier.manifestSha256}, now ${manifestSha256}); restatements aren't handled yet`,
+          });
+        }
 
-      const manifest = parseManifest({ bytes: manifestBytes, asOf });
-      const files = await checkedFiles({ source, manifest });
-      const rows = validRows({ files, asOf });
-      const accountIds = await requireKnownAccounts(tx, { firmId, rows });
-      await refuseRepeatedTransactions(tx, { firmId, transactions: rows.transactions });
+        const manifest = parseManifest({ bytes: manifestBytes, asOf });
+        const files = await checkedFiles({ source, manifest });
+        const rows = validRows({ files, asOf });
+        const accountIds = await requireKnownAccounts(tx, { firmId, rows });
+        await refuseRepeatedTransactions(tx, { firmId, transactions: rows.transactions });
 
-      const written = await write(tx, { firmId, asOf, manifestSha256, rows, accountIds });
-      return { status: "ingested", asOf, manifestSha256, written } as const;
+        const written = await write(tx, { firmId, asOf, manifestSha256, rows, accountIds });
+        return { status: "ingested", asOf, manifestSha256, written } as const;
+      },
     });
   } catch (error) {
     if (error instanceof Refusal) {

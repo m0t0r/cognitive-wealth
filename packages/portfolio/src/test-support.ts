@@ -13,7 +13,10 @@ import { asc } from "drizzle-orm";
 import { z } from "zod";
 import type { FeedSource } from "./feed-source";
 
-/** Every row of every table Ingestion writes to, in a stable order. */
+/**
+ * Every row of every table Ingestion writes to, in a stable order. Tests pass `migratorOrm`, which
+ * owns the tables, so row-level security (ADR 0020) hides no Firm's rows.
+ */
 export async function feedRows(db: Database) {
   const [deliveries, accounts, securities, transactions, positions, prices] = await Promise.all([
     db.select().from(custodianDelivery).orderBy(asc(custodianDelivery.id)),

@@ -157,10 +157,11 @@ function namedOn(overview: HouseholdOverview | null) {
 describe("getHouseholdOverview", () => {
   test("gives the Household, its People and its Accounts with the latest As-of date's Positions", async ({
     orm,
+    migratorOrm,
   }) => {
     const { larkspur } = await seededFirms(orm);
-    await ingested(orm, { firmId: larkspur, asOfs: ["2026-03-02", "2026-03-06"] });
-    const publicId = await reyesPublicId(orm);
+    await ingested(migratorOrm, { firmId: larkspur, asOfs: ["2026-03-02", "2026-03-06"] });
+    const publicId = await reyesPublicId(migratorOrm);
 
     const overview = await getHouseholdOverview(orm, { firmId: larkspur, publicId });
 
@@ -223,9 +224,9 @@ describe("getHouseholdOverview", () => {
     expect(JSON.stringify(overview)).not.toContain("CW-00000");
   });
 
-  test("before any Delivery, has no As-of date and no Positions", async ({ orm }) => {
+  test("before any Delivery, has no As-of date and no Positions", async ({ orm, migratorOrm }) => {
     const { larkspur } = await seededFirms(orm);
-    const publicId = await reyesPublicId(orm);
+    const publicId = await reyesPublicId(migratorOrm);
 
     const overview = await getHouseholdOverview(orm, { firmId: larkspur, publicId });
 
@@ -242,9 +243,9 @@ describe("getHouseholdOverview", () => {
     ]);
   });
 
-  test("a Household with no People has no Accounts", async ({ orm }) => {
+  test("a Household with no People has no Accounts", async ({ orm, migratorOrm }) => {
     const { globex } = await seededFirms(orm);
-    const [row] = await orm
+    const [row] = await migratorOrm
       .insert(household)
       .values({ firmId: globex, name: "Globex Household", relationshipStatus: "prospect" })
       .returning({ publicId: household.publicId });
@@ -266,10 +267,10 @@ describe("getHouseholdOverview", () => {
   // who is named on it.
   test.for(["beneficiary", "power_of_attorney", "custodian"] as const)(
     "a member who is only %s on another Household's Account has it listed, not in accounts",
-    async (role, { orm }) => {
+    async (role, { orm, migratorOrm }) => {
       const { larkspur } = await seededFirms(orm);
-      const reyes = await reyesPublicId(orm);
-      const mothers = await householdOfGrace(orm, { firmId: larkspur, jordanRole: role });
+      const reyes = await reyesPublicId(migratorOrm);
+      const mothers = await householdOfGrace(migratorOrm, { firmId: larkspur, jordanRole: role });
 
       const ours = await getHouseholdOverview(orm, { firmId: larkspur, publicId: reyes });
       expect(ours?.accounts.map((a) => a.accountNumberEnding)).toEqual(["0001", "0002"]);
@@ -313,11 +314,14 @@ describe("getHouseholdOverview", () => {
 
   // docs/research/household-accounts.md, "Rule for Cognitive Wealth" 1: roles are dated, and the
   // As-of date picks the ones that count.
-  test("an Account role that starts after the As-of date doesn't count yet", async ({ orm }) => {
+  test("an Account role that starts after the As-of date doesn't count yet", async ({
+    orm,
+    migratorOrm,
+  }) => {
     const { larkspur } = await seededFirms(orm);
-    await ingested(orm, { firmId: larkspur, asOfs: ["2026-03-02", "2026-03-06"] });
-    const reyes = await reyesPublicId(orm);
-    const mothers = await householdOfGrace(orm, {
+    await ingested(migratorOrm, { firmId: larkspur, asOfs: ["2026-03-02", "2026-03-06"] });
+    const reyes = await reyesPublicId(migratorOrm);
+    const mothers = await householdOfGrace(migratorOrm, {
       firmId: larkspur,
       jordanRole: "beneficiary",
       startsOn: "2026-03-09",
@@ -332,11 +336,12 @@ describe("getHouseholdOverview", () => {
     );
 
     // Jordan becomes a joint owner of CW-000003 the Monday after: not on 6 March either.
-    await orm.insert(accountRole).values({
+    await migratorOrm.insert(accountRole).values({
       firmId: larkspur,
-      personId: (await orm.select().from(person).where(eq(person.firstName, "Jordan")))[0]!.id,
+      personId: (await migratorOrm.select().from(person).where(eq(person.firstName, "Jordan")))[0]!
+        .id,
       accountId: (
-        await orm
+        await migratorOrm
           .select()
           .from(custodialAccount)
           .where(eq(custodialAccount.accountNumber, "CW-000003"))
@@ -350,25 +355,26 @@ describe("getHouseholdOverview", () => {
 
   test("lists one Named-on Account per role, by account number and then role, with a null Household for an owner in none", async ({
     orm,
+    migratorOrm,
   }) => {
     const { larkspur } = await seededFirms(orm);
-    const reyes = await reyesPublicId(orm);
-    await householdOfGrace(orm, { firmId: larkspur, jordanRole: "power_of_attorney" });
-    const [jordan] = await orm.select().from(person).where(eq(person.firstName, "Jordan"));
-    const [ira] = await orm
+    const reyes = await reyesPublicId(migratorOrm);
+    await householdOfGrace(migratorOrm, { firmId: larkspur, jordanRole: "power_of_attorney" });
+    const [jordan] = await migratorOrm.select().from(person).where(eq(person.firstName, "Jordan"));
+    const [ira] = await migratorOrm
       .select()
       .from(custodialAccount)
       .where(eq(custodialAccount.accountNumber, "CW-000003"));
     // A custodial account owned by a minor the Firm has in no Household, Jordan its custodian.
-    const [minor] = await orm
+    const [minor] = await migratorOrm
       .insert(person)
       .values({ firmId: larkspur, firstName: "Sam", lastName: "Ortiz", bornOn: "2015-06-01" })
       .returning();
-    const [utma] = await orm
+    const [utma] = await migratorOrm
       .insert(custodialAccount)
       .values({ firmId: larkspur, accountNumber: "CW-000004" })
       .returning();
-    await orm.insert(accountRole).values([
+    await migratorOrm.insert(accountRole).values([
       // Inserted before the IRA's second role, so the order comes from the account number.
       {
         firmId: larkspur,
@@ -404,35 +410,35 @@ describe("getHouseholdOverview", () => {
     expect(ours?.accounts.map((a) => a.accountNumberEnding)).toEqual(["0001", "0002"]);
   });
 
-  test("never lists another Firm's Account or Household", async ({ orm }) => {
+  test("never lists another Firm's Account or Household", async ({ orm, migratorOrm }) => {
     const { larkspur, globex } = await seededFirms(orm);
-    const reyes = await reyesPublicId(orm);
-    await householdOfGrace(orm, { firmId: larkspur, jordanRole: "beneficiary" });
+    const reyes = await reyesPublicId(migratorOrm);
+    await householdOfGrace(migratorOrm, { firmId: larkspur, jordanRole: "beneficiary" });
     // Globex has an Account with the same number, in a Household of its own, naming one of its
     // People who is in another Globex Household.
-    const [owners, named] = await orm
+    const [owners, named] = await migratorOrm
       .insert(household)
       .values([
         { firmId: globex, name: "Globex Owners", relationshipStatus: "client" },
         { firmId: globex, name: "Globex Named", relationshipStatus: "client" },
       ])
       .returning();
-    const [owner, beneficiary] = await orm
+    const [owner, beneficiary] = await migratorOrm
       .insert(person)
       .values([
         { firmId: globex, firstName: "Olga", lastName: "Owner", bornOn: "1960-01-01" },
         { firmId: globex, firstName: "Ben", lastName: "Named", bornOn: "1990-01-01" },
       ])
       .returning();
-    await orm.insert(householdMember).values([
+    await migratorOrm.insert(householdMember).values([
       { firmId: globex, householdId: owners!.id, personId: owner!.id, role: "primary" },
       { firmId: globex, householdId: named!.id, personId: beneficiary!.id, role: "primary" },
     ]);
-    const [account] = await orm
+    const [account] = await migratorOrm
       .insert(custodialAccount)
       .values({ firmId: globex, accountNumber: "CW-000003" })
       .returning();
-    await orm.insert(accountRole).values([
+    await migratorOrm.insert(accountRole).values([
       {
         firmId: globex,
         personId: owner!.id,
@@ -457,14 +463,17 @@ describe("getHouseholdOverview", () => {
     ).toEqual(["Ben: 0003 beneficiary, Globex Owners"]);
   });
 
-  test("before any Delivery, counts the roles that have started by today", async ({ orm }) => {
+  test("before any Delivery, counts the roles that have started by today", async ({
+    orm,
+    migratorOrm,
+  }) => {
     vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-03-01T12:00:00Z") });
     // The shared config restores mocks, envs and globals, not timers.
     onTestFinished(() => {
       vi.useRealTimers();
     });
     const { larkspur } = await seededFirms(orm);
-    const publicId = await reyesPublicId(orm);
+    const publicId = await reyesPublicId(migratorOrm);
 
     // Dana's IRA (CW-000002) is hers from 2 March; the joint account from 26 February.
     const overview = await getHouseholdOverview(orm, { firmId: larkspur, publicId });
@@ -472,10 +481,10 @@ describe("getHouseholdOverview", () => {
     expect(overview?.accounts.map((a) => a.accountNumberEnding)).toEqual(["0001"]);
   });
 
-  test("gives nothing for another Firm's Household", async ({ orm }) => {
+  test("gives nothing for another Firm's Household", async ({ orm, migratorOrm }) => {
     const { larkspur, globex } = await seededFirms(orm);
-    await ingested(orm, { firmId: larkspur, asOfs: ["2026-03-06"] });
-    const publicId = await reyesPublicId(orm);
+    await ingested(migratorOrm, { firmId: larkspur, asOfs: ["2026-03-06"] });
+    const publicId = await reyesPublicId(migratorOrm);
 
     expect(await getHouseholdOverview(orm, { firmId: globex, publicId })).toBeNull();
   });

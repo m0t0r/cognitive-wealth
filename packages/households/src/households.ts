@@ -1,4 +1,5 @@
 import type { Database } from "@repo/db";
+import { withFirm } from "@repo/db/firm";
 import {
   HOUSEHOLD_ROLES,
   accountRole,
@@ -17,10 +18,14 @@ import {
 
 /**
  * The Firm `firmId`'s Households, by name, with their People and the Account roles each holds.
- * The Firm is passed in, never read from a session: every query filters by it, since nothing
- * else stops one Firm reading another's rows until row-level security (#42).
+ * The Firm is passed in, never read from a session. The queries run inside `withFirm`, so
+ * row-level security holds them to the Firm, and each still filters by it too (ADR 0020).
  */
 export async function listHouseholds(db: Database, firmId: number): Promise<PublicHousehold[]> {
+  return withFirm(db, { firmId, query: (tx) => householdsOf(tx, firmId) });
+}
+
+async function householdsOf(db: Database, firmId: number): Promise<PublicHousehold[]> {
   const [households, members, roles] = await Promise.all([
     db
       .select()

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Database } from "@repo/db";
+import { withFirm } from "@repo/db/firm";
 import { organization } from "@repo/db/schema";
 import { WORLD_FIRM_SLUG } from "@repo/db/seed-data";
 import { test } from "@repo/db/testing";
@@ -42,7 +43,7 @@ async function mondaysWith({ file, from, to }: { file: string; from: string; to:
 }
 
 describe("ingestDelivery", () => {
-  test("loads 2 March's Delivery for world file v0", async ({ orm }) => {
+  test("loads 2 March's Delivery for world file v0", async ({ orm, migratorOrm }) => {
     const firmId = await seededFirm(orm);
 
     const result = await ingest(orm, { firmId, asOf: MONDAY });
@@ -53,7 +54,7 @@ describe("ingestDelivery", () => {
       manifestSha256: MONDAY_MANIFEST_SHA256,
       written: { securities: 3, accounts: 2, transactions: 4, positions: 5, prices: 3 },
     });
-    const rows = await feedRows(orm);
+    const rows = await feedRows(migratorOrm);
     expect(rows.deliveries).toEqual([
       expect.objectContaining({ asOfDate: MONDAY, manifestSha256: MONDAY_MANIFEST_SHA256 }),
     ]);
@@ -79,12 +80,28 @@ describe("ingestDelivery", () => {
     ]);
   });
 
-  test("keeps each Transaction's Trade, Settlement and Posting dates", async ({ orm }) => {
+  // `orm` signs in as `app`, as `pnpm custodian:ingest` does, so the policies hold every write.
+  test("writes the Delivery under its Firm's row-level security (ADR 0020)", async ({ orm }) => {
+    const larkspur = await seededFirm(orm);
+    const globex = await seededFirm(orm, { slug: "globex" });
+
+    await ingest(orm, { firmId: larkspur, asOf: MONDAY });
+
+    const deliveriesOf = (firmId: number) =>
+      withFirm(orm, { firmId, query: async (tx) => (await feedRows(tx)).deliveries.length });
+    expect(await deliveriesOf(larkspur)).toBe(1);
+    expect(await deliveriesOf(globex)).toBe(0);
+  });
+
+  test("keeps each Transaction's Trade, Settlement and Posting dates", async ({
+    orm,
+    migratorOrm,
+  }) => {
     const firmId = await seededFirm(orm);
 
     await ingest(orm, { firmId, asOf: MONDAY });
 
-    const { transactions } = await feedRows(orm);
+    const { transactions } = await feedRows(migratorOrm);
     // The buy settles the next Business day; the contribution the same day (primer 01, Part 5).
     expect(transactions.find((row) => row.transactionId === "TX-000000004")).toMatchObject({
       kind: "buy",
@@ -103,13 +120,16 @@ describe("ingestDelivery", () => {
     });
   });
 
-  test("stamps every row of a Delivery with the one moment it arrived", async ({ orm }) => {
+  test("stamps every row of a Delivery with the one moment it arrived", async ({
+    orm,
+    migratorOrm,
+  }) => {
     const firmId = await seededFirm(orm);
     const before = Date.now();
 
     await ingest(orm, { firmId, asOf: MONDAY });
 
-    const { deliveries, transactions, positions, prices } = await feedRows(orm);
+    const { deliveries, transactions, positions, prices } = await feedRows(migratorOrm);
     const arrivals = new Set(
       [...deliveries, ...transactions, ...positions, ...prices].map((row) =>
         row.arrivedAt.getTime(),
@@ -121,10 +141,10 @@ describe("ingestDelivery", () => {
     expect(arrivedAt).toBeLessThanOrEqual(Date.now());
   });
 
-  test("writes nothing the second time, and says so", async ({ orm }) => {
+  test("writes nothing the second time, and says so", async ({ orm, migratorOrm }) => {
     const firmId = await seededFirm(orm);
     await ingest(orm, { firmId, asOf: MONDAY });
-    const once = await feedRows(orm);
+    const once = await feedRows(migratorOrm);
 
     const again = await ingest(orm, { firmId, asOf: MONDAY });
 
@@ -134,10 +154,10 @@ describe("ingestDelivery", () => {
       manifestSha256: MONDAY_MANIFEST_SHA256,
     });
     // Arrival times included: a rerun writes nothing, so nothing arrives again.
-    expect(await feedRows(orm)).toEqual(once);
+    expect(await feedRows(migratorOrm)).toEqual(once);
   });
 
-  test("loads a later day's Delivery beside an earlier one", async ({ orm }) => {
+  test("loads a later day's Delivery beside an earlier one", async ({ orm, migratorOrm }) => {
     const firmId = await seededFirm(orm);
     await ingest(orm, { firmId, asOf: MONDAY });
 
@@ -148,7 +168,7 @@ describe("ingestDelivery", () => {
       status: "ingested",
       written: { securities: 0, accounts: 0, transactions: 3, positions: 5, prices: 3 },
     });
-    const { deliveries, securities, transactions } = await feedRows(orm);
+    const { deliveries, securities, transactions } = await feedRows(migratorOrm);
     expect(deliveries.map((row) => row.asOfDate)).toEqual([MONDAY, FRIDAY]);
     expect(securities).toHaveLength(3);
     // Friday's Reversal undoes Tuesday's dividend, a Delivery never ingested here.
@@ -160,7 +180,7 @@ describe("ingestDelivery", () => {
     });
   });
 
-  test("stores a Position with no price yet as empty, not zero", async ({ orm }) => {
+  test("stores a Position with no price yet as empty, not zero", async ({ orm, migratorOrm }) => {
     const firmId = await seededFirm(orm);
     const source = await rewrittenDelivery({
       base: FEED,
@@ -176,24 +196,24 @@ describe("ingestDelivery", () => {
 
     await ingest(orm, { firmId, asOf: MONDAY, source });
 
-    const { positions } = await feedRows(orm);
+    const { positions } = await feedRows(migratorOrm);
     expect(positions[0]).toMatchObject({ shares: "300.000000", price: null, marketValue: null });
   });
 
   describe("refuses, writing nothing,", () => {
-    test("a Delivery whose Manifest isn't there yet", async ({ orm }) => {
+    test("a Delivery whose Manifest isn't there yet", async ({ orm, migratorOrm }) => {
       const firmId = await seededFirm(orm);
-      const before = await feedRows(orm);
+      const before = await feedRows(migratorOrm);
 
       const result = await ingest(orm, { firmId, asOf: "2026-03-03" });
 
       expect(result).toMatchObject({ status: "refused", reason: "not_delivered" });
-      expect(await feedRows(orm)).toEqual(before);
+      expect(await feedRows(migratorOrm)).toEqual(before);
     });
 
-    test("a file whose Content hash isn't the Manifest's", async ({ orm }) => {
+    test("a file whose Content hash isn't the Manifest's", async ({ orm, migratorOrm }) => {
       const firmId = await seededFirm(orm);
-      const before = await feedRows(orm);
+      const before = await feedRows(migratorOrm);
       // The primer's Part 4: the IRA's 6000.00 became 600.00, so the row count still matches.
       const source = editedFeedSource({
         base: FEED,
@@ -216,12 +236,12 @@ describe("ingestDelivery", () => {
           "The Delivery for 2026-03-02 doesn't match its Manifest: " +
           "transactions.csv's Content hash isn't the Manifest's",
       });
-      expect(await feedRows(orm)).toEqual(before);
+      expect(await feedRows(migratorOrm)).toEqual(before);
     });
 
-    test("a file cut short, naming the rows it's missing", async ({ orm }) => {
+    test("a file cut short, naming the rows it's missing", async ({ orm, migratorOrm }) => {
       const firmId = await seededFirm(orm);
-      const before = await feedRows(orm);
+      const before = await feedRows(migratorOrm);
       const transactions = await textOf({ source: FEED, key: `${MONDAY}/transactions.csv` });
       const source = editedFeedSource({
         base: FEED,
@@ -238,12 +258,12 @@ describe("ingestDelivery", () => {
         "The Delivery for 2026-03-02 doesn't match its Manifest: prices.csv is missing; " +
           "transactions.csv has 3 rows, the Manifest lists 4",
       );
-      expect(await feedRows(orm)).toEqual(before);
+      expect(await feedRows(migratorOrm)).toEqual(before);
     });
 
-    test("a file with one invalid row, naming it", async ({ orm }) => {
+    test("a file with one invalid row, naming it", async ({ orm, migratorOrm }) => {
       const firmId = await seededFirm(orm);
-      const before = await feedRows(orm);
+      const before = await feedRows(migratorOrm);
       const source = await rewrittenDelivery({
         base: FEED,
         asOf: MONDAY,
@@ -262,7 +282,7 @@ describe("ingestDelivery", () => {
       expect(result.status === "refused" && result.message).toMatch(
         /^The Delivery for 2026-03-02 has invalid rows: transactions\.csv row 4: amount: /,
       );
-      expect(await feedRows(orm)).toEqual(before);
+      expect(await feedRows(migratorOrm)).toEqual(before);
     });
 
     test("a row naming a Security the Security master doesn't list", async ({ orm }) => {
@@ -307,9 +327,12 @@ describe("ingestDelivery", () => {
       });
     });
 
-    test("an account number the Firm has no Account for, naming it", async ({ orm }) => {
+    test("an account number the Firm has no Account for, naming it", async ({
+      orm,
+      migratorOrm,
+    }) => {
       const firmId = await seededFirm(orm);
-      const before = await feedRows(orm);
+      const before = await feedRows(migratorOrm);
       const accounts = await textOf({ source: FEED, key: `${MONDAY}/accounts.csv` });
       const source = await rewrittenDelivery({
         base: FEED,
@@ -326,7 +349,7 @@ describe("ingestDelivery", () => {
         message:
           "The Firm has no Account numbered CW-000099; add it to a Household before ingesting",
       });
-      expect(await feedRows(orm)).toEqual(before);
+      expect(await feedRows(migratorOrm)).toEqual(before);
     });
 
     test("a Transaction for an account number the Firm has no Account for", async ({ orm }) => {
@@ -365,10 +388,10 @@ describe("ingestDelivery", () => {
       });
     });
 
-    test("a different Delivery for a day already ingested", async ({ orm }) => {
+    test("a different Delivery for a day already ingested", async ({ orm, migratorOrm }) => {
       const firmId = await seededFirm(orm);
       await ingest(orm, { firmId, asOf: MONDAY });
-      const before = await feedRows(orm);
+      const before = await feedRows(migratorOrm);
       const restated = await rewrittenDelivery({
         base: FEED,
         asOf: MONDAY,
@@ -390,13 +413,13 @@ describe("ingestDelivery", () => {
           "A different Delivery for 2026-03-02 was already ingested",
         ),
       });
-      expect(await feedRows(orm)).toEqual(before);
+      expect(await feedRows(migratorOrm)).toEqual(before);
     });
 
-    test("a Transaction an earlier Delivery already carried", async ({ orm }) => {
+    test("a Transaction an earlier Delivery already carried", async ({ orm, migratorOrm }) => {
       const firmId = await seededFirm(orm);
       await ingest(orm, { firmId, asOf: MONDAY });
-      const before = await feedRows(orm);
+      const before = await feedRows(migratorOrm);
       const friday = await textOf({ source: FEED, key: `${FRIDAY}/transactions.csv` });
       const source = await rewrittenDelivery({
         base: FEED,
@@ -412,7 +435,7 @@ describe("ingestDelivery", () => {
         reason: "transactions_already_ingested",
         message: "An earlier Delivery already carried Transaction TX-000000003",
       });
-      expect(await feedRows(orm)).toEqual(before);
+      expect(await feedRows(migratorOrm)).toEqual(before);
     });
 
     test.for([

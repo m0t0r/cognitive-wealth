@@ -1,4 +1,5 @@
 import type { Database } from "@repo/db";
+import { withFirm } from "@repo/db/firm";
 import {
   ACCOUNT_ROLES,
   type AccountRoleKind,
@@ -45,8 +46,8 @@ const NAMED_ON_ROLES = ACCOUNT_ROLES.filter(isNamedOnRole);
  * The Household `publicId` of the Firm `firmId`, with its People (each with their Named-on
  * Accounts), the Accounts they own (each once, with every Account role on it), and each Account's
  * Positions on the Firm's latest As-of date, or null when the Firm has no such Household. Like
- * `listHouseholds`, every query filters by the Firm (#42 adds row-level security), so another
- * Firm's Household is as unknown as one that doesn't exist.
+ * `listHouseholds`, it runs inside `withFirm` and every query also filters by the Firm (ADR 0020),
+ * so another Firm's Household is as unknown as one that doesn't exist.
  */
 export async function getHouseholdOverview(
   db: Database,
@@ -54,7 +55,13 @@ export async function getHouseholdOverview(
 ): Promise<HouseholdOverview | null> {
   // Postgres refuses to compare a `uuid` column with text that isn't one.
   if (!PublicId.safeParse(publicId).success) return null;
+  return withFirm(db, { firmId, query: (tx) => overviewOf(tx, { firmId, publicId }) });
+}
 
+async function overviewOf(
+  db: Database,
+  { firmId, publicId }: { firmId: number; publicId: string },
+): Promise<HouseholdOverview | null> {
   const thisHousehold = and(eq(household.firmId, firmId), eq(household.publicId, publicId));
   const latestAsOf = db
     .select({ asOf: max(custodianDelivery.asOfDate) })

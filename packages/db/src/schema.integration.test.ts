@@ -241,8 +241,10 @@ async function createPerson(db: Database, firmId: number) {
   return row!;
 }
 
+// The Firm-scoped tables' own constraints, written as `migrator`, which owns the tables and so
+// isn't held by their row-level security (that's firm-isolation.integration.test.ts).
 describe("households", () => {
-  test("can't link rows from different Firms", async ({ orm }) => {
+  test("can't link rows from different Firms", async ({ migratorOrm: orm }) => {
     const larkspur = await createOrganization(orm, "larkspur");
     const globex = await createOrganization(orm, "globex");
     const home = await createHousehold(orm, larkspur.id);
@@ -271,7 +273,9 @@ describe("households", () => {
     ).rejects.toMatchObject(FOREIGN_KEY_VIOLATION);
   });
 
-  test("have one Primary, at most one Co-client and any number of Dependents", async ({ orm }) => {
+  test("have one Primary, at most one Co-client and any number of Dependents", async ({
+    migratorOrm: orm,
+  }) => {
     const firm = await createOrganization(orm);
     const home = await createHousehold(orm, firm.id);
     const add = async (role: "primary" | "co_client" | "dependent") => {
@@ -292,7 +296,7 @@ describe("households", () => {
   // The migrations froze the list; the Custodian's contract can grow. A new Registration type in
   // openapi.json fails this until a migration widens the check (Ingestion would fail on it).
   test("accept every Registration type the Custodian's contract has, and no others", async ({
-    orm,
+    migratorOrm: orm,
   }) => {
     const [constraintRow] = await orm.execute<{ definition: string }>(
       sql`select pg_get_constraintdef(oid) as definition from pg_constraint
@@ -303,7 +307,7 @@ describe("households", () => {
     expect(new Set(allowed)).toEqual(new Set(RegistrationType.options));
   });
 
-  test("hold only known statuses, registration types and roles", async ({ orm }) => {
+  test("hold only known statuses, registration types and roles", async ({ migratorOrm: orm }) => {
     const firm = await createOrganization(orm);
     const { id: personId } = await createPerson(orm, firm.id);
     const home = await createHousehold(orm, firm.id);
@@ -325,7 +329,8 @@ describe("households", () => {
     );
   });
 
-  test("go when their Firm is deleted", async ({ orm }) => {
+  // Deleted as `app`, as Better Auth does, with no Firm set: the cascade isn't held by the policies.
+  test("go when their Firm is deleted", async ({ orm: app, migratorOrm: orm }) => {
     const firm = await createOrganization(orm);
     const home = await createHousehold(orm, firm.id);
     const { id: personId } = await createPerson(orm, firm.id);
@@ -333,7 +338,7 @@ describe("households", () => {
       .insert(householdMember)
       .values({ firmId: firm.id, householdId: home.id, personId, role: "primary" });
 
-    await orm.delete(organization).where(eq(organization.id, firm.id));
+    await app.delete(organization).where(eq(organization.id, firm.id));
 
     expect(await orm.$count(household)).toBe(0);
     expect(await orm.$count(person)).toBe(0);
@@ -376,7 +381,9 @@ const buy = (feed: Awaited<ReturnType<typeof createFeedFirm>>) => ({
 });
 
 describe("custodian feed", () => {
-  test("keeps amounts at their type's scale, and a price as quoted", async ({ orm }) => {
+  test("keeps amounts at their type's scale, and a price as quoted", async ({
+    migratorOrm: orm,
+  }) => {
     const feed = await createFeedFirm(orm, "larkspur");
 
     const [row] = await orm
@@ -393,7 +400,7 @@ describe("custodian feed", () => {
   });
 
   // The second guard against loading a Delivery twice (docs/learn/03, Part 5).
-  test("hold each Transaction ID once per Firm", async ({ orm }) => {
+  test("hold each Transaction ID once per Firm", async ({ migratorOrm: orm }) => {
     const larkspur = await createFeedFirm(orm, "larkspur");
     const globex = await createFeedFirm(orm, "globex");
     await orm.insert(custodialTransaction).values(buy(larkspur));
@@ -404,7 +411,7 @@ describe("custodian feed", () => {
     await orm.insert(custodialTransaction).values(buy(globex));
   });
 
-  test("hold one Delivery per Firm and As-of date", async ({ orm }) => {
+  test("hold one Delivery per Firm and As-of date", async ({ migratorOrm: orm }) => {
     const { firmId } = await createFeedFirm(orm, "larkspur");
 
     await expect(
@@ -414,7 +421,9 @@ describe("custodian feed", () => {
     ).rejects.toMatchObject(UNIQUE_VIOLATION);
   });
 
-  test("can't point at another Firm's Account, Security or Delivery", async ({ orm }) => {
+  test("can't point at another Firm's Account, Security or Delivery", async ({
+    migratorOrm: orm,
+  }) => {
     const larkspur = await createFeedFirm(orm, "larkspur");
     const globex = await createFeedFirm(orm, "globex");
     const strangers = [
@@ -441,7 +450,9 @@ describe("custodian feed", () => {
   });
 
   // A past report must be reproducible from the rows it used (ADR 0009).
-  test("keep an Account's history: it can't be deleted while it has any", async ({ orm }) => {
+  test("keep an Account's history: it can't be deleted while it has any", async ({
+    migratorOrm: orm,
+  }) => {
     const feed = await createFeedFirm(orm, "larkspur");
     await orm.insert(custodialTransaction).values(buy(feed));
 
@@ -456,7 +467,7 @@ describe("custodian feed", () => {
     { constraint: "custodial_transaction_kind_check", options: TransactionKind.options },
   ])(
     "$constraint accepts the contract's kinds, and no others",
-    async ({ constraint, options }, { orm }) => {
+    async ({ constraint, options }, { migratorOrm: orm }) => {
       const [constraintRow] = await orm.execute<{ definition: string }>(
         sql`select pg_get_constraintdef(oid) as definition from pg_constraint
             where conname = ${constraint}`,
@@ -467,12 +478,12 @@ describe("custodian feed", () => {
     },
   );
 
-  test("go when their Firm is deleted", async ({ orm }) => {
+  test("go when their Firm is deleted", async ({ orm: app, migratorOrm: orm }) => {
     const feed = await createFeedFirm(orm, "larkspur");
     await orm.insert(custodialTransaction).values(buy(feed));
     await orm.insert(securityPrice).values({ ...feed, asOfDate: "2026-03-02", price: "150.25" });
 
-    await orm.delete(organization).where(eq(organization.id, feed.firmId));
+    await app.delete(organization).where(eq(organization.id, feed.firmId));
 
     expect(await orm.$count(custodianDelivery)).toBe(0);
     expect(await orm.$count(security)).toBe(0);

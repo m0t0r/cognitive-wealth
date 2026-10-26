@@ -20,6 +20,7 @@ const readWorld = (path = "v0.json"): unknown =>
   JSON.parse(readFileSync(new URL(`../../../world/${path}`, import.meta.url), "utf8"));
 
 // Every row of every CRM table, and the seed's record of the world it loaded, in a stable order.
+// Called with `migratorOrm`, which owns the tables, so row-level security doesn't hide any Firm's.
 async function crmRows(db: Database) {
   const [households, people, members, accounts, roles, seeds] = await Promise.all([
     db.select().from(household).orderBy(asc(household.id)),
@@ -33,6 +34,7 @@ async function crmRows(db: Database) {
 }
 
 // What an Advisor might do to the Reyes Household in the app: rename it and add a Dependent.
+// Written as `migratorOrm`, like `crmRows`.
 async function editInTheApp(db: Database) {
   const [reyes] = await db
     .update(household)
@@ -75,12 +77,12 @@ async function larkspurId(db: Database) {
 }
 
 describe("seedDevWorld", () => {
-  test("loads world v0's CRM half into Larkspur", async ({ orm }) => {
+  test("loads world v0's CRM half into Larkspur", async ({ orm, migratorOrm }) => {
     expect((await seedDevWorld(orm, readWorld())).crm).toEqual({
       added: { households: 1, people: 2, householdMembers: 2, accounts: 2, accountRoles: 4 },
     });
 
-    const { households, people, members, accounts, roles } = await crmRows(orm);
+    const { households, people, members, accounts, roles } = await crmRows(migratorOrm);
     expect(households).toMatchObject([
       { seedKey: "reyes", name: "The Reyes Household", relationshipStatus: "client" },
     ]);
@@ -109,21 +111,21 @@ describe("seedDevWorld", () => {
     ]);
   });
 
-  test("gives the same rows when run twice", async ({ orm }) => {
+  test("gives the same rows when run twice", async ({ orm, migratorOrm }) => {
     await seedDevWorld(orm, readWorld());
-    const first = await crmRows(orm);
+    const first = await crmRows(migratorOrm);
 
     expect((await seedDevWorld(orm, readWorld())).crm).toEqual({
       added: { households: 0, people: 0, householdMembers: 0, accounts: 0, accountRoles: 0 },
     });
-    expect(await crmRows(orm)).toEqual(first);
+    expect(await crmRows(migratorOrm)).toEqual(first);
   });
 
-  test("puts every row in Larkspur", async ({ orm }) => {
+  test("puts every row in Larkspur", async ({ orm, migratorOrm }) => {
     await seedDevWorld(orm, readWorld());
     const firmId = await larkspurId(orm);
 
-    const rows = Object.values(await crmRows(orm)).flat();
+    const rows = Object.values(await crmRows(migratorOrm)).flat();
     expect(rows).toHaveLength(12);
     expect(new Set(rows.map((row) => row.firmId))).toEqual(new Set([firmId]));
   });
@@ -131,18 +133,18 @@ describe("seedDevWorld", () => {
   // One file the schema catches and one only the cross-field rules do (world/invalid/cases.json).
   test.for(["unknown-field.json", "role-names-unknown-account.json"])(
     "writes nothing when the world file is invalid (%s)",
-    async (file, { orm }) => {
+    async (file, { orm, migratorOrm }) => {
       await expect(seedDevWorld(orm, readWorld(`invalid/${file}`))).rejects.toThrow(
         InvalidWorldError,
       );
 
       expect(await orm.$count(user)).toBe(0);
       expect(await orm.$count(organization)).toBe(0);
-      expect(Object.values(await crmRows(orm)).flat()).toEqual([]);
+      expect(Object.values(await crmRows(migratorOrm)).flat()).toEqual([]);
     },
   );
 
-  test("writes nothing when the world's Firm isn't Larkspur", async ({ orm }) => {
+  test("writes nothing when the world's Firm isn't Larkspur", async ({ orm, migratorOrm }) => {
     const world = parseWorld(readWorld());
     world.crm.firm.name = "Larkspur Partners";
 
@@ -151,7 +153,7 @@ describe("seedDevWorld", () => {
     );
     expect(await orm.$count(user)).toBe(0);
     expect(await orm.$count(organization)).toBe(0);
-    expect(Object.values(await crmRows(orm)).flat()).toEqual([]);
+    expect(Object.values(await crmRows(migratorOrm)).flat()).toEqual([]);
   });
 
   // Like the custodian's `world:load` (`LoadConflict`): a rerun adds what's missing, but never
@@ -188,14 +190,14 @@ describe("seedDevWorld", () => {
     ],
   ])(
     "refuses a world that changes %s, and writes nothing",
-    async ([, change, message], { orm }) => {
+    async ([, change, message], { orm, migratorOrm }) => {
       await seedDevWorld(orm, readWorld());
-      const seeded = await crmRows(orm);
+      const seeded = await crmRows(migratorOrm);
       const world = parseWorld(readWorld());
       change(world);
 
       await expect(seedDevWorld(orm, world)).rejects.toThrow(new SeedConflict(message));
-      expect(await crmRows(orm)).toEqual(seeded);
+      expect(await crmRows(migratorOrm)).toEqual(seeded);
     },
   );
 
@@ -211,39 +213,43 @@ describe("seedDevWorld", () => {
 
   // The fingerprint: the database records which CRM half the Firm was seeded from, so a rerun can
   // tell the world file changing from someone editing the rows in the app.
-  test("leaves app edits alone when the world file hasn't changed", async ({ orm }) => {
+  test("leaves app edits alone when the world file hasn't changed", async ({
+    orm,
+    migratorOrm,
+  }) => {
     await seedDevWorld(orm, readWorld());
-    await editInTheApp(orm);
-    const edited = await crmRows(orm);
+    await editInTheApp(migratorOrm);
+    const edited = await crmRows(migratorOrm);
 
     expect((await seedDevWorld(orm, readWorld())).crm).toEqual({
       added: { households: 0, people: 0, householdMembers: 0, accounts: 0, accountRoles: 0 },
     });
-    expect(await crmRows(orm)).toEqual(edited);
+    expect(await crmRows(migratorOrm)).toEqual(edited);
     expect(edited.households.map((h) => h.name)).toEqual(["Reyes Family"]);
   });
 
   test("refuses when the world file changed and its rows were edited in the app", async ({
     orm,
+    migratorOrm,
   }) => {
     await seedDevWorld(orm, readWorld());
-    await editInTheApp(orm);
-    const edited = await crmRows(orm);
+    await editInTheApp(migratorOrm);
+    const edited = await crmRows(migratorOrm);
     const world = parseWorld(readWorld());
     world.crm.households.push(okafor);
 
     await expect(seedDevWorld(orm, world)).rejects.toThrow(
       new SeedConflict("Household reyes is already seeded with other details"),
     );
-    expect(await crmRows(orm)).toEqual(edited);
+    expect(await crmRows(migratorOrm)).toEqual(edited);
   });
 
-  test("remembers the new world once it loads", async ({ orm }) => {
+  test("remembers the new world once it loads", async ({ orm, migratorOrm }) => {
     await seedDevWorld(orm, readWorld());
     const world = parseWorld(readWorld());
     world.crm.households.push(okafor);
     await seedDevWorld(orm, world);
-    await editInTheApp(orm);
+    await editInTheApp(migratorOrm);
 
     expect((await seedDevWorld(orm, world)).crm.added.households).toBe(0);
   });

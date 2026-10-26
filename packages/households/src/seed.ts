@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Database } from "@repo/db";
+import { withFirm } from "@repo/db/firm";
 import {
   accountRole,
   custodialAccount,
@@ -68,21 +69,34 @@ export async function seedDevWorld(
         `'${world.crm.firm.name}' isn't the seeded Firm '${firm.name}'`,
       );
     }
-    // Seeded from this very file already: whatever differs now was edited in the app, and stays.
-    const worldHash = createHash("sha256").update(JSON.stringify(world.crm)).digest("hex");
-    const [last] = await tx
-      .select({ worldHash: worldSeed.worldHash })
-      .from(worldSeed)
-      .where(eq(worldSeed.firmId, firm.id));
-    if (last?.worldHash === worldHash) return { devData, crm: { added: NOTHING_ADDED } };
-
-    const crm = await loadCrmHalf(tx, { firmId: firm.id, world });
-    await tx
-      .insert(worldSeed)
-      .values({ firmId: firm.id, worldHash })
-      .onConflictDoUpdate({ target: worldSeed.firmId, set: { worldHash, seededAt: new Date() } });
+    // The CRM half is the Firm's own rows, written under its row-level security (ADR 0020).
+    const crm = await withFirm(tx, {
+      firmId: firm.id,
+      query: (firmTx) => seedCrmHalf(firmTx, { firmId: firm.id, world }),
+    });
     return { devData, crm };
   });
+}
+
+/** The world's CRM half into the Firm `firmId`, unless its `world_seed` says it's there already. */
+async function seedCrmHalf(
+  db: Database,
+  { firmId, world }: { firmId: number; world: World },
+): Promise<CrmSeedResult> {
+  // Seeded from this very file already: whatever differs now was edited in the app, and stays.
+  const worldHash = createHash("sha256").update(JSON.stringify(world.crm)).digest("hex");
+  const [last] = await db
+    .select({ worldHash: worldSeed.worldHash })
+    .from(worldSeed)
+    .where(eq(worldSeed.firmId, firmId));
+  if (last?.worldHash === worldHash) return { added: NOTHING_ADDED };
+
+  const crm = await loadCrmHalf(db, { firmId, world });
+  await db
+    .insert(worldSeed)
+    .values({ firmId, worldHash })
+    .onConflictDoUpdate({ target: worldSeed.firmId, set: { worldHash, seededAt: new Date() } });
+  return crm;
 }
 
 const NOTHING_ADDED: CrmSeedResult["added"] = {

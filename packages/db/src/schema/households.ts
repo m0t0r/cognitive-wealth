@@ -1,7 +1,8 @@
 // Households, the People in them, their Accounts and how People hold those Accounts (GLOSSARY.md,
 // "Households" and "Accounts and custody"). Every row carries its Firm in `firm_id`, and every link
 // between two rows is a foreign key on (firm_id, id), so a row can only point at its own Firm's
-// rows. Queries still filter by Firm themselves: there is no row-level security yet (#42).
+// rows. Each table also has row-level security (`firmIsolation()`, ADR 0020), and queries still
+// filter by Firm themselves.
 import { RegistrationType as RegistrationTypeSchema } from "@repo/custodian-client/schemas";
 import { sql } from "drizzle-orm";
 import {
@@ -15,7 +16,7 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { firmId, knownValue, nonEmpty } from "./_domain";
+import { firmId, firmIsolation, knownValue, nonEmpty } from "./_domain";
 import { createdAt, id, publicId, timestamptz, updatedAt } from "./_helpers";
 
 /** GLOSSARY.md, "Relationship status". */
@@ -60,6 +61,7 @@ export const household = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
+    firmIsolation(),
     // The target of the (firm_id, id) foreign keys; also serves lookups by Firm.
     unique("household_firm_id_id_unique").on(t.firmId, t.id),
     unique("household_firm_id_seed_key_unique").on(t.firmId, t.seedKey),
@@ -84,6 +86,7 @@ export const person = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
+    firmIsolation(),
     unique("person_firm_id_id_unique").on(t.firmId, t.id),
     unique("person_firm_id_seed_key_unique").on(t.firmId, t.seedKey),
   ],
@@ -102,6 +105,7 @@ export const householdMember = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
+    firmIsolation(),
     foreignKey({
       name: "household_member_household_fk",
       columns: [t.firmId, t.householdId],
@@ -144,6 +148,7 @@ export const custodialAccount = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
+    firmIsolation(),
     unique("custodial_account_firm_id_id_unique").on(t.firmId, t.id),
     unique("custodial_account_firm_id_account_number_unique").on(t.firmId, t.accountNumber),
     check(
@@ -167,6 +172,7 @@ export const accountRole = pgTable(
     createdAt: createdAt(),
   },
   (t) => [
+    firmIsolation(),
     foreignKey({
       name: "account_role_person_fk",
       columns: [t.firmId, t.personId],
@@ -194,9 +200,13 @@ export const accountRole = pgTable(
  * changed file is compared row by row. Only the seed reads or writes it, and it never leaves the
  * server, so it has no `public_id`.
  */
-export const worldSeed = pgTable("world_seed", {
-  id: id(),
-  firmId: firmId().unique(),
-  worldHash: text("world_hash").notNull(),
-  seededAt: timestamptz("seeded_at").notNull().defaultNow(),
-});
+export const worldSeed = pgTable(
+  "world_seed",
+  {
+    id: id(),
+    firmId: firmId().unique(),
+    worldHash: text("world_hash").notNull(),
+    seededAt: timestamptz("seeded_at").notNull().defaultNow(),
+  },
+  () => [firmIsolation()],
+);
