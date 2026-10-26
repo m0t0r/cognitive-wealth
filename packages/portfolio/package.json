@@ -8,7 +8,6 @@
   },
   "scripts": {
     "check-types": "tsc --noEmit",
-    "custodian:ingest": "node src/cli/ingest.ts",
     "test": "vitest run --project unit --project ui",
     "test:integration": "vitest run --project integration",
     "test:watch": "vitest",

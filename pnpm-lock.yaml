@@ -382,6 +382,12 @@ importers:
       '@repo/friction-bot':
         specifier: workspace:*
         version: link:../friction-bot
+      '@repo/households':
+        specifier: workspace:*
+        version: link:../households
+      '@repo/portfolio':
+        specifier: workspace:*
+        version: link:../portfolio
       incur:
         specifier: 0.7.1
         version: 0.7.1
