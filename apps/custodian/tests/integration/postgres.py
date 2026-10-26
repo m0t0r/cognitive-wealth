@@ -3,10 +3,10 @@ and example_deliveries.py.
 
 One container per run, set up like Compose's `custodian-db`: the same image, the same roles script
 and scram-sha-256 passwords. It is never the dev database: its passwords are random, its data is
-in memory, and Testcontainers' reaper removes it when the run ends.
+in memory, and it goes when the run ends: stopped by the `with` block, or, if the run ends before
+that (a second Ctrl-C, a kill), removed by the run's reaper (reaper.py) about 10 s later.
 """
 
-import re
 import secrets
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -20,19 +20,19 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import URL, Connection, Engine, create_engine, make_url, text
 from testcontainers.community.postgres import PostgresContainer
-from testcontainers.core.config import testcontainers_config
+
+from tests.integration.reaper import reap_this_session
 
 __all__ = [
     "CUSTODIAN",
     "EMPTY_DATABASE",
     "MIGRATED_DATABASE",
-    "REAPER_PIN",
     "Database",
     "PostgresServer",
     "Role",
     "alembic_config",
+    "compose_image",
     "migrated_database",
-    "reaper_image",
     "start_migrated_postgres",
     "start_postgres",
 ]
@@ -46,27 +46,6 @@ MIGRATED_DATABASE = "custodian_migrated"
 """A copy of EMPTY_DATABASE, migrated to head once per run. Each test's database copies it."""
 
 type Role = Literal["migrator", "app"]
-
-REAPER_PIN = REPO_ROOT / "docker/testcontainers/Dockerfile"
-"""Pins Testcontainers' reaper for both harnesses; Dependabot bumps it (see the file's header)."""
-
-# `re.MULTILINE` makes `^` and `$` match at each line, so comment lines can't match.
-_PINNED = re.compile(r"^FROM\s+(testcontainers/ryuk:[^@\s]+@sha256:[0-9a-f]+)\s*$", re.MULTILINE)
-
-
-def reaper_image(file: Path = REAPER_PIN) -> str:
-    """The reaper image, `tag@digest`, from the pin file's `FROM` line.
-
-    The TypeScript harness reads the same line (packages/testing/src/reaper.ts).
-    """
-    # `:=` assigns and tests in one step, like `if ((match = …))` in TypeScript.
-    if match := _PINNED.search(file.read_text()):
-        return match.group(1)
-    raise LookupError(f"{file} must pin testcontainers/ryuk by tag@digest")
-
-
-# Testcontainers' reaper (its default is an old tag): the one pin both harnesses share.
-testcontainers_config.ryuk_image = reaper_image()
 
 
 def compose_image() -> str:
@@ -150,6 +129,8 @@ class PostgresServer:
 @contextmanager
 def start_postgres() -> Generator[PostgresServer]:
     """Start the container, and stop it when the `with` block ends."""
+    # Before the container exists, so Ryuk removes it however the run ends.
+    reap_this_session()
     # Random passwords: Docker may publish the port on every host interface.
     superuser_password = secrets.token_hex(24)
     migrator_password = secrets.token_hex(24)

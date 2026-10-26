@@ -1,6 +1,6 @@
 """The reaper image comes from docker/testcontainers/Dockerfile, the one pin Dependabot bumps.
 
-No Docker needed: these only read files. They live next to postgres.py, which they test.
+No Docker needed: these only read files. They live next to reaper.py, which they test.
 """
 
 import re
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.integration.postgres import reaper_image
+from tests.integration.reaper import reaper_image
 
 RYUK = "testcontainers/ryuk:0.14.0@sha256:aaaa"
 
