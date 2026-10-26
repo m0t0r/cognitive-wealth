@@ -1,13 +1,20 @@
 """The custodian's FastAPI app. Uvicorn (`pnpm dev`) and `TestClient` both load `app` from here."""
 
 import json
+import os
+from collections.abc import AsyncGenerator, Mapping
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from custodian.build_record import check_build, market_inputs
 from custodian.contract import openapi_for
+from custodian.database import engine_from_env
 
 __all__ = ["OPENAPI_PATH", "HealthResponse", "app"]
 
@@ -24,7 +31,33 @@ class _Custodian(FastAPI):
         return self.openapi_schema
 
 
-app = _Custodian(title="Custodian")
+def _check_market_inputs(environ: Mapping[str, str] = os.environ) -> None:
+    """Refuse to start without the pinned Factor file, or on a database built from other inputs.
+
+    Raises `FactorFileError` or `BuildMismatch`. Without `DATABASE_URL` (`pnpm dev`, which serves
+    no data yet), there's no history to protect, and only the Factor file is checked.
+    """
+    inputs = market_inputs(environ)
+    if not environ.get("DATABASE_URL"):
+        return
+    engine = engine_from_env(environ)
+    try:
+        with Session(engine) as session:
+            check_build(session, inputs)
+    finally:
+        engine.dispose()
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    # The one `async def`: Starlette only takes an async start-up hook. The check itself is plain
+    # blocking code, so it runs in a worker thread, as a `def` route does. Raising here stops
+    # Uvicorn before it serves anything.
+    await run_in_threadpool(_check_market_inputs)
+    yield
+
+
+app = _Custodian(title="Custodian", lifespan=_lifespan)
 
 
 class HealthResponse(BaseModel):

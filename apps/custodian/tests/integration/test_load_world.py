@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import Row, text
 from sqlalchemy.orm import Session
 
+from custodian.factor_file import FIXTURE_PIN_PATH, read_pin
 from custodian.ledger_fixture import LEDGER_V0_PATH, read_ledger_fixture
 from custodian.load import LoadConflict, load
 from custodian.money import Money, Price
@@ -66,6 +67,13 @@ def test_loading_the_world_twice_changes_nothing(
         '"transaction"': 13,
     }
     assert "Loaded 2 Accounts, 3 Securities, 14 prices and 13 Transactions" in output
+    # The first load recorded the inputs: tests/conftest.py's fixture Pin, the committed yields.
+    with database.migrator.connect() as connection:
+        recorded = connection.execute(
+            text("select factor_file_sha256, factor_file_crsp_month from build_record")
+        ).one()
+    pin = read_pin(FIXTURE_PIN_PATH)
+    assert tuple(recorded) == (pin.sha256, pin.crsp_month)
 
 
 def test_a_load_that_would_change_the_ledger_is_refused(

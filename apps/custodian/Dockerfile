@@ -40,6 +40,9 @@ COPY apps/custodian/pyproject.toml apps/custodian/uv.lock apps/custodian/.python
 COPY apps/custodian/src ./src
 COPY apps/custodian/migrations ./migrations
 COPY apps/custodian/fixtures/ledger-v0.json ./fixtures/
+# The Factor file's Pin and the committed Treasury yields. The Factor file itself is never in the
+# image or downloaded by the build: the running custodian downloads it into its cache (below).
+COPY apps/custodian/market ./market
 COPY world/v0.json /app/world/
 # Installs the custodian itself, as an editable install: the virtualenv points at ./src, so the
 # paths above stay where the code expects them. compileall does for our code what
@@ -52,10 +55,15 @@ RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
 FROM python AS custodian
 ENV PATH=/app/apps/custodian/.venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    FACTOR_FILE_CACHE=/var/cache/custodian/factor-files
 WORKDIR /app/apps/custodian
 # Owned by root and read-only to the `nobody` (65534) user that runs it.
 COPY --from=build /app /app
+# The Factor file's cache, the one folder `nobody` writes. Compose mounts a named volume here; a
+# new volume copies this folder's owner, so the first start can download into it.
+RUN mkdir -p /var/cache/custodian/factor-files \
+    && chown -R 65534:65534 /var/cache/custodian
 USER 65534:65534
 EXPOSE 8000
 # The image's own Python, since slim has no curl: any error or non-2xx status exits non-zero.

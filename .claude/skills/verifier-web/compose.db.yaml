@@ -2,11 +2,20 @@
 # (VERIFY_COMPOSE_DB_PORT), so compose.sh can migrate, seed and ingest it from the host as
 # start-app.sh does, and `owner@` can sign in. The same trade-off as compose.dev.yaml's `db`: a
 # published port needs a network with a route to the host.
+#
+# The custodian runs on the tests' fixture Pin, with the fixture's own folder (read-only) as its
+# cache: the fixture is there under its SHA-256, so it starts without reaching the archive.
 services:
   db:
     ports:
       - "127.0.0.1:${DB_PORT:?compose.sh sets DB_PORT}:5432"
     networks: [data, host-access]
+  custodian:
+    environment:
+      FACTOR_FILE_PIN: /app/apps/custodian/fixtures/factor-file/pin.json
+      FACTOR_FILE_CACHE: /app/apps/custodian/fixtures/factor-file
+    volumes:
+      - ./apps/custodian/fixtures/factor-file:/app/apps/custodian/fixtures/factor-file:ro
 
 networks:
   host-access: {}

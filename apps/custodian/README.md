@@ -6,6 +6,18 @@ For now it serves one route, `GET /health`, which returns `{"status": "ok"}`. It
 
 Each day, the Custodian feed publishes what the Ledger says as one Delivery: `securities.csv`, `accounts.csv`, the `transactions.csv` posted that day, `positions.csv` and `prices.csv`, then `manifest.json` with each file's row count and SHA-256. The same data always gives the same bytes ([ADR 0017](../../docs/adr/0017-custodian-feed-format.md)); [the feed primer](../../docs/learn/03-custodian-feed-and-ingestion.md) shows 2 March's files.
 
+## Market data
+
+The world's prices will come from real market history ([ADR 0019](../../docs/adr/0019-market-data-pinned-or-committed.md)):
+
+- **The Factor file**, Kenneth French's daily three-factor returns. `market/factor-file.pin.json` is its Pin: the Wayback Machine copy it's downloaded from, the library's own address (never fetched), its SHA-256, the CRSP month it was built from and its last date. On the first start (`pnpm dev`, `world:load` or the container) it's downloaded into `~/.cache/cognitive-wealth/factor-files/<sha256>.zip`, one cache for every checkout on the machine (`FACTOR_FILE_CACHE` moves it; Compose uses the `custodian-factor-files` volume). Every start after that checks the cached copy's hash. A mismatch, or no network with an empty cache, stops the custodian with a message saying which.
+- **Treasury yields**, the US Treasury's daily par yield curve, committed as `market/treasury-yields.csv` from 2020 to the Factor file's last date. The file holds only the yields, so its SHA-256 changes only when a yield does; where and when they were retrieved is in `market/treasury-yields.source.json`. Rerunning `yields:write` on unchanged yields writes nothing.
+- **The build record**: the first `world:load` records both inputs' SHA-256 (and the Factor file's CRSP month, for the message) in the database, and from then on `world:load` and the API refuse a database built from other inputs. After moving the Pin, rebuild the database from empty.
+
+Tests never touch the network: they use the made-up Factor file and Pin in `fixtures/factor-file/`.
+
+**Keep a backup of the pinned zip.** The Wayback Machine's capture is its only public source: if the archive is down, a machine with nothing cached can't start, and if the capture is removed, nobody can download it again. Copy `~/.cache/cognitive-wealth/factor-files/<sha256>.zip` somewhere private (never into the repo: the file is copyrighted). To restore it, or to set up a machine without the network, copy it back into that folder under the same name; every start checks its SHA-256, so a copy is trusted exactly like a download.
+
 ## Prerequisites
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) (`brew install uv`). It installs the pinned Python (`.python-version`) and the locked dependencies (`uv.lock`) into `.venv/` on first run; there's no separate install step.
@@ -23,6 +35,7 @@ From the repo root, through the package scripts (each calls `uv run`):
 | `pnpm --filter custodian db:migrate`       | Alembic migrations to head, as `DATABASE_URL` (+ `DATABASE_PASSWORD_FILE`)       |
 | `pnpm --filter custodian world:load`       | Loads `world/v0.json`'s custodian half and `fixtures/ledger-v0.json`; idempotent |
 | `pnpm --filter custodian world:schema`     | Regenerates `world/schema.json` from the world file's models                     |
+| `pnpm --filter custodian yields:write`     | Rebuilds `market/treasury-yields.csv` from the Treasury; by hand, when Pin moves |
 | `pnpm --filter custodian openapi:write`    | Regenerates `openapi.json`, the contract, from the app                           |
 | `pnpm --filter custodian feed:write`       | `--date 2026-03-02`: writes that day's Delivery to `.dev/custodian-feed/`        |
 | `pnpm --filter custodian feed:examples`    | Rewrites `fixtures/feed/` from a throwaway Postgres (Docker), never the dev one  |
@@ -51,7 +64,7 @@ Then load the world as `app` (`DATABASE_URL=postgres://app@localhost:5434/custod
 
 `Dockerfile` builds one image from the repo root (`docker build -f apps/custodian/Dockerfile .`), which `docker compose up --build` runs twice: `custodian-migrate` applies the migrations as `migrator` and exits, then `custodian` serves the API as `app` on `http://127.0.0.1:8000` (`CUSTODIAN_PORT` changes the host port), with `/docs` there too. Load the world into that stack with `docker compose run --rm custodian python -m custodian.load`.
 
-The build stage installs `uv.lock`'s runtime dependencies only (`uv sync --locked --no-dev`) with uv's pinned binary, and compiles everything to bytecode. The image holds Python, the virtualenv and the code, all owned by root, and runs as `nobody` (on a read-only filesystem under Compose's hardening), without uv, pytest, Ruff or pyright. The project keeps its place under `/app/apps/custodian/`, next to `/app/world/`, because `world.py` and `ledger_fixture.py` find their files by climbing from their own path. Its base is `python:3.15-slim`, not distroless like `web`'s: Google's distroless Python ships Debian's Python, older than 3.15. Dependabot bumps the image pins and the `uv.lock` dependencies weekly, but not the Python minor version, which moves with the version policy in [CLAUDE.md](CLAUDE.md).
+The build stage installs `uv.lock`'s runtime dependencies only (`uv sync --locked --no-dev`) with uv's pinned binary, and compiles everything to bytecode. The image holds Python, the virtualenv and the code, all owned by root, and runs as `nobody` (on a read-only filesystem under Compose's hardening), without uv, pytest, Ruff or pyright. The project keeps its place under `/app/apps/custodian/`, next to `/app/world/`, because `world.py` and `ledger_fixture.py` find their files by climbing from their own path. The image holds `market/` (the Pin and the yields) but never the Factor file: nothing is downloaded during the build, and the running container downloads it once into `/var/cache/custodian/factor-files`, the one folder `nobody` can write, where Compose mounts the `custodian-factor-files` volume. Its base is `python:3.15-slim`, not distroless like `web`'s: Google's distroless Python ships Debian's Python, older than 3.15. Dependabot bumps the image pins and the `uv.lock` dependencies weekly, but not the Python minor version, which moves with the version policy in [CLAUDE.md](CLAUDE.md).
 
 ## Layout
 
@@ -66,6 +79,11 @@ src/custodian/positions.py Positions and Settled cash rebuilt from the Ledger, a
 src/custodian/market_value.py  Positions × the latest prices, rounded once
 src/custodian/feed.py      feed:write: one As-of date's Delivery, five CSV files and manifest.json
 src/custodian/feed_store.py  where Deliveries are kept: put, get and list, in a local folder for now
+src/custodian/factor_file.py  the Pin, the cached and hash-checked Factor file, and its reader
+src/custodian/treasury_yields.py  the committed yields' reader, and yields:write
+src/custodian/build_record.py  which market inputs built the database, checked on every start
+market/                    the Factor file's Pin and the committed Treasury yields
+fixtures/factor-file/      the tests' made-up Factor file, under its SHA-256, and its Pin
 fixtures/ledger-v0.json    Dana's week from docs/learn/01, plus the IRA's first day
 ../../world/               the world file (v0.json) and its JSON Schema, shared with the seed
 ../../world/invalid/       world files that each break one rule, which both loaders must reject

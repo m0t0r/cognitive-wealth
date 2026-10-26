@@ -114,7 +114,7 @@ def test_the_app_has_only_the_access_each_table_grants(database: Database) -> No
         inserted_columns = connection.execute(
             text("""
                 select table_name, column_name from information_schema.column_privileges
-                where grantee = 'app' and table_name in ('transaction', 'price')
+                where grantee = 'app' and table_name in ('transaction', 'price', 'build_record')
                   and privilege_type = 'INSERT'
             """)
         ).all()
@@ -127,6 +127,7 @@ def test_the_app_has_only_the_access_each_table_grants(database: Database) -> No
         "account": {"SELECT", "INSERT", "UPDATE", "DELETE"},
         "transaction": {"SELECT"},
         "price": {"SELECT"},
+        "build_record": {"SELECT"},
     }
     # Inserting names the data columns only: the database sets `id` and `recorded_at`.
     columns: dict[str, set[str]] = {}
@@ -146,4 +147,5 @@ def test_the_app_has_only_the_access_each_table_grants(database: Database) -> No
             "amount",
         },
         "price": {"security_id", "price_date", "price"},
+        "build_record": {"factor_file_sha256", "factor_file_crsp_month", "treasury_yields_sha256"},
     }

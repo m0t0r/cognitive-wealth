@@ -243,6 +243,14 @@ class Rate(_DecimalString):
 
     __slots__ = ()
 
+    @classmethod
+    def from_percent(cls, percent: str) -> Rate:
+        """The fraction a published percent stands for: `"0.41"` is `Rate("0.0041")`.
+
+        `scaleb(-2)` moves the decimal point two places, exactly; no float divides by 100.
+        """
+        return cls(Decimal(percent).scaleb(-2))
+
 
 class Shares(_DecimalString):
     """A count of a security, to at most six decimal places."""

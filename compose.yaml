@@ -112,14 +112,20 @@ services:
     secrets: [custodian_db_app_password]
     tmpfs:
       - /tmp:uid=65534,gid=65534,mode=1777
+    # The Factor file's cache (FACTOR_FILE_CACHE, set by the image), downloaded on the first start
+    # and checked against the Pin on every start after (ADR 0019). A volume, so it outlives the
+    # container and the read-only filesystem.
+    volumes:
+      - custodian-factor-files:/var/cache/custodian/factor-files
     ports:
       - "127.0.0.1:${CUSTODIAN_PORT:-8000}:8000"
     depends_on:
       custodian-migrate:
         condition: service_completed_successfully
     # Publishing the port needs a network with a route to the host, which also gives the custodian
-    # outbound access (it needs none). Only the custodian is on `custodian-edge`, so
-    # `custodian-data` stays internal and Cognitive Wealth's services reach neither.
+    # the outbound access its first start needs, to download the Factor file from the Wayback
+    # Machine. Only the custodian is on `custodian-edge`, so `custodian-data` stays internal and
+    # Cognitive Wealth's services reach neither.
     networks: [custodian-data, custodian-edge]
     restart: unless-stopped
 
@@ -266,6 +272,7 @@ networks:
 volumes:
   pgdata:
   custodian-pgdata:
+  custodian-factor-files:
 
 # Mounted read-only at /run/secrets/<name>, so passwords never enter an env var or `docker inspect`.
 # The directory is private (0700); the files must be world-readable for the containers' users.
