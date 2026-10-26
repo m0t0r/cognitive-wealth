@@ -1,7 +1,9 @@
 #!/bin/sh
 # Runs once, when the Postgres data volume is first initialized. Creates least-privilege roles:
 # - `migrator` owns the database and runs DDL (the `migrate` service)
-# - `app` can only read and write rows (the `web` service)
+# - `app` reads and writes rows (the `web` service), only on what a migration grants it: it gets
+#   no default privileges on tables, so a new table is closed to it until its migration grants it
+#   (`src/app-privileges.ts`, #190)
 # Passwords are read from mounted secrets inside psql, so they never appear in argv or env.
 set -eu
 
@@ -21,8 +23,6 @@ revoke connect, temporary on database postgres from public;
 revoke connect, temporary on database template1 from public;
 
 grant usage on schema public to app;
-alter default privileges for role migrator in schema public
-  grant select, insert, update, delete on tables to app;
 alter default privileges for role migrator in schema public
   grant usage, select on sequences to app;
 SQL
