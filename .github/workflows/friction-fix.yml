@@ -60,6 +60,27 @@ jobs:
           fi
           echo "ANTHROPIC_API_KEY works."
 
+      # Listing models works without credit, so it can't catch "Credit balance is too low". One
+      # tiny request per model the workflows use (a fraction of a cent) does.
+      - name: Check the key's credit on each model
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          failed=0
+          for model in claude-haiku-5-5 claude-sonnet-5-5; do
+            status=$(curl -sS -o "$RUNNER_TEMP/message.json" -w '%{http_code}' https://api.anthropic.com/v1/messages \
+              -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" \
+              -H "content-type: application/json" \
+              -d "{\"model\":\"$model\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"Say ok.\"}]}")
+            if [ "$status" = 200 ]; then
+              echo "$model: OK"
+            else
+              echo "::error::$model: HTTP $status: $(jq -r '.error.message // .' "$RUNNER_TEMP/message.json")"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
   fix:
     needs: api-key
     if: github.event_name != 'pull_request'
