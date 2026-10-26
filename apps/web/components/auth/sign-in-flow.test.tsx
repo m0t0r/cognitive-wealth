@@ -46,6 +46,10 @@ async function sendEmails(count: number, purpose: "invitation" | null = null) {
     await wait(RESEND_COOLDOWN);
     // oxlint-disable-next-line no-await-in-loop
     await user.click(screen.getByRole("button", { name: "Resend email" }));
+    // The send is async and starts its cooldown from the clock when it finishes, so the next wait
+    // starts only once the countdown shows; otherwise it ends seconds before the cooldown does.
+    // oxlint-disable-next-line no-await-in-loop
+    await screen.findByRole("button", { name: /^Resend email in / });
   }
   return { user, ...view };
 }
