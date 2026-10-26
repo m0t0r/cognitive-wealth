@@ -11,13 +11,18 @@ import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { BETTER_AUTH_TABLES } from "./better-auth-tables";
 import type { connect } from "./connect";
 import {
+  accountRole,
   auditEvent,
   custodialAccount,
   custodialPosition,
   custodialTransaction,
   custodianDelivery,
+  household,
+  householdMember,
+  person,
   security,
   securityPrice,
+  worldSeed,
 } from "./schema";
 import { test } from "./testing";
 
@@ -37,7 +42,26 @@ const FACTS: PgTable[] = [
  * The Custodian's Accounts and Securities: Ingestion brings their details up to date, but the
  * facts above refer to them, so a row is never removed.
  */
-const NEVER_DELETED: PgTable[] = [...FACTS, custodialAccount, security];
+const CUSTODIAN_RECORDS: PgTable[] = [custodialAccount, security];
+
+const NEVER_DELETED: PgTable[] = [...FACTS, ...CUSTODIAN_RECORDS];
+
+/**
+ * Cognitive Wealth's own tables whose rows `app` may change or remove, as far as its grants allow:
+ * the CRM (#192, #193) and the seed's record of the world file it loaded.
+ */
+const MAY_CHANGE: PgTable[] = [accountRole, household, householdMember, person, worldSeed];
+
+/**
+ * Every table in `public` belongs to exactly one, so a new one fails until it's sorted: a fact a
+ * migration adds doesn't get past these rules by never being listed.
+ */
+const GROUPS: Record<string, readonly string[]> = {
+  facts: tableNames(FACTS),
+  "Custodian records": tableNames(CUSTODIAN_RECORDS),
+  "Better Auth": BETTER_AUTH_TABLES,
+  "may change": tableNames(MAY_CHANGE),
+};
 
 /** The columns that identify a row by the Custodian's or the world's key, besides `id`s. */
 const NATURAL_KEYS: PgColumn[] = [
@@ -49,6 +73,23 @@ const NATURAL_KEYS: PgColumn[] = [
 /** Their names in Postgres. */
 function tableNames(tables: PgTable[]) {
   return tables.map((table) => getTableName(table));
+}
+
+/** Every table in `public` that's in no group or in several, empty when each is in one. */
+async function unsortedTables(db: PostgresDatabase): Promise<string[]> {
+  const tables = await db.execute<{ name: string }>(sql`
+    select c.relname::text as name
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind in ('r', 'p')
+    order by c.relname
+  `);
+  return tables.flatMap(({ name }) => {
+    const groups = Object.keys(GROUPS).filter((group) => GROUPS[group]!.includes(name));
+    if (groups.length === 0) return [`${name} is in no group`];
+    if (groups.length > 1) return [`${name} is in ${groups.join(" and ")}`];
+    return [];
+  });
 }
 
 /** A `text[]` literal; Drizzle would spread a plain array into a list of parameters. */
@@ -151,5 +192,17 @@ describe("app's never-rules", () => {
     await migratorOrm.execute(sql`grant truncate on table session to app`);
 
     expect(await neverRuleBreaches(migratorOrm)).toEqual(["app may truncate session"]);
+  });
+});
+
+describe("the tables' groups", () => {
+  test("hold every table on the migrated database, each once", async ({ migratorOrm }) => {
+    expect(await unsortedTables(migratorOrm)).toEqual([]);
+  });
+
+  test("report a table a migration creates until it's sorted", async ({ migratorOrm }) => {
+    await migratorOrm.execute(sql`create table custodial_lot (id bigint primary key)`);
+
+    expect(await unsortedTables(migratorOrm)).toEqual(["custodial_lot is in no group"]);
   });
 });
