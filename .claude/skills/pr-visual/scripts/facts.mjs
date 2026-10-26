@@ -53,12 +53,14 @@ function kind(path) {
   // docs/ includes its diagrams' .mmd sources and rendered SVGs.
   if (/\.mdx?$/.test(path) || path.startsWith("docs/")) return "docs";
   if (
-    /(^|\/)(Dockerfile|compose[^/]*\.ya?ml|[^/]*\.config\.[cm]?[jt]s|tsconfig[^/]*\.json|package\.json|turbo\.json|[^/]*\.toml|\.python-version|\.gitignore|\.[^/]+rc(\.json)?)$/.test(
+    /(^|\/)(Dockerfile|compose[^/]*\.ya?ml|[^/]*\.config\.[cm]?[jt]s|tsconfig[^/]*\.json|package\.json|turbo\.json|components\.json|settings(\.local)?\.json|[^/]*\.toml|\.python-version|\.gitignore|\.[^/]+rc(\.json)?)$/.test(
       path,
     ) ||
     path.startsWith(".github/")
   )
     return "config";
+  // Committed data (the world file, the custodian's market data and fixtures) isn't code (#186).
+  if (/\.(csv|tsv|json|jsonl)$/.test(path)) return "data";
   return "source";
 }
 
@@ -178,6 +180,7 @@ const KIND_LABEL = {
   docs: "documentation",
   config: "configuration",
   migrations: "migrations",
+  data: "data files",
 };
 // Areas under 1% of the change and 50 lines fold into one node, so a tail of one-line files
 // (symlinks, a gitignore line) stays readable without hiding a small but real area.

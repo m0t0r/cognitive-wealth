@@ -82,8 +82,8 @@ fi
 
 "${compose[@]}" up -d --wait db redis mailpit >/dev/null
 
-# A fresh database per server, cloned from the empty `cognitive_wealth`, which carries the roles'
-# default privileges; database-level grants aren't copied, so they're repeated (as e2e does).
+# A fresh database per server, cloned from the empty `cognitive_wealth`, which holds the roles'
+# privileges, with the `connect` grant a clone doesn't copy repeated (`packages/db/CLAUDE.md`).
 "${compose[@]}" exec -T db sh -c 'PGPASSWORD="$(cat /run/secrets/postgres_password)" psql -q -v ON_ERROR_STOP=1 -U postgres -d postgres' <<SQL
 drop database if exists "$database" with (force);
 create database "$database" owner migrator template cognitive_wealth;
