@@ -99,9 +99,10 @@ SQL
   pnpm exec turbo build --filter=web --output-logs=errors-only)
 
 # The custodian's example Deliveries, ingested into the world's Firm, so pages that show Positions
-# have data (#147). A ref from before Ingestion has neither the CLI nor the fixtures.
+# have data (#147). A ref from before Ingestion has neither the script nor the fixtures; the
+# script names whichever entry the ref has (its own file before #234, `cw` after).
 feed="$app/apps/custodian/fixtures/feed"
-if [ -f "$app/packages/portfolio/src/cli/ingest.ts" ] && [ -d "$feed" ]; then
+if grep -q '"custodian:ingest"' "$app/package.json" && [ -d "$feed" ]; then
   for delivery in "$feed"/*/; do
     (cd "$app" &&
       DATABASE_URL="postgres://app@localhost:5433/$database" \

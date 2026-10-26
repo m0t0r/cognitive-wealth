@@ -1,8 +1,9 @@
-// What `cw`'s commands reach outside themselves for: the database, the checkout, GitHub and
-// Claude. `createCli` takes them as one object, so a test hands in its own (a test database, a
-// fake sweep, issues in memory, a canned answer) and runs the real command in-process. The defaults
-// load their modules only when a command asks, so `cw dev prune` never loads the database schema
-// and `cw org …` never loads `@repo/dev-env` or the AI SDK.
+// What `cw`'s commands reach outside themselves for: the database, the checkout and its dev
+// environment, GitHub, Claude, and the cve.now scan. `createCli` takes them as one object, so a
+// test hands in its own (a test database, a fake sweep, issues in memory, a canned answer) and runs
+// the real command in-process. The defaults load their modules only when a command asks, so
+// `cw dev prune` never loads the database schema and `cw org …` never loads `@repo/dev-env` or
+// the AI SDK.
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";

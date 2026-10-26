@@ -11,6 +11,7 @@ flowchart TB
   devenv["@repo/dev-env<br/>a worktree's own dev database and Redis prefix"]
   cli["@repo/cli<br/>pnpm cw, on incur"]
   friction["@repo/friction-bot<br/>friction reports, Claude via the AI SDK"]
+  cvescan["@repo/cve-scan<br/>weekly cve.now scan"]
   custodian["custodian<br/>FastAPI, Python, uv"]
   client["@repo/custodian-client<br/>Orval fetch client, Zod schemas"]
 
@@ -39,5 +40,9 @@ flowchart TB
   cli --> db
   cli --> devenv
   cli --> friction
+  cli --> households
+  cli --> portfolio
+  cli -->|"dev sign-in"| testing
+  cli --> cvescan
 
   client -.->|"generated from openapi.json"| custodian

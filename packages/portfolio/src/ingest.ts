@@ -113,7 +113,7 @@ class Refusal extends Error {
  * the contract and every account number against the Firm's Accounts.
  *
  * Idempotent: the same Delivery again writes nothing and says `already_ingested`. Framework-
- * agnostic, so `pnpm custodian:ingest` and the background job (#56) share it.
+ * agnostic, so `cw custodian ingest` and the background job (#56) share it.
  */
 export async function ingestDelivery(
   db: Database,

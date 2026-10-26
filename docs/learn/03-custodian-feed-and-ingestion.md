@@ -570,7 +570,7 @@ All of these are general practice, and each Custodian documents its own format f
 | #37   | The Custodian writes a Delivery for a date: five CSV files and `manifest.json`, written last, the same bytes every run |
 | #38   | `openapi.json` publishes each file's row format; Cognitive Wealth generates its client and Zod schemas from it         |
 | #39   | Cognitive Wealth's Households and Accounts, from the world file, so Ingestion has Accounts to match                    |
-| #40   | `pnpm custodian:ingest <date>`: Ingestion of one Delivery, from the command line                                       |
+| #40   | `pnpm custodian:ingest <date>` (now `cw custodian ingest`, #234): Ingestion of one Delivery, from the command line     |
 | #54   | SeaweedFS replaces the local folder                                                                                    |
 | #56   | A background job ingests each Close as it happens                                                                      |
 | #61   | One trace (a timed record of every step) follows a day from the Close through Ingestion                                |
