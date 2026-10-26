@@ -1,11 +1,11 @@
-# The checks a contributor runs before a PR (CLAUDE.md, "Commands"), on every PR to dev and every
-# push to it. e2e isn't here yet: it builds web and needs the full stack.
+# The checks a contributor runs before a PR (CLAUDE.md, "Commands"), on every PR to dev. Not on the
+# push a merge makes: the PR's run already checked it, so a push straight to dev goes unchecked
+# unless it's run by hand. friction-fix.yml dispatches it for the bot's PR, whose pushes don't
+# trigger workflows. e2e isn't here yet: it builds web and needs the full stack.
 name: CI
 
 on:
   pull_request:
-    branches: [dev]
-  push:
     branches: [dev]
   workflow_dispatch:
 
