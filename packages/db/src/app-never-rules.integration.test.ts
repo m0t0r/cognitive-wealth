@@ -4,6 +4,7 @@
 // breaking one means changing this file too, which a reviewer reads as a rule change, not a grant.
 // Records are kept safe from alteration and destruction (Rule 204-2(g)(3)(i), #189).
 import { sql } from "drizzle-orm";
+import { BETTER_AUTH_TABLES } from "./better-auth-tables";
 import type { connect } from "./connect";
 import { test } from "./testing";
 
@@ -32,22 +33,8 @@ const NATURAL_KEYS = [
   { table: "security", column: "identifier" },
 ];
 
-/**
- * Better Auth updates its rows through table-wide `update`, which covers `id` and `public_id`, so
- * the rule on those two covers Cognitive Wealth's own tables only.
- */
-const BETTER_AUTH_TABLES = [
-  "account",
-  "invitation",
-  "member",
-  "organization",
-  "session",
-  "user",
-  "verification",
-];
-
 /** A `text[]` literal; Drizzle would spread a plain array into a list of parameters. */
-function textArray(values: string[]) {
+function textArray(values: readonly string[]) {
   return sql`array[${sql.join(
     values.map((value) => sql`${value}`),
     sql`, `,
@@ -76,7 +63,8 @@ async function neverRuleBreaches(db: PostgresDatabase): Promise<string[]> {
       and has_table_privilege('app', c.oid, 'TRUNCATE')
   `);
   // Every `firm_id`, and every `id` and `public_id` off Better Auth's tables, so a table a later
-  // migration creates is covered too.
+  // migration creates is covered too. Better Auth updates its rows through table-wide `update`,
+  // which covers those two, so they hold on Cognitive Wealth's own tables only.
   const identifiers = await db.execute<{ breach: string }>(sql`
     select format('app may update %s.%s', c.relname, a.attname) as breach
     from pg_attribute a

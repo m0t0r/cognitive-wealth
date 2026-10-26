@@ -1,3 +1,8 @@
+import { BETTER_AUTH_TABLES } from "@repo/db/better-auth-tables";
+import * as schema from "@repo/db/schema";
+import { getSchema } from "better-auth/db";
+import { getTableName, is } from "drizzle-orm";
+import { PgTable } from "drizzle-orm/pg-core";
 import { authTest as test, internalIdKeys } from "./testing";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -7,6 +12,19 @@ describe("schema", () => {
     const context = await t.auth.$context;
     expect(context.explicitSchemaCheck).toBeTypeOf("function");
     await expect(context.explicitSchemaCheck!()).resolves.toBeUndefined();
+  });
+
+  // `@repo/db`'s never-rules exempt these tables by name; a Better Auth upgrade or a plugin that
+  // adds, drops or renames one fails here rather than slipping past them.
+  test("needs exactly BETTER_AUTH_TABLES", async ({ t }) => {
+    // Better Auth's Drizzle adapter finds a model's table under its key in `schema`.
+    const exports = new Map<string, unknown>(Object.entries(schema));
+    const tables = Object.keys(getSchema(t.auth.options)).map((model) => {
+      const table = exports.get(model);
+      return is(table, PgTable) ? getTableName(table) : `${model} (no table in @repo/db/schema)`;
+    });
+
+    expect(tables.toSorted()).toEqual(BETTER_AUTH_TABLES);
   });
 });
 
