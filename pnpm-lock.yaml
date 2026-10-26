@@ -321,6 +321,9 @@ importers:
       '@types/node':
         specifier: 26.6.5
         version: 26.6.5
+      drizzle-orm:
+        specifier: 0.45.4
+        version: 0.45.4(@electric-sql/pglite@0.5.11)(kysely@0.29.7)(postgres@3.4.9)
       testcontainers:
         specifier: 12.2.1
         version: 12.2.1

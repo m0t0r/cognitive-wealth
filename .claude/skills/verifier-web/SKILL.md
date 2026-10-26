@@ -20,6 +20,7 @@ This is the default for every run. It runs the production build of `web` against
 
 - **Services.** It starts `compose.verify.yaml`, a separate Compose project (`cognitive-wealth-verify`) that keeps everything in memory: Postgres on `:5433`, Redis on `:6380`, Mailpit on `:8026`.
 - **Fresh data each run.** Every run gives its server a new database, `verify_<token>_head` (or `_ref`, where the token is the worktree's and `main` in the main checkout), cloned from the empty template. That ref's own migrations and the seed are applied to it, then the custodian's example Deliveries (`apps/custodian/fixtures/feed/`, through `custodian:ingest`) into Larkspur, so pages that show Positions have data. The server gets its own Redis key prefix. Each run starts from that state and nothing carries over between runs.
+- **The change's own data.** When the world file doesn't have what the change shows, pass `--seed <file>:<export>` with the e2e helper that seeds it, e.g. `--seed apps/web-e2e/support/households.ts:seedHouseholdOfGrace`. It runs after the world and the Deliveries, through `packages/db/src/cli/run-seed.ts`, and prints what the helper returns (here the new Household's `publicId`). Pass the same `--seed` to the `--ref` run, so before and after have the same data: it always comes from the working tree, so a helper that writes a table or column the ref doesn't have fails there. Write the helper in `apps/web-e2e/support/`, where the e2e test uses it too, never as raw SQL.
 - **What it prints.** On stderr, the run's `DATABASE_URL` and password file (for a CLI pointed at it, or a query) and a file of the Households' names and `publicId`s, `households-<head|ref>.tsv` in the state directory below, to build URLs from; ids change every run. The URL is stdout's last line. `owner@` signs in to Larkspur, the world's Firm.
 - **Build.** It runs `turbo build --filter=web` and serves the standalone server with `NODE_ENV=production`, the same artifact the Docker image and e2e run. An unchanged build comes from Turbo's cache, so the whole script takes about 3 s.
 - **`--ref`.** It builds that ref in the main checkout's `.dev/worktrees/<token>-<sha>`; the first build there takes about 20 s.
@@ -27,13 +28,21 @@ This is the default for every run. It runs the production build of `web` against
 - **A taken port is refused before anything changes.** If anything but this checkout's own server listens on the port (another worktree whose pair happens to be the same, or any other process), the script exits without dropping a database or stopping a process. Pass `--port` with a free one.
 - **State.** Pidfiles and server logs go to the main checkout's `.dev/verify/<token>/`, so removing a worktree (its teardown, `pnpm dev:prune`) still finds its server, databases and `--ref` checkouts and removes them.
 
-Use the Docker build (`docker compose -f compose.yaml -f compose.dev.yaml up --build -d`, app at `http://localhost:3000`) only when one of these holds:
+Use the Docker build only when one of these holds:
 
-- the change touches what only the image exercises: `apps/web/Dockerfile`, `compose*.yaml`, `docker/`, `next.config.ts` output or file tracing, or how env and secrets reach the server;
+- the change touches what only the images exercise: `apps/web/Dockerfile`, `apps/custodian/Dockerfile`, `compose*.yaml`, `docker/`, `next.config.ts` output or file tracing, or how env and secrets reach the server;
 - you're taking the final evidence for a major feature's PR;
 - the user asks for it.
 
-That stack runs on the dev database, so stage its data with `pnpm org:create` and never wipe its volume. The seeded users are listed in [docs/dev-sign-in.md](../../../docs/dev-sign-in.md). The rest of this skill uses `$APP` for the app URL.
+Run it with `compose.sh`, never a plain `docker compose up`, which is the dev stack's project (`cognitive-wealth`) and its volumes:
+
+```sh
+.claude/skills/verifier-web/compose.sh up                # every service in compose.yaml; or name some: up custodian
+.claude/skills/verifier-web/compose.sh ps                # any other docker compose command: logs, exec, ...
+.claude/skills/verifier-web/compose.sh down              # stops it and deletes its volumes
+```
+
+It builds the checkout's own `compose.yaml` into a project of its own, `cw-compose-<token>`, with fresh volumes and host ports offset from the checkout's port pair (it prints the web, custodian and Mailpit URLs; the main checkout's are `:4100`, `:5100` and `:6100`). A worktree has no `.secrets/`, so it gets throwaway ones in its own. Its databases start migrated but empty, with no users, and compose.yaml publishes no Postgres port to the host, so add data inside the stack (`compose.sh exec db psql …`). A worktree's teardown removes the project with its volumes, so a forgotten `down` doesn't outlive the worktree. The rest of this skill uses `$APP` for the app URL.
 
 ## 2. Sign in and start the shared browser
 

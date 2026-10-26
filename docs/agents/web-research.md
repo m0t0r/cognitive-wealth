@@ -18,6 +18,8 @@ A citation rests on the page itself, read by you. A search engine's summary of a
 
    Spell the session ID out in each command and open one page per command, as the worktree rules in CLAUDE.md require. `--headed` takes effect when the browser starts, so `close` a headless one first.
 
+   Some sites refuse a second navigation in the same session: on investor.gov (2026-10-25) the first page opened and the next `open` failed with `net::ERR_HTTP2_PROTOCOL_ERROR`, every retry. Then `close` and reopen the session headed for each page, as above. For several pages, put the four commands in a loop in a `.dev/scratch/` script (`for url in "$@"`) and run it with `sh <file> <url> ...`, since loops can't run in the Bash tool from a worktree; give a reviewer subagent the same script.
+
 4. **Another copy of the same primary text.** US government sites turn away WebFetch: eCFR redirects to `unblock.federalregister.gov`, and congress.gov, senate.gov and federalregister.gov return a 403 or a bot check. The same text is published where WebFetch can read it:
 
    | Text                                | Fetchable copy                                                                 |

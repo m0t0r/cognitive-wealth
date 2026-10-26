@@ -2,7 +2,7 @@
 // production servers its `start-app.sh` runs (pidfiles under the main checkout's
 // `.dev/verify/<token>/`, which outlive the worktree), the `--ref` checkouts it builds
 // (`.dev/worktrees/<token>-<sha>`) and the shared headless Chrome while this checkout holds it
-// (`.dev/verify/chrome.*`). Its databases are dropped with the worktree's own (`teardown.ts`).
+// (`.dev/verify/chrome.*`), and the Compose project its `compose.sh` runs. Its databases are dropped with the worktree's own (`teardown.ts`).
 // Node runs the CLIs that import this directly (type stripping), so relative imports keep their
 // `.ts` extension.
 import { execFileSync } from "node:child_process";
@@ -75,6 +75,41 @@ export function removeRefCheckouts({
   return checkouts.length > 0
     ? `removed the --ref checkouts ${checkouts.join(", ")}`
     : "no --ref checkout";
+}
+
+/** Every Compose project's name, stopped ones included; none when Docker isn't running. */
+export function composeProjectNames(): string[] {
+  try {
+    const out = execFileSync("docker", ["compose", "ls", "--all", "--format", "json"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const projects: unknown = JSON.parse(out);
+    if (!Array.isArray(projects)) return [];
+    return projects.flatMap((project: unknown) =>
+      typeof project === "object" &&
+      project !== null &&
+      "Name" in project &&
+      typeof project.Name === "string"
+        ? [project.Name]
+        : [],
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Removes `compose.sh`'s Compose project for `token`, volumes included: they hold only that
+ * checkout's throwaway data. Compose finds the containers by the project's label, so no file is
+ * needed, and a worktree that's gone still has its project removed.
+ */
+export function removeComposeProject(project: string): string {
+  if (!composeProjectNames().includes(project)) return "no Compose project";
+  execFileSync("docker", ["compose", "-p", project, "down", "--volumes", "--remove-orphans"], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return `removed the Compose project ${project}`;
 }
 
 /** The shared Chrome's files: its pid, its throwaway profile and the checkout holding it. */

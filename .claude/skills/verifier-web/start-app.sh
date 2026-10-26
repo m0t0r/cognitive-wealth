@@ -4,7 +4,7 @@
 # building an image. Each server gets a fresh database (seeded, with the custodian's example
 # Deliveries ingested) and its own Redis key prefix.
 #
-#   start-app.sh [--port <n>] [--ref <git ref>]
+#   start-app.sh [--port <n>] [--ref <git ref>] [--seed <file>[:<export>]]
 #
 # Without --ref it serves the working tree; with --ref (say the PR's base, for "before" captures)
 # it checks that ref out into .dev/worktrees/<token>-<sha>, builds it there and serves it, each from
@@ -13,14 +13,19 @@
 # @repo/dev-env (verify-names.ts), so runs from different worktrees never touch each other's, and
 # worktree teardown removes them. The main checkout keeps :3100 and :3101.
 # Turbo restores an unchanged build from its cache, so a rerun costs seconds, not a rebuild.
+# --seed then runs one more seed function, such as the change's own e2e helper
+# (apps/web-e2e/support/households.ts:seedHouseholdOfGrace), through @repo/db's run-seed.ts (#164).
+# Both come from the working tree, even with --ref, so before and after get the same data.
 set -euo pipefail
 
-port="" ref=""
+port="" ref="" seed=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --port) port=$2; shift 2 ;;
     --ref) ref=$2; shift 2 ;;
-    *) echo "usage: start-app.sh [--port <n>] [--ref <git ref>]" >&2; exit 2 ;;
+    # Absolute, since the seed runs from the working tree whichever checkout is served.
+    --seed) seed="$(realpath "${2%%:*}")${2#"${2%%:*}"}"; shift 2 ;;
+    *) echo "usage: start-app.sh [--port <n>] [--ref <git ref>] [--seed <file>[:<export>]]" >&2; exit 2 ;;
   esac
 done
 
@@ -103,6 +108,12 @@ if [ -f "$app/packages/portfolio/src/cli/ingest.ts" ] && [ -d "$feed" ]; then
         DATABASE_PASSWORD_FILE="$secrets/db_app_password" \
         pnpm --silent custodian:ingest "$(basename "$delivery")" --root "$feed" >/dev/null)
   done
+fi
+
+if [ -n "$seed" ]; then
+  DATABASE_URL="postgres://app@localhost:5433/$database" \
+    DATABASE_PASSWORD_FILE="$secrets/db_app_password" \
+    node "$VERIFY_TOP/packages/db/src/cli/run-seed.ts" "$seed" >&2
 fi
 
 # Each run's ids are new, so list the Households' publicIds for URLs, with the database to query.
