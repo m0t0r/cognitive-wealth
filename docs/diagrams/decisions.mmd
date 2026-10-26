@@ -20,6 +20,7 @@ flowchart LR
   a19["0019 Market data pinned<br/>or committed"]
   a20["0020 Row-level security<br/>per Firm"]
   a21["0021 Records can't<br/>be deleted"]
+  a22["0022 A Firm that leaves<br/>is deactivated"]
 
   ir["incident-response.md"]
   host["Hosting must keep<br/>after() work alive"]
@@ -52,3 +53,6 @@ flowchart LR
   a4 -->|"server code still<br/>could delete"| a21
   a13 -->|"exact Rates,<br/>no floats"| a19
   a17 -->|"same inputs,<br/>same Deliveries"| a19
+  a21 -->|"a Firm that<br/>leaves stays"| a22
+  a2 -->|"the tenant<br/>falls back"| a22
+  a20 -->|"withFirm<br/>refuses it"| a22
