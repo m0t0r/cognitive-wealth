@@ -48,6 +48,9 @@
     "max-params": ["error", { "max": 2 }],
     // ... and a parameter type of more than 3 members gets a name.
     "repo/max-inline-param-type-members": ["error", { "max": 3 }],
+    // Every page under apps/web/app/(app)/ that renders renders <AppShellSync /> (docs/auth.md,
+    // "Client navigation"); the rule checks the path itself.
+    "repo/app-page-renders-shell-sync": "error",
     "typescript/no-floating-promises": "error",
     "typescript/no-misused-promises": "error",
     "jsx-a11y/alt-text": "error",
