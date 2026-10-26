@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { parse } from "csv-parse/sync";
-import { eq, sql } from "drizzle-orm";
+import { eq, getTableName, sql } from "drizzle-orm";
 import { CliError, deactivateOrganization } from "./cli/organizations";
 import { type Manifest, exportRecords } from "./cli/records-export";
 import { seedFirm } from "./firm-test-data";
@@ -18,6 +18,7 @@ import { test as base } from "./testing";
 
 const execFileAsync = promisify(execFile);
 const byNumber = (a: number, b: number) => a - b;
+const RECORD_NAMES = RECORD_TABLES.map(({ table }) => getTableName(table));
 
 const TRICKY = 'Reyes, "the elder"\nsecond line';
 const METADATA = { note: "a, b", nested: { quote: '"q"', list: [1, 2] } };
@@ -112,18 +113,14 @@ describe("exportRecords", () => {
     await seedExportFirm(migratorOrm, "globex");
     const out = join(parent, "acme-export");
 
-    const result = await exportRecords(migratorOrm.$client, {
+    const result = await exportRecords(migratorOrm, {
       slug: "acme",
       out,
       reason: "SEC exam request of 2026-10-26",
     });
 
     expect((await readdir(out)).toSorted()).toEqual(
-      [
-        ...RECORD_TABLES.map(({ table }) => `${table}.csv`),
-        "README.md",
-        "manifest.json",
-      ].toSorted(),
+      [...RECORD_NAMES.map((table) => `${table}.csv`), "README.md", "manifest.json"].toSorted(),
     );
     const manifest: Manifest = JSON.parse(await readFile(join(out, "manifest.json"), "utf8"));
     expect(manifest).toMatchObject({
@@ -131,9 +128,7 @@ describe("exportRecords", () => {
       firm: { slug: "acme", publicId: acme.publicId, state: "active" },
     });
     expect(result).toMatchObject({ out, firmState: "active" });
-    expect(manifest.files.map(({ table }) => table)).toEqual(
-      RECORD_TABLES.map(({ table }) => table),
-    );
+    expect(manifest.files.map(({ table }) => table)).toEqual(RECORD_NAMES);
   });
 
   test("puts no row of another Firm in any file", async ({ migratorOrm, parent }) => {
@@ -141,10 +136,10 @@ describe("exportRecords", () => {
     await seedExportFirm(migratorOrm, "globex");
     const out = join(parent, "out");
 
-    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+    await exportRecords(migratorOrm, { slug: "acme", out, reason: "Firm's own request" });
 
     const files = await Promise.all(
-      RECORD_TABLES.map(async ({ table }) => ({ table, rows: await readCsv(out, `${table}.csv`) })),
+      RECORD_NAMES.map(async (table) => ({ table, rows: await readCsv(out, `${table}.csv`) })),
     );
     for (const { table, rows } of files) {
       for (const row of rows) {
@@ -169,7 +164,7 @@ describe("exportRecords", () => {
     await seedExportFirm(migratorOrm, "globex");
     const out = join(parent, "out");
 
-    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+    await exportRecords(migratorOrm, { slug: "acme", out, reason: "Firm's own request" });
 
     const manifest: Manifest = JSON.parse(await readFile(join(out, "manifest.json"), "utf8"));
     const contents = await Promise.all(manifest.files.map(({ file }) => readFile(join(out, file))));
@@ -192,7 +187,7 @@ describe("exportRecords", () => {
     await seedExportFirm(migratorOrm, "acme");
     const out = join(parent, "out");
 
-    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+    await exportRecords(migratorOrm, { slug: "acme", out, reason: "Firm's own request" });
 
     const households = await readCsv(out, "household.csv");
     expect(households.map((row) => row.name)).toContain(TRICKY);
@@ -208,7 +203,7 @@ describe("exportRecords", () => {
     const acme = await seedExportFirm(migratorOrm, "acme");
     const out = join(parent, "out");
 
-    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+    await exportRecords(migratorOrm, { slug: "acme", out, reason: "Firm's own request" });
 
     const manifestBytes = await readFile(join(out, "manifest.json"));
     const manifest: Manifest = JSON.parse(manifestBytes.toString("utf8"));
@@ -234,7 +229,7 @@ describe("exportRecords", () => {
     await deactivateOrganization(migratorOrm, { slug: "acme", reason: "Closed" });
     const out = join(parent, "out");
 
-    const result = await exportRecords(migratorOrm.$client, {
+    const result = await exportRecords(migratorOrm, {
       slug: "acme",
       out,
       reason: "Firm's own request",
@@ -247,11 +242,34 @@ describe("exportRecords", () => {
     expect(event?.metadata).toMatchObject({ firmState: "deactivated" });
   });
 
+  test("reads a table larger than one batch whole, each row once and in order", async ({
+    migratorOrm,
+    parent,
+  }) => {
+    const acme = await seedExportFirm(migratorOrm, "acme");
+    // Past two batches of 1,000, so the reads after the first and the last partial one both run.
+    await migratorOrm.insert(household).values(
+      Array.from({ length: 2500 }, (_, index) => ({
+        firmId: acme.firmId,
+        name: `Household ${index}`,
+        relationshipStatus: "prospect" as const,
+      })),
+    );
+    const out = join(parent, "out");
+
+    await exportRecords(migratorOrm, { slug: "acme", out, reason: "Firm's own request" });
+
+    const ids = (await readCsv(out, "household.csv")).map((row) => Number(row.id));
+    expect(ids).toHaveLength(2502);
+    expect(new Set(ids).size).toBe(2502);
+    expect(ids).toEqual(ids.toSorted(byNumber));
+  });
+
   test("makes the folder 0700 and every file 0600", async ({ migratorOrm, parent }) => {
     await seedExportFirm(migratorOrm, "acme");
     const out = join(parent, "out");
 
-    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+    await exportRecords(migratorOrm, { slug: "acme", out, reason: "Firm's own request" });
 
     expect((await stat(out)).mode & 0o777).toBe(0o700);
     const files = await readdir(out);
@@ -264,7 +282,7 @@ describe("exportRecords", () => {
     const out = join(parent, "out");
     await mkdir(out);
 
-    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+    await exportRecords(migratorOrm, { slug: "acme", out, reason: "Firm's own request" });
 
     expect(await readdir(out)).toContain("manifest.json");
   });
@@ -276,7 +294,7 @@ describe("exportRecords", () => {
     await writeFile(join(out, "keep.txt"), "mine");
 
     await expect(
-      exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" }),
+      exportRecords(migratorOrm, { slug: "acme", out, reason: "Firm's own request" }),
     ).rejects.toThrow(CliError);
     expect(await readdir(out)).toEqual(["keep.txt"]);
     expect(await readdir(parent)).toEqual(["out"]);
@@ -287,7 +305,7 @@ describe("exportRecords", () => {
     await seedExportFirm(migratorOrm, "acme");
 
     await expect(
-      exportRecords(migratorOrm.$client, {
+      exportRecords(migratorOrm, {
         slug: "nope",
         out: join(parent, "out"),
         reason: "Firm's own request",
@@ -300,7 +318,7 @@ describe("exportRecords", () => {
     await seedExportFirm(migratorOrm, "acme");
 
     await expect(
-      exportRecords(orm.$client, {
+      exportRecords(orm, {
         slug: "acme",
         out: join(parent, "out"),
         reason: "Firm's own request",
@@ -322,7 +340,7 @@ describe("exportRecords", () => {
     `);
 
     await expect(
-      exportRecords(migratorOrm.$client, {
+      exportRecords(migratorOrm, {
         slug: "acme",
         out: join(parent, "out"),
         reason: "Firm's own request",
@@ -335,14 +353,17 @@ describe("exportRecords", () => {
 
   test("reads in one repeatable read, read only transaction", async ({ migratorOrm, parent }) => {
     await seedExportFirm(migratorOrm, "acme");
-    const client = migratorOrm.$client;
     // A spy still calls through, so this only records the options the transaction opens with.
-    const begin = vi.spyOn(client, "begin");
+    const transaction = vi.spyOn(migratorOrm, "transaction");
 
-    await exportRecords(client, { slug: "acme", out: join(parent, "out"), reason: "Firm's own" });
+    await exportRecords(migratorOrm, {
+      slug: "acme",
+      out: join(parent, "out"),
+      reason: "Firm's own",
+    });
 
-    expect(begin.mock.calls.map(([options]) => options)).toEqual([
-      "isolation level repeatable read read only",
+    expect(transaction.mock.calls.map(([, config]) => config)).toEqual([
+      { isolationLevel: "repeatable read", accessMode: "read only" },
     ]);
   });
 });

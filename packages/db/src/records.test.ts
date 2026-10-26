@@ -10,13 +10,13 @@ const schemaTables = Object.values(schema)
 
 describe("the record-table lists", () => {
   it("name every schema table exactly once, exported or excluded", () => {
-    const listed = [...RECORD_TABLES, ...EXCLUDED_TABLES].map(({ table }) => table);
+    const listed = [...RECORD_TABLES, ...EXCLUDED_TABLES].map(({ table }) => getTableName(table));
     expect(listed.toSorted()).toEqual(schemaTables);
   });
 
   it("give every excluded table a reason", () => {
     for (const { table, reason } of EXCLUDED_TABLES) {
-      expect(reason.trim(), table).not.toBe("");
+      expect(reason.trim(), getTableName(table)).not.toBe("");
     }
   });
 });

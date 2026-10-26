@@ -2,10 +2,8 @@
 // table in `RECORD_TABLES`, `manifest.json` (the index) and `README.md`, read as `migrator` in one
 // snapshot and audited as `org.records_exported`. Rule 204-2(g)(2) asks for records arranged for
 // "easy location, access, and retrieval" and a "true and complete copy", and names no format, so
-// it's CSV, which any spreadsheet or database opens. It queries through postgres.js rather than
-// Drizzle's builders (packages/db/CLAUDE.md), because it streams through a cursor, casts every
-// column to text and names its tables from `RECORD_TABLES`. Imports `organizations.ts`, so a Node
-// entry loads this after `registerTsResolution()`.
+// it's CSV, which any spreadsheet or database opens. Imports the schema, so a Node entry loads this
+// after `registerTsResolution()`.
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, readdir, rename, rm, writeFile } from "node:fs/promises";
@@ -13,8 +11,22 @@ import { once } from "node:events";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { finished } from "node:stream/promises";
 import { parseArgs } from "node:util";
-import type postgres from "postgres";
+import {
+  type SQL,
+  and,
+  asc,
+  eq,
+  getTableColumns,
+  getTableName,
+  gt,
+  inArray,
+  or,
+  sql,
+} from "drizzle-orm";
+import type { PgColumn } from "drizzle-orm/pg-core";
+import type { Database } from "../index.ts";
 import { EXCLUDED_TABLES, RECORD_TABLES, type RecordTable } from "../records.ts";
+import { auditEvent, invitation, member, organization } from "../schema/index.ts";
 import { csvRow } from "./csv.ts";
 import { CliError, normalizeSlug, parseReason } from "./organizations.ts";
 
@@ -24,8 +36,12 @@ export const MANIFEST_VERSION = 1;
 /** The role a Records export reads as: the tables' owner, which row-level security doesn't hold. */
 const EXPORT_ROLE = "migrator";
 
-/** Rows fetched per round trip. Rows are written as they come, so no table is held in memory. */
-const CURSOR_ROWS = 1000;
+/**
+ * Rows read per query. A table is read in batches by `id` (each after the last one's), all in the
+ * one snapshot, and written as they come, so no table is held in memory. Drizzle has no cursor on
+ * postgres.js; every record table has an `id` primary key, so the batches cover it exactly.
+ */
+const BATCH_ROWS = 1000;
 
 export type FirmState = "active" | "deactivated";
 
@@ -75,10 +91,7 @@ type ExportArgs = { slug: string; out: string; reason: string };
  * throws. A failed move after it keeps the folder and names it. Throws `CliError`, writing nothing,
  * for an unknown slug, a non-empty `out` or another role.
  */
-export async function exportRecords(
-  client: postgres.Sql,
-  input: ExportArgs,
-): Promise<RecordsExport> {
+export async function exportRecords(db: Database, input: ExportArgs): Promise<RecordsExport> {
   const slug = normalizeSlug(input.slug);
   const reason = parseReason(input.reason);
   const out = resolve(input.out);
@@ -88,9 +101,10 @@ export async function exportRecords(
   const temp = await mkdtemp(join(dirname(out), `.${basename(out)}.partial-`));
   let exported: RecordsExport;
   try {
-    const snapshot = await client.begin("isolation level repeatable read read only", (tx) =>
-      readSnapshot(tx, { slug, dir: temp }),
-    );
+    const snapshot = await db.transaction((tx) => readSnapshot(tx, { slug, dir: temp }), {
+      isolationLevel: "repeatable read",
+      accessMode: "read only",
+    });
     const { firm } = snapshot;
     const firmState: FirmState = firm.deactivatedAt === null ? "active" : "deactivated";
     const manifest: Manifest = {
@@ -104,7 +118,10 @@ export async function exportRecords(
       },
       exportedAt: snapshot.exportedAt,
       files: snapshot.files,
-      excluded: EXCLUDED_TABLES.map(({ table, reason: why }) => ({ table, reason: why })),
+      excluded: EXCLUDED_TABLES.map(({ table, reason: why }) => ({
+        table: getTableName(table),
+        reason: why,
+      })),
     };
     const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
     await writeFile(join(temp, "manifest.json"), manifestText, { mode: 0o600, flag: "wx" });
@@ -113,21 +130,21 @@ export async function exportRecords(
     const tables = Object.fromEntries(snapshot.files.map(({ table, rows }) => [table, rows]));
 
     // Inserted directly, so a failure throws (writeAuditEvent would swallow it): an export that
-    // isn't in the audit trail isn't handed over. The metadata goes as JSON text: Drizzle replaces
-    // postgres.js's JSON serializer on a client it wraps, so `client.json()` isn't reliable here.
-    const metadata = JSON.stringify({ via: "cli", reason, firmState, tables, manifestHash });
+    // isn't in the audit trail isn't handed over.
     try {
-      await client`
-        insert into audit_event (action, actor_user_id, organization_id, target_type, target_id, metadata)
-        values (
-          'org.records_exported', null, ${firm.id}, 'organization', ${firm.publicId},
-          ${metadata}::jsonb
-        )
-      `;
+      await db.insert(auditEvent).values({
+        action: "org.records_exported",
+        // The operator running the CLI isn't a user, so there's no actor.
+        actorUserId: null,
+        organizationId: firm.id,
+        targetType: "organization",
+        targetId: firm.publicId,
+        metadata: { via: "cli", reason, firmState, tables, manifestHash },
+      });
     } catch (error) {
       throw new Error(
         `Couldn't record the export in the audit trail, so nothing was written: ` +
-          `${error instanceof Error ? error.message : String(error)}. Fix that, then run it again.`,
+          `${rootMessage(error)}. Fix that, then run it again.`,
         { cause: error },
       );
     }
@@ -158,6 +175,16 @@ export async function exportRecords(
   return exported;
 }
 
+/**
+ * The innermost cause's message: Drizzle wraps a database error as "Failed query: <SQL> params:
+ * <values>", which would print the audit metadata, and keeps Postgres's own reason as its cause.
+ */
+function rootMessage(error: unknown): string {
+  let current = error;
+  while (current instanceof Error && current.cause !== undefined) current = current.cause;
+  return current instanceof Error ? current.message : String(current);
+}
+
 /** Refuses an `out` that exists and isn't an empty folder: an export never mixes with other files. */
 async function assertEmptyOrMissing(out: string): Promise<void> {
   let entries: string[];
@@ -184,56 +211,60 @@ type Snapshot = { firm: SnapshotFirm; exportedAt: string; files: ManifestFile[] 
 
 type ReadSnapshotArgs = { slug: string; dir: string };
 
-async function readSnapshot(
-  tx: postgres.TransactionSql,
-  { slug, dir }: ReadSnapshotArgs,
-): Promise<Snapshot> {
+async function readSnapshot(tx: Database, { slug, dir }: ReadSnapshotArgs): Promise<Snapshot> {
   // Timestamps in UTC, whatever the server's default, so the files read the same anywhere.
-  await tx`set local timezone = 'UTC'`;
-  const [role] = await tx<{ name: string }[]>`select current_user as name`;
-  if (role?.name !== EXPORT_ROLE) {
-    throw new CliError(
-      `Connected as ${role?.name ?? "an unknown role"}, but a Records export reads as ` +
-        `${EXPORT_ROLE}, whom row-level security doesn't hold. Point DATABASE_URL and ` +
-        `DATABASE_PASSWORD_FILE at ${EXPORT_ROLE}.`,
-    );
-  }
-  const [row] = await tx<
-    { id: string; publicId: string; name: string; deactivatedAt: string | null; now: string }[]
-  >`
-    select id::text, public_id::text as "publicId", name,
-      to_json(deactivated_at) #>> '{}' as "deactivatedAt", to_json(now()) #>> '{}' as now
-    from organization where slug = ${slug}
-  `;
+  await tx.execute(sql`set local timezone = 'UTC'`);
+  const [row] = await tx
+    .select({
+      id: organization.id,
+      publicId: organization.publicId,
+      name: organization.name,
+      // As text, so the manifest keeps Postgres's microseconds.
+      deactivatedAt: sql<string | null>`to_json(${organization.deactivatedAt}) #>> '{}'`,
+      // The transaction's start: the moment of the snapshot.
+      exportedAt: sql<string>`to_json(now()) #>> '{}'`,
+      role: sql<string>`current_user`,
+    })
+    .from(organization)
+    .where(eq(organization.slug, slug));
   if (row === undefined) {
     throw new CliError(
       `No organization has the slug "${slug}". Check the slug (organization.slug); nothing was written.`,
     );
   }
-  const firm = {
-    id: Number(row.id),
-    publicId: row.publicId,
-    name: row.name,
-    deactivatedAt: row.deactivatedAt,
-  };
+  if (row.role !== EXPORT_ROLE) {
+    throw new CliError(
+      `Connected as ${row.role}, but a Records export reads as ${EXPORT_ROLE}, whom row-level ` +
+        `security doesn't hold. Point DATABASE_URL and DATABASE_PASSWORD_FILE at ${EXPORT_ROLE}.`,
+    );
+  }
+  const { exportedAt, role: _role, ...firm } = row;
   const files: ManifestFile[] = [];
   for (const spec of RECORD_TABLES) {
     // One at a time: a transaction is one connection, which runs one query at a time.
     // oxlint-disable-next-line no-await-in-loop
     files.push(await writeTable(tx, { spec, firmId: firm.id, dir }));
   }
-  return { firm, exportedAt: row.now, files };
+  return { firm, exportedAt, files };
 }
 
 type WriteTableArgs = { spec: RecordTable; firmId: number; dir: string };
 
-/** Streams one table's rows for the Firm into `<table>.csv`, hashing as it writes. */
+/** Writes one table's rows for the Firm into `<table>.csv`, batch by batch, hashing as it writes. */
 async function writeTable(
-  tx: postgres.TransactionSql,
+  tx: Database,
   { spec, firmId, dir }: WriteTableArgs,
 ): Promise<ManifestFile> {
-  const columns = await tableColumns(tx, spec);
-  const file = `${spec.table}.csv`;
+  const table = getTableName(spec.table);
+  const columns = recordColumns(spec);
+  const id = columnNamed({ spec, name: "id" });
+  const firmRows = firmFilter(tx, { spec, firmId });
+  // Every value as Postgres's own text form, so nothing is reshaped on the way: `numeric` keeps
+  // its digits, `timestamptz` its microseconds, `jsonb` is JSON text.
+  const selection = Object.fromEntries(
+    columns.map((column) => [column.name, sql<string | null>`${column}::text`]),
+  );
+  const file = `${table}.csv`;
   const stream = createWriteStream(join(dir, file), { mode: 0o600, flags: "wx" });
   const hash = createHash("sha256");
   const write = async (chunk: string) => {
@@ -243,60 +274,74 @@ async function writeTable(
   let rows = 0;
   try {
     await write(csvRow(columns.map(({ name }) => name)));
-    // Every value as Postgres's own text form, so nothing is reshaped on the way: `numeric` keeps
-    // its digits, `timestamptz` its microseconds, `jsonb` is JSON text.
-    const select = columns
-      .map(({ name }) => tx`${tx(name)}::text as ${tx(name)}`)
-      .reduce((list, column) => tx`${list}, ${column}`);
-    const query = tx<Record<string, string | null>[]>`
-      select ${select} from ${tx(spec.table)} where ${firmFilter(tx, { spec, firmId })} order by id
-    `;
-    for await (const batch of query.cursor(CURSOR_ROWS)) {
+    let after: number | undefined;
+    for (;;) {
+      // Each batch waits for the one before: the next starts after its last `id`.
+      // oxlint-disable-next-line no-await-in-loop
+      const batch = await tx
+        .select(selection)
+        .from(spec.table)
+        .where(after === undefined ? firmRows : and(firmRows, gt(id, after)))
+        .orderBy(asc(id))
+        .limit(BATCH_ROWS);
+      if (batch.length === 0) break;
       // Waiting for the file to drain before the next batch is what keeps memory flat.
+      // oxlint-disable-next-line no-await-in-loop
       await write(
         batch.map((values) => csvRow(columns.map(({ name }) => values[name] ?? null))).join(""),
       );
       rows += batch.length;
+      after = Number(batch.at(-1)?.id);
     }
   } finally {
     stream.end();
     await finished(stream);
   }
-  return { file, table: spec.table, rows, sha256: hash.digest("hex"), columns };
+  const described = columns.map((column) => ({ name: column.name, type: column.getSQLType() }));
+  return { file, table, rows, sha256: hash.digest("hex"), columns: described };
 }
 
-/** The table's columns as Postgres declares them, narrowed to `spec.columns` when it names some. */
-async function tableColumns(tx: postgres.TransactionSql, spec: RecordTable): Promise<Column[]> {
-  const all = await tx<Column[]>`
-    select attname as name, format_type(atttypid, atttypmod) as type
-    from pg_attribute
-    where attrelid = to_regclass(quote_ident(${spec.table})) and attnum > 0 and not attisdropped
-    order by attnum
-  `;
-  if (all.length === 0) throw new Error(`Table ${spec.table} doesn't exist`);
-  if (spec.columns === undefined) return [...all];
-  return spec.columns.map((name) => {
-    const column = all.find((candidate) => candidate.name === name);
-    if (column === undefined) throw new Error(`Table ${spec.table} has no column ${name}`);
-    return column;
-  });
+/** The table's columns in schema order, narrowed to `spec.columns` (in that order) when it names some. */
+function recordColumns(spec: RecordTable): PgColumn[] {
+  const all = Object.values(getTableColumns(spec.table));
+  if (spec.columns === undefined) return all;
+  return spec.columns.map((name) => columnNamed({ spec, name }));
+}
+
+/** The column whose Postgres name is `name`. */
+function columnNamed({ spec, name }: { spec: RecordTable; name: string }): PgColumn {
+  const column = Object.values(getTableColumns(spec.table)).find((each) => each.name === name);
+  if (column === undefined) throw new Error(`${getTableName(spec.table)} has no column ${name}`);
+  return column;
 }
 
 /** The `where` condition that keeps a table's rows to the Firm's. */
-function firmFilter(tx: postgres.TransactionSql, { spec, firmId }: Omit<WriteTableArgs, "dir">) {
+function firmFilter(tx: Database, { spec, firmId }: Omit<WriteTableArgs, "dir">): SQL {
   switch (spec.scope) {
     case "organization":
-      return tx`id = ${firmId}`;
+      return eq(columnNamed({ spec, name: "id" }), firmId);
     case "organization_id":
-      return tx`organization_id = ${firmId}`;
+      return eq(columnNamed({ spec, name: "organization_id" }), firmId);
     case "firm_id":
-      return tx`firm_id = ${firmId}`;
-    case "firm_users":
-      return tx`id in (
-        select user_id from member where organization_id = ${firmId}
-        union select inviter_id from invitation where organization_id = ${firmId}
-        union select actor_user_id from audit_event where organization_id = ${firmId}
-      )`;
+      return eq(columnNamed({ spec, name: "firm_id" }), firmId);
+    case "firm_users": {
+      const id = columnNamed({ spec, name: "id" });
+      const members = tx
+        .select({ id: member.userId })
+        .from(member)
+        .where(eq(member.organizationId, firmId));
+      const inviters = tx
+        .select({ id: invitation.inviterId })
+        .from(invitation)
+        .where(eq(invitation.organizationId, firmId));
+      const actors = tx
+        .select({ id: auditEvent.actorUserId })
+        .from(auditEvent)
+        .where(eq(auditEvent.organizationId, firmId));
+      const referenced = or(inArray(id, members), inArray(id, inviters), inArray(id, actors));
+      if (referenced === undefined) throw new Error("firm_users has no condition");
+      return referenced;
+    }
     default: {
       const scope: never = spec.scope;
       throw new Error(`Unknown record scope ${String(scope)}`);
@@ -356,7 +401,7 @@ export function recordsReadme(manifest: Manifest): string {
   const state =
     firm.state === "active" ? "active" : `deactivated (since ${firm.deactivatedAt ?? "unknown"})`;
   const files = manifest.files.map((entry) => {
-    const spec = RECORD_TABLES.find(({ table }) => table === entry.table);
+    const spec = RECORD_TABLES.find(({ table }) => getTableName(table) === entry.table);
     return `| \`${entry.file}\` | ${entry.rows} | ${spec?.description ?? ""} |`;
   });
   const excluded = manifest.excluded.map(({ table, reason }) => `- \`${table}\`: ${reason}`);
