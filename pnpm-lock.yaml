@@ -373,6 +373,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@repo/cve-scan':
+        specifier: workspace:*
+        version: link:../cve-scan
       '@repo/db':
         specifier: workspace:*
         version: link:../db

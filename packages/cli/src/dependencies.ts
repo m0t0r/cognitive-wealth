@@ -12,6 +12,7 @@ import type { FixArgs, FixOutcome } from "@repo/friction-bot/fix";
 import type { GitHub } from "@repo/friction-bot/github";
 import type { TriageInput } from "@repo/friction-bot/reports";
 import type { Triage } from "@repo/friction-bot/triage";
+import { REPO_ROOT } from "./paths.ts";
 
 export type OpenedDatabase = {
   db: Database;
@@ -47,6 +48,18 @@ export type Claude = {
   fix: (args: Omit<FixArgs, "root" | "model"> & { root?: string }) => Promise<FixOutcome>;
 };
 
+export type CveScan = {
+  /** The checkout whose lockfiles and pins are scanned. */
+  root: string;
+  /** From GITHUB_TOKEN and GITHUB_REPOSITORY, when both are set (GitHub Actions sets them). */
+  github: import("@repo/cve-scan/github").GitHub | undefined;
+  /** GITHUB_STEP_SUMMARY: the file a workflow step's Markdown summary is appended to. */
+  stepSummaryFile: string | undefined;
+  scan: typeof import("@repo/cve-scan/scan").scan;
+  reportedIds: typeof import("@repo/cve-scan/github").reportedIds;
+  fileIssues: typeof import("@repo/cve-scan/publish").fileIssues;
+};
+
 export type Dependencies = {
   /** A connection of one, on `DATABASE_URL` or `apps/web/.env.local`'s; the command closes it. */
   openDatabase: (args?: OpenDatabaseArgs) => Promise<OpenedDatabase>;
@@ -54,6 +67,7 @@ export type Dependencies = {
   /** This repository's issues, through `gh`. */
   github: () => Promise<GitHub>;
   claude: () => Promise<Claude>;
+  cveScan: () => Promise<CveScan>;
 };
 
 /** The checkout `cw` runs from, whose CLAUDE.md and docs triage reads and the fixer edits. */
@@ -62,6 +76,22 @@ const ROOT = join(import.meta.dirname, "../../..");
 const read = (path: string) => readFile(join(ROOT, path), "utf8");
 
 export const defaultDependencies: Dependencies = {
+  async cveScan() {
+    const { scan } = await import("@repo/cve-scan/scan");
+    const { reportedIds } = await import("@repo/cve-scan/github");
+    const { fileIssues } = await import("@repo/cve-scan/publish");
+    // Set by GitHub Actions. `cw` isn't a Turborepo task, so turbo.json needn't list them.
+    // oxlint-disable-next-line turbo/no-undeclared-env-vars
+    const { GITHUB_TOKEN: token, GITHUB_REPOSITORY: repository, GITHUB_STEP_SUMMARY } = process.env;
+    return {
+      root: REPO_ROOT,
+      github: token && repository ? { token, repository } : undefined,
+      stepSummaryFile: GITHUB_STEP_SUMMARY || undefined,
+      scan,
+      reportedIds,
+      fileIssues,
+    };
+  },
   async openDatabase({ asMigrator = false } = {}) {
     const { describeDatabaseUrl, loadWebEnvFallback } = await import("@repo/db/cli/env");
     const { connectionConfig } = await import("@repo/db/config");

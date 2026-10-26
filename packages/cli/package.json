@@ -11,6 +11,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@repo/cve-scan": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/dev-env": "workspace:*",
     "@repo/friction-bot": "workspace:*",

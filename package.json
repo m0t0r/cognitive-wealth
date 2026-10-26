@@ -27,7 +27,7 @@
     "org:export": "node packages/cli/src/cli.ts org export",
     "org:deactivate": "node packages/cli/src/cli.ts org deactivate",
     "org:reactivate": "node packages/cli/src/cli.ts org reactivate",
-    "cve:scan": "node packages/cve-scan/src/cli/scan.ts",
+    "cve:scan": "node packages/cli/src/cli.ts cve scan",
     "cw": "node packages/cli/src/cli.ts"
   },
   "devDependencies": {
