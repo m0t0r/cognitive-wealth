@@ -3,8 +3,8 @@
 # Cognitive Wealth's (packages/db/docker/initdb/01-roles.sh), in a server of its own:
 # - `migrator` owns the database and runs DDL (Alembic, `pnpm --filter custodian db:migrate`)
 # - `app` reads and writes rows (the custodian service), with only the access each migration grants
-# Unlike Cognitive Wealth's, `app` gets no default privileges: a new table is closed to it until its
-# migration grants what it needs, so the append-only Ledger can't be opened up by omission.
+# As in Cognitive Wealth's (#190), `app` gets no default privileges: a new table is closed to it
+# until its migration grants what it needs, so the append-only Ledger can't be opened by omission.
 # Passwords are read from mounted secrets inside psql, so they never appear in argv or env.
 set -eu
 

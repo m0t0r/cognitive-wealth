@@ -139,7 +139,11 @@ describe("Firm isolation", () => {
     ).rejects.toMatchObject(RLS_VIOLATION);
   });
 
-  isolated("refuses moving a row to another Firm", async ({ orm, firms }) => {
+  // `app` may update no table's `firm_id` (APP_PRIVILEGES), so this test's own database grants it
+  // one, for the policy's check to be what refuses, as it would on a table that ever allows it.
+  isolated("refuses moving a row to another Firm", async ({ orm, migratorOrm, firms }) => {
+    await migratorOrm.execute(sql`grant update (firm_id) on table world_seed to app`);
+
     await expect(
       withFirm(orm, {
         firmId: firms.a,

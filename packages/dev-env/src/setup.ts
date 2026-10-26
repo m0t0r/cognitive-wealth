@@ -40,8 +40,9 @@ async function createDatabase({
   try {
     const [existing] = await client`select 1 from pg_database where datname = ${database}`;
     if (existing) return false;
-    // `cognitive_wealth` is the empty database the roles' default privileges were set up in;
-    // database-level grants aren't copied from a template, so they're repeated (as e2e does).
+    // `cognitive_wealth` is the empty database the roles' schema grant and sequence defaults were
+    // set up in (migrations grant the tables); database-level grants aren't copied from a
+    // template, so they're repeated (as e2e does).
     await client.unsafe(`create database "${database}" owner migrator template cognitive_wealth`);
     await client.unsafe(`revoke all on database "${database}" from public`);
     await client.unsafe(`grant connect on database "${database}" to app`);

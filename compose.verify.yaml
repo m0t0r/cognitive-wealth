@@ -5,7 +5,8 @@
 #   docker compose -f compose.yaml -f compose.verify.yaml up -d --wait db redis mailpit
 # Postgres on 127.0.0.1:5433, Redis on :6380, Mailpit SMTP on :1026 and UI/API on :8026. Each
 # verification server gets a fresh database cloned from the empty `cognitive_wealth` (which carries
-# the roles' default privileges) and its own Redis key prefix, so runs never see each other's data.
+# the roles' schema grant and sequence defaults; tables are granted by migrations) and its own Redis
+# key prefix, so runs never see each other's data.
 # Stop with `docker compose -f compose.yaml -f compose.verify.yaml down`; nothing persists.
 
 name: cognitive-wealth-verify

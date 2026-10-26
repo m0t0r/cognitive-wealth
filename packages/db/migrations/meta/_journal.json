@@ -57,6 +57,13 @@
       "when": 1793014423089,
       "tag": "0007_firm_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793036480230,
+      "tag": "0008_app_privileges",
+      "breakpoints": true
     }
   ]
 }

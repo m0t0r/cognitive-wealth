@@ -4,8 +4,8 @@ import { test } from "./testing";
 
 const INSUFFICIENT_PRIVILEGE = { cause: { code: "42501" } };
 
-// On the real Postgres, so `app` and its default privileges come from `docker/initdb/01-roles.sh`
-// itself and the audit migration's revoke runs against them, as in production.
+// On the real Postgres, so `app` comes from `docker/initdb/01-roles.sh` itself and its privileges
+// from the migrations, as in production. `app-privileges.integration.test.ts` checks every table.
 describe("audit_event for the app role", () => {
   test("allows insert and select", async ({ orm }) => {
     await orm.insert(auditEvent).values({ action: "auth.sign_in", metadata: { method: "otp" } });
@@ -29,7 +29,8 @@ describe("audit_event for the app role", () => {
     await expect(orm.delete(auditEvent)).rejects.toMatchObject(INSUFFICIENT_PRIVILEGE);
   });
 
-  test("keeps full DML on other tables", async ({ orm }) => {
+  // Better Auth's tables keep it: it deletes sessions, sign-in codes and memberships by design.
+  test("refuses update and delete here, not on Better Auth's tables", async ({ orm }) => {
     const rows = await orm.execute(sql`
       select
         has_table_privilege('app', 'audit_event', 'update') as audit_update,
