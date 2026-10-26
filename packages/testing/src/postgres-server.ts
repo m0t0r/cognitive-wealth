@@ -14,7 +14,7 @@ const ROLES_SCRIPT = join(REPO_ROOT, "packages/db/docker/initdb/01-roles.sh");
 /**
  * The database the roles script sets up on a server `startPostgresServer` starts, left empty:
  * each package's template is copied from it, since the script's grants and `migrator`'s default
- * privileges belong to a database, and `template1` has neither.
+ * privileges belong to this database alone (`packages/db/CLAUDE.md`).
  */
 export const BASE_DATABASE = "test_base";
 
