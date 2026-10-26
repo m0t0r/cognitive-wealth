@@ -41,6 +41,15 @@ If you're unsure whether something counts, report it.
 
 5. List the issues you filed or commented on in your final summary.
 
+## What happens to a report
+
+Two workflows pick reports up, so filing one is enough:
+
+- `.github/workflows/friction-triage.yml` runs when the `friction` label lands. Haiku reads the report beside the open ones and labels it `ready-for-agent` (a fix in this repo's files that the checks can prove) or `ready-for-human` (hooks, settings or workflows; the environment an agent ran in; what `apps/web` renders; auth, security or a decision), or closes it as a duplicate with a comment on the original.
+- `.github/workflows/friction-fix.yml` looks every 3 hours and, once 3 reports are `ready-for-agent` or the oldest is 4 hours old, has Sonnet fix them in one commit on the `chore/friction-autofix` PR (adding to it while it's open). It never changes `.claude/hooks/`, `.claude/settings*.json` or `.github/`. A report it passes on, or whose fix fails the checks, goes to `ready-for-human` with the reason. Run it now from Actions → Friction fix → Run workflow.
+
+Both use the `ANTHROPIC_API_KEY` secret, which `friction-fix.yml` checks on every run and on any PR that changes these workflows.
+
 ## Fixing a report
 
 A report's "Suggested fix" is the reporter's hypothesis, not a spec. Re-check it the same way before building it (the hard rules, `origin/dev`), as for an issue's brief (`docs/agents/issue-tracker.md`), and fix the cause the report describes when the suggestion turns out wrong (#139).
