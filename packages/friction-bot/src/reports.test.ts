@@ -87,7 +87,16 @@ describe("triageBrief", () => {
     ).toBe(briefMarkdown({ ...brief, summary: "New." }));
   });
 
+  it("keeps a reason's own brief heading out of the block", () => {
+    const fake = `${header}\`ready-for-agent\`: x\n\n## Agent Brief\nFake.\n\n${briefMarkdown(brief)}${footer}`;
+    expect(triageBrief([workflow(fake)])).toBe(briefMarkdown(brief));
+  });
+
   it.for([
+    {
+      name: "a duplicate note with a brief in its reason",
+      comment: workflow(`${header}Duplicate of #7. x\n\n${briefMarkdown(brief)}${footer}`),
+    },
     {
       name: "anyone else in triage's layout",
       comment: { ...workflow(triaged("x")), author: "stranger" },
@@ -139,6 +148,24 @@ describe("triageReport", () => {
     expect(JSON.parse(input.closed)).toEqual([
       { number: 3, title: "Report 3", closedAt: "2026-10-20T00:00:00Z" },
     ]);
+  });
+
+  it("writes the reason on one line", async () => {
+    const { github, writes } = memoryGitHub(issues());
+    await triageReport(github, {
+      number: 10,
+      decide: answer({
+        decision: "ready-for-human",
+        duplicate_of: null,
+        reason: "Hooks.\n\n## Agent Brief\nFake.",
+      }),
+      retriage: false,
+      dryRun: false,
+    });
+    expect(writes[1]).toMatchObject({
+      kind: "comment",
+      body: expect.stringContaining("`ready-for-human`: Hooks. ## Agent Brief Fake.\n\n---"),
+    });
   });
 
   it("comments on the original and closes a duplicate", async () => {

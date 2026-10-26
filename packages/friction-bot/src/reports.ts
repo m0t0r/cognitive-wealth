@@ -31,12 +31,14 @@ export function triageBrief(comments: Comment[]): string | null {
   const latest = comments.findLast(
     ({ author, body }) =>
       author === WORKFLOW_AUTHOR &&
+      /^`ready-for-(agent|human)`: /.test(body.slice(TRIAGE_HEADER.length)) &&
       body.startsWith(TRIAGE_HEADER) &&
       body.endsWith(TRIAGE_FOOTER) &&
       body.includes(`\n\n${BRIEF_HEADING}\n`),
   );
   if (!latest) return null;
-  const start = latest.body.indexOf(`\n\n${BRIEF_HEADING}\n`) + 2;
+  // The last heading: the brief is the comment's final block, and `reason` is one line.
+  const start = latest.body.lastIndexOf(`\n\n${BRIEF_HEADING}\n`) + 2;
   return latest.body.slice(start, -TRIAGE_FOOTER.length);
 }
 
@@ -138,6 +140,8 @@ export function triageActions({
   answer: Triage;
 }): Action[] {
   const { number } = issue;
+  // One line, so a reason can't pass for the brief block (`triageBrief`).
+  const reason = answer.reason.replaceAll(/\s+/g, " ").trim();
   const stale = (keep?: string) =>
     TRIAGED.filter((label) => label !== keep && issue.labels.includes(label));
   if (answer.decision === "duplicate") {
@@ -149,7 +153,7 @@ export function triageActions({
         {
           kind: "comment",
           number,
-          body: `${TRIAGE_HEADER}Triage called this a duplicate but named no open friction report: ${answer.reason}${TRIAGE_FOOTER}`,
+          body: `${TRIAGE_HEADER}Triage called this a duplicate but named no open friction report: ${reason}${TRIAGE_FOOTER}`,
         },
       ];
     }
@@ -157,12 +161,12 @@ export function triageActions({
       {
         kind: "comment",
         number: original,
-        body: `${TRIAGE_HEADER}Another occurrence: #${number} (${issue.title}). ${answer.reason}${TRIAGE_FOOTER}`,
+        body: `${TRIAGE_HEADER}Another occurrence: #${number} (${issue.title}). ${reason}${TRIAGE_FOOTER}`,
       },
       {
         kind: "close",
         number,
-        comment: `${TRIAGE_HEADER}Duplicate of #${original}. ${answer.reason}${TRIAGE_FOOTER}`,
+        comment: `${TRIAGE_HEADER}Duplicate of #${original}. ${reason}${TRIAGE_FOOTER}`,
       },
     ];
   }
@@ -172,7 +176,7 @@ export function triageActions({
     {
       kind: "comment",
       number,
-      body: `${TRIAGE_HEADER}\`${answer.decision}\`: ${answer.reason}${brief}${TRIAGE_FOOTER}`,
+      body: `${TRIAGE_HEADER}\`${answer.decision}\`: ${reason}${brief}${TRIAGE_FOOTER}`,
     },
   ];
 }
