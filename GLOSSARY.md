@@ -239,6 +239,14 @@ _Avoid_: End of day, batch
 **As-of date**:
 The Business day a figure describes, which is the latest Close it was computed from.
 
+**Valid time**:
+When something was true in the world, such as the day an Account's Registration type changed at the Custodian. An As-of date is a Valid time.
+_Avoid_: Effective time, business time
+
+**Record time**:
+When Cognitive Wealth's records learned or changed something, such as the moment a Delivery arrived that changed an Account's Registration type. A fact can reach the records days after its Valid time, and a correction changes the records without changing the Valid time.
+_Avoid_: Transaction time, system time
+
 **Custodian feed**:
 The files the Custodian publishes for each Close, one Delivery per Close.
 _Avoid_: Export, dump
