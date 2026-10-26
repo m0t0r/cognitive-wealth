@@ -26,6 +26,7 @@ const claude = (overrides: Partial<Claude> = {}): Claude => ({
     decision: "ready-for-agent" as const,
     duplicate_of: null,
     reason: "A doc fix.",
+    brief: null,
   })),
   fix: vi.fn(async () => ({
     result: {

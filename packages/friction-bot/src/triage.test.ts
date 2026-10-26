@@ -26,6 +26,14 @@ describe("triage", () => {
       decision: "ready-for-human",
       duplicate_of: null,
       reason: "It's the cloud environment.",
+      brief: {
+        summary: "s",
+        current_behavior: "c",
+        desired_behavior: "d",
+        key_interfaces: [],
+        acceptance_criteria: ["a"],
+        out_of_scope: [],
+      },
     };
     const { model, calls } = scriptedModel({ responses: [{ text: JSON.stringify(answer) }] });
 
@@ -35,7 +43,11 @@ describe("triage", () => {
 
   it("refuses an answer outside the schema", async () => {
     const { model } = scriptedModel({
-      responses: [{ text: JSON.stringify({ decision: "close", duplicate_of: null, reason: "x" }) }],
+      responses: [
+        {
+          text: JSON.stringify({ decision: "close", duplicate_of: null, reason: "x", brief: null }),
+        },
+      ],
     });
 
     await expect(triage({ ...input, model })).rejects.toThrow();
