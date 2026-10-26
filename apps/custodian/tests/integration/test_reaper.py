@@ -1,6 +1,6 @@
 """The run's reaper: Ryuk removes the run's containers however the run ends (#173).
 
-The `register` tests need no Docker: a fake Ryuk on a local port plays the parts that matter.
+The `register_filter` tests need no Docker: a fake Ryuk on a local port plays the parts that matter.
 The last test starts a real Ryuk.
 """
 
@@ -18,7 +18,7 @@ from docker.errors import NotFound
 from testcontainers.core.container import DockerContainer
 
 from tests.integration.postgres import compose_image
-from tests.integration.reaper import register, start_reaper
+from tests.integration.reaper import register_filter, start_reaper
 
 FILTER = "label=org.testcontainers.session-id=probe"
 
@@ -74,16 +74,25 @@ def fake_ryuk(*, misses: Sequence[Miss] = ()) -> Generator[FakeRyuk]:
             connection.close()
 
 
+def exists(container: DockerContainer) -> bool:
+    """Whether Docker still has the container (`reload` asks it afresh)."""
+    try:
+        container.get_wrapped_container().reload()
+    except NotFound:
+        return False
+    return True
+
+
 def test_registers_the_filter_with_a_ryuk_that_acks_it() -> None:
     with fake_ryuk() as ryuk:
-        register(ryuk.address, filter=FILTER, timeout=5).close()
+        register_filter(ryuk.address, label_filter=FILTER, timeout=5).close()
 
     assert ryuk.filters == [f"{FILTER}\n"]
 
 
 def test_retries_until_a_connection_is_acked() -> None:
     with fake_ryuk(misses=["drop", "drop"]) as ryuk:
-        register(ryuk.address, filter=FILTER, timeout=5).close()
+        register_filter(ryuk.address, label_filter=FILTER, timeout=5).close()
 
     assert ryuk.filters == [f"{FILTER}\n"]
 
@@ -91,7 +100,7 @@ def test_retries_until_a_connection_is_acked() -> None:
 def test_gives_up_on_a_silent_connection_and_tries_another() -> None:
     """One silent connection mustn't use up the whole `timeout`."""
     with fake_ryuk(misses=["hang"]) as ryuk:
-        register(ryuk.address, filter=FILTER, timeout=5).close()
+        register_filter(ryuk.address, label_filter=FILTER, timeout=5).close()
 
     assert ryuk.filters == [f"{FILTER}\n"]
 
@@ -103,7 +112,7 @@ def test_refuses_a_ryuk_that_never_acks() -> None:
         fake_ryuk(misses=misses) as ryuk,
         pytest.raises(TimeoutError, match="didn't acknowledge"),
     ):
-        register(ryuk.address, filter=FILTER, timeout=0.5)
+        register_filter(ryuk.address, label_filter=FILTER, timeout=0.5)
 
     assert ryuk.filters == []
 
@@ -113,7 +122,7 @@ def test_ryuk_removes_the_matching_containers_once_the_link_closes() -> None:
     value = uuid4().hex
     # A label of the test's own (the org.testcontainers namespace is reserved), so Ryuk removes
     # this container only.
-    link = start_reaper(filter=f"label=test-reaper={value}", reconnection_timeout="1s")
+    link = start_reaper(label_filter=f"label=test-reaper={value}", reconnection_timeout="1s")
     container = (
         DockerContainer(compose_image())
         .with_command("sleep 600")
@@ -128,13 +137,6 @@ def test_ryuk_removes_the_matching_containers_once_the_link_closes() -> None:
             time.sleep(0.5)
         assert not exists(container)
     finally:
+        # The container is normally gone by now; `suppress` ignores that error, only that one.
         with suppress(NotFound):
             container.stop()
-
-
-def exists(container: DockerContainer) -> bool:
-    try:
-        container.get_wrapped_container().reload()
-    except NotFound:
-        return False
-    return True
