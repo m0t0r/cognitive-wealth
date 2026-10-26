@@ -8,8 +8,10 @@ describe("cw", () => {
     expect(output.commands).toMatchObject([
       { name: "custodian ingest" },
       { name: "db seed" },
+      { name: "dev env" },
       { name: "dev prune" },
       { name: "dev sign-in" },
+      { name: "dev teardown" },
       { name: "friction fix" },
       { name: "friction report" },
       { name: "friction search" },

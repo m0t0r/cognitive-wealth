@@ -3,14 +3,16 @@
 // that import this directly (type stripping), so relative imports keep their `.ts` extension.
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
+import { worktreeIdAt } from "./checkout.ts";
 import {
   type WorktreeResources,
   composeProjectOf,
   verifyDatabasesOf,
   verifySessionOf,
+  worktreeResources,
 } from "./names.ts";
 import { alive, commandOf, stop } from "./processes.ts";
-import { deleteRecord } from "./registry.ts";
+import { deleteRecord, readRecord, readRecords } from "./registry.ts";
 import { connectJanitor, dropDatabase, isRefused } from "./services.ts";
 import {
   releaseChrome,
@@ -67,6 +69,27 @@ function cwdOf(pid: number): string | undefined {
 /** The running `pnpm dev` of the checkout at `path`, if any. */
 export function runningServerOf(path: string): Server | undefined {
   return runningServers().find(({ cwd }) => cwd === join(path, "apps/web"));
+}
+
+/**
+ * What to tear down for the worktree at `path`: its record, or the names its id gives, with its
+ * running `pnpm dev`. A worktree already gone from disk is found by its record, which still says
+ * where it was; undefined when there's neither.
+ */
+export function teardownTargetAt({
+  mainCheckout,
+  path,
+}: {
+  mainCheckout: string;
+  path: string;
+}): TeardownTarget | undefined {
+  const id = worktreeIdAt(path);
+  const target: TeardownTarget | undefined = id
+    ? (readRecord({ mainCheckout, token: worktreeResources(id).token }) ?? worktreeResources(id))
+    : readRecords(mainCheckout).find((record) => record.path === path);
+  // A server running without a record (lost, or never written) is found in the process table.
+  if (target && !target.server) return { ...target, server: runningServerOf(path) };
+  return target;
 }
 
 /**

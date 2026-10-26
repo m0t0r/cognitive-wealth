@@ -122,7 +122,7 @@ export async function prune(mainCheckout: string): Promise<Pruned> {
 }
 
 /**
- * `prune` as a side errand (`pnpm dev`, `pnpm dev:env`): says what it removed, warns instead of
+ * `prune` as a side errand (`pnpm dev`): says what it removed, warns instead of
  * failing, and stays quiet when there was nothing to do.
  */
 export async function sweep(mainCheckout: string) {

@@ -4,8 +4,8 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "dev:env": "node packages/dev-env/src/cli/env.ts",
-    "dev:teardown": "node packages/dev-env/src/cli/teardown.ts",
+    "dev:env": "node packages/cli/src/cli.ts dev env",
+    "dev:teardown": "node packages/cli/src/cli.ts dev teardown",
     "dev:prune": "node packages/cli/src/cli.ts dev prune",
     "lint": "oxlint && turbo run lint",
     "lint:fix": "oxlint --fix",

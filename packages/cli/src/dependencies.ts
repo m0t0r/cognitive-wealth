@@ -31,11 +31,12 @@ export type OpenDatabaseArgs = {
   asMigrator?: boolean;
 };
 
-export type DevEnv = {
-  /** The main checkout of the repository `cw` runs in. */
-  mainCheckout: string;
+export type DevEnv = import("@repo/dev-env/checkout").Checkout & {
   findOrphans: typeof import("@repo/dev-env/prune").findOrphans;
   prune: typeof import("@repo/dev-env/prune").prune;
+  setUpWorktree: typeof import("@repo/dev-env/setup").setUpWorktree;
+  teardownTargetAt: typeof import("@repo/dev-env/teardown").teardownTargetAt;
+  tearDown: typeof import("@repo/dev-env/teardown").tearDown;
 };
 
 /** The Claude calls behind `cw friction`, each needing `ANTHROPIC_API_KEY`. */
@@ -99,7 +100,16 @@ export const defaultDependencies: Dependencies = {
   async devEnv() {
     const { checkoutAt } = await import("@repo/dev-env/checkout");
     const { findOrphans, prune } = await import("@repo/dev-env/prune");
-    return { mainCheckout: checkoutAt(process.cwd()).mainCheckout, findOrphans, prune };
+    const { setUpWorktree } = await import("@repo/dev-env/setup");
+    const { tearDown, teardownTargetAt } = await import("@repo/dev-env/teardown");
+    return {
+      ...checkoutAt(process.cwd()),
+      findOrphans,
+      prune,
+      setUpWorktree,
+      teardownTargetAt,
+      tearDown,
+    };
   },
   async github() {
     const { ghCli } = await import("@repo/friction-bot/github");
