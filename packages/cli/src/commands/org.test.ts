@@ -42,3 +42,28 @@ describe("cw org deactivate and reactivate", () => {
     });
   });
 });
+
+describe("cw org create and export", () => {
+  it.for([
+    {
+      name: "create, an invalid owner",
+      argv: ["org", "create", "--name", "Acme", "--owner", "not-an-email"],
+      message: /Not an email address/,
+    },
+    {
+      name: "create, a name with nothing to make a slug of",
+      argv: ["org", "create", "--name", "!!!", "--owner", "a@b.co"],
+      message: /Can't make a slug/,
+    },
+    {
+      name: "export, an empty reason",
+      argv: ["org", "export", "--slug", "acme", "--out", "/tmp/x", "--reason", " "],
+      message: /reason is empty/,
+    },
+  ])("refuse $name as invalid_input, before connecting", async ({ argv, message }) => {
+    const { output, exitCode } = await run({ cli, argv });
+    expect(exitCode).toBe(1);
+    expect(output).toMatchObject({ code: "invalid_input" });
+    expect(output.message).toMatch(message);
+  });
+});

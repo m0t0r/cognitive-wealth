@@ -38,6 +38,7 @@ describe("createOrganization", () => {
       name: "Acme Corp",
       slug: "acme-corp",
       owner: { email: "ceo@example.com", created: true },
+      dryRun: false,
     });
     expect(
       await orm
@@ -110,11 +111,35 @@ describe("createOrganization", () => {
     await expect(
       createOrganization(orm, { name: "ACME", ownerEmail: "second@example.com" }),
     ).rejects.toThrow(
-      new CliError('An organization with slug "acme" already exists; pick another with --slug.'),
+      new CliError({
+        code: "slug_taken",
+        message: 'An organization with slug "acme" already exists; pick another with --slug.',
+      }),
     );
 
     expect(await rowCounts(orm)).toEqual(before);
     expect(await orm.select().from(user).where(eq(user.email, "second@example.com"))).toEqual([]);
+  });
+
+  test("with dryRun, makes every write and check, then rolls back", async ({ orm }) => {
+    await createOrganization(orm, { name: "Acme", ownerEmail: "first@example.com" });
+    const before = await rowCounts(orm);
+
+    const dryRun = await createOrganization(orm, {
+      name: "Globex",
+      ownerEmail: "hank@globex.test",
+      dryRun: true,
+    });
+    expect(dryRun).toMatchObject({
+      slug: "globex",
+      owner: { email: "hank@globex.test", created: true },
+      dryRun: true,
+    });
+    await expect(
+      createOrganization(orm, { name: "Acme", ownerEmail: "second@example.com", dryRun: true }),
+    ).rejects.toMatchObject({ code: "slug_taken" });
+
+    expect(await rowCounts(orm)).toEqual(before);
   });
 
   test("validates the input before writing anything", async ({ orm }) => {

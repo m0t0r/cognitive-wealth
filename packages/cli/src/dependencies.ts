@@ -3,6 +3,7 @@
 // fake sweep, issues in memory, a canned answer) and runs the real command in-process. The defaults
 // load their modules only when a command asks, so `cw dev prune` never loads the database schema
 // and `cw org …` never loads `@repo/dev-env` or the AI SDK.
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Database } from "@repo/db";
@@ -17,6 +18,17 @@ export type OpenedDatabase = {
   close: () => Promise<void>;
   /** The database, without its password, and the file it came from, for the command's output. */
   target: string;
+  /** Whether it's a local development database, one the seed may write (`assertSeedTarget`). */
+  local: boolean;
+};
+
+export type OpenDatabaseArgs = {
+  /**
+   * Sign in as `migrator`, the tables' owner, whom row-level security doesn't hold: itself on a
+   * local database, as `db:studio` does (`studioConnection`); anywhere else `DATABASE_URL` must
+   * name it.
+   */
+  asMigrator?: boolean;
 };
 
 export type DevEnv = {
@@ -36,7 +48,7 @@ export type Claude = {
 
 export type Dependencies = {
   /** A connection of one, on `DATABASE_URL` or `apps/web/.env.local`'s; the command closes it. */
-  openDatabase: () => Promise<OpenedDatabase>;
+  openDatabase: (args?: OpenDatabaseArgs) => Promise<OpenedDatabase>;
   devEnv: () => Promise<DevEnv>;
   /** This repository's issues, through `gh`. */
   github: () => Promise<GitHub>;
@@ -49,15 +61,26 @@ const ROOT = join(import.meta.dirname, "../../..");
 const read = (path: string) => readFile(join(ROOT, path), "utf8");
 
 export const defaultDependencies: Dependencies = {
-  async openDatabase() {
+  async openDatabase({ asMigrator = false } = {}) {
     const { describeDatabaseUrl, loadWebEnvFallback } = await import("@repo/db/cli/env");
     const { connectionConfig } = await import("@repo/db/config");
     const { connect } = await import("@repo/db/connect");
+    const { assertSeedTarget } = await import("@repo/db/seed-data");
+    const { studioConnection } = await import("@repo/db/cli/studio-connection");
     let envFile: string | undefined;
     let config;
+    let as = "";
     try {
       envFile = loadWebEnvFallback();
-      config = connectionConfig();
+      if (asMigrator) {
+        if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set.");
+        const { url, passwordFile, role } = studioConnection(process.env);
+        const password = passwordFile ? () => readFileSync(passwordFile, "utf8").trim() : undefined;
+        config = { url, password };
+        as = ` as ${role}`;
+      } else {
+        config = connectionConfig();
+      }
     } catch (error) {
       throw new CliError({
         code: "no_database",
@@ -66,7 +89,12 @@ export const defaultDependencies: Dependencies = {
     }
     const { db, close } = connect(config, { max: 1 });
     const from = envFile ? ` (from ${envFile})` : "";
-    return { db, close, target: `${describeDatabaseUrl(config.url)}${from}` };
+    return {
+      db,
+      close,
+      target: `${describeDatabaseUrl(config.url)}${as}${from}`,
+      local: isLocal(() => assertSeedTarget(config.url, process.env.NODE_ENV)),
+    };
   },
   async devEnv() {
     const { checkoutAt } = await import("@repo/dev-env/checkout");
@@ -104,3 +132,13 @@ export const defaultDependencies: Dependencies = {
     };
   },
 };
+
+/** Whether `assertLocal` passes, rather than refusing a remote database or production. */
+function isLocal(assertLocal: () => void): boolean {
+  try {
+    assertLocal();
+    return true;
+  } catch {
+    return false;
+  }
+}

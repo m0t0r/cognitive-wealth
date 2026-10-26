@@ -1,14 +1,12 @@
-// `pnpm org:export` (#206): a Records export of one Firm, read as `migrator` in one snapshot, on two
+// `exportRecords`, behind `cw org export` (#206): a Records export of one Firm, read as `migrator` in one snapshot, on two
 // Firms with data, so a row of the other Firm in any file shows.
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { parse } from "csv-parse/sync";
 import { eq, getTableName, sql } from "drizzle-orm";
-import { CliError, deactivateOrganization } from "./cli/organizations";
+import { deactivateOrganization } from "./cli/organizations";
 import { type Manifest, exportRecords } from "./cli/records-export";
 import { seedFirm } from "./firm-test-data";
 import type { Database } from "./index";
@@ -16,7 +14,6 @@ import { RECORD_TABLES } from "./records";
 import { auditEvent, household, invitation, member, organization, user } from "./schema";
 import { test as base } from "./testing";
 
-const execFileAsync = promisify(execFile);
 const byNumber = (a: number, b: number) => a - b;
 const RECORD_NAMES = RECORD_TABLES.map(({ table }) => getTableName(table));
 
@@ -295,7 +292,7 @@ describe("exportRecords", () => {
 
     await expect(
       exportRecords(migratorOrm, { slug: "acme", out, reason: "Firm's own request" }),
-    ).rejects.toThrow(CliError);
+    ).rejects.toMatchObject({ code: "out_not_empty" });
     expect(await readdir(out)).toEqual(["keep.txt"]);
     expect(await readdir(parent)).toEqual(["out"]);
     expect(await exportEvents(migratorOrm)).toEqual([]);
@@ -310,7 +307,7 @@ describe("exportRecords", () => {
         out: join(parent, "out"),
         reason: "Firm's own request",
       }),
-    ).rejects.toThrow(CliError);
+    ).rejects.toMatchObject({ code: "unknown_organization" });
     expect(await readdir(parent)).toEqual([]);
   });
 
@@ -323,8 +320,50 @@ describe("exportRecords", () => {
         out: join(parent, "out"),
         reason: "Firm's own request",
       }),
-    ).rejects.toThrow(/migrator/);
+    ).rejects.toMatchObject({ code: "wrong_role", message: expect.stringMatching(/migrator/) });
     expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("with dryRun, counts each table's rows and writes nothing", async ({
+    migratorOrm,
+    parent,
+  }) => {
+    const acme = await seedExportFirm(migratorOrm, "acme");
+    await seedExportFirm(migratorOrm, "globex");
+    const out = join(parent, "out");
+
+    const result = await exportRecords(migratorOrm, {
+      slug: "acme",
+      out,
+      reason: "Firm's own request",
+      dryRun: true,
+    });
+
+    expect(result).toMatchObject({
+      out,
+      firm: { slug: "acme", publicId: acme.publicId },
+      firmState: "active",
+      manifestHash: null,
+      dryRun: true,
+    });
+    expect(await readdir(parent)).toEqual([]);
+    expect(await exportEvents(migratorOrm)).toEqual([]);
+    const written = await exportRecords(migratorOrm, { slug: "acme", out, reason: "Firm's own" });
+    expect(result.tables).toEqual(written.tables);
+  });
+
+  test("with dryRun, still refuses an --out that isn't empty", async ({ migratorOrm, parent }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    await writeFile(join(parent, "keep.txt"), "mine");
+
+    await expect(
+      exportRecords(migratorOrm, {
+        slug: "acme",
+        out: parent,
+        reason: "Firm's own request",
+        dryRun: true,
+      }),
+    ).rejects.toMatchObject({ code: "out_not_empty" });
   });
 
   test("leaves nothing, at --out or beside it, when the audit write fails", async ({
@@ -345,9 +384,12 @@ describe("exportRecords", () => {
         out: join(parent, "out"),
         reason: "Firm's own request",
       }),
-    ).rejects.toThrow(
-      /Couldn't record the export in the audit trail, so nothing was written: audit write refused/,
-    );
+    ).rejects.toMatchObject({
+      code: "audit_failed",
+      message: expect.stringMatching(
+        /Couldn't record the export in the audit trail, so nothing was written: audit write refused/,
+      ),
+    });
     expect(await readdir(parent)).toEqual([]);
   });
 
@@ -365,89 +407,5 @@ describe("exportRecords", () => {
     expect(transaction.mock.calls.map(([, config]) => config)).toEqual([
       { isolationLevel: "repeatable read", accessMode: "read only" },
     ]);
-  });
-});
-
-const CLI = join(import.meta.dirname, "cli/org-export.ts");
-
-type RunCliArgs = { databaseUrl: string; args: string[] };
-
-/** Runs `pnpm org:export`'s entry as Node does, on the test's database; never throws. */
-async function runCli({ databaseUrl, args }: RunCliArgs) {
-  try {
-    const { stdout, stderr } = await execFileAsync(process.execPath, [CLI, ...args], {
-      env: { ...process.env, DATABASE_URL: databaseUrl, DATABASE_PASSWORD_FILE: "" },
-    });
-    return { code: 0, stdout, stderr };
-  } catch (error) {
-    // execFile's error for a non-zero exit carries the exit code and both outputs.
-    if (!(error instanceof Error && "code" in error && "stdout" in error && "stderr" in error)) {
-      throw error;
-    }
-    return { code: error.code, stdout: String(error.stdout), stderr: String(error.stderr) };
-  }
-}
-
-describe("pnpm org:export", () => {
-  test("exits 0 with a summary of what it wrote", async ({ database, migratorOrm, parent }) => {
-    await seedExportFirm(migratorOrm, "acme");
-    const out = join(parent, "out");
-
-    const result = await runCli({
-      databaseUrl: database.url("migrator"),
-      args: ["--slug", "acme", "--out", out, "--reason", "Firm's own request"],
-    });
-
-    expect(result).toMatchObject({ code: 0, stderr: "" });
-    expect(result.stdout).toContain(`to:       ${out}`);
-    expect(result.stdout).toMatch(/household\.csv\s+2 row\(s\)/);
-  });
-
-  test("exits 1 without --reason, writing nothing", async ({ database, migratorOrm, parent }) => {
-    await seedExportFirm(migratorOrm, "acme");
-
-    const result = await runCli({
-      databaseUrl: database.url("migrator"),
-      args: ["--slug", "acme", "--out", join(parent, "out")],
-    });
-
-    expect(result.code).toBe(1);
-    expect(result.stderr).toMatch(/^Missing --reason\.\n\nUsage: pnpm org:export/);
-    expect(await readdir(parent)).toEqual([]);
-  });
-
-  test("exits 1 when the audit write fails, leaving nothing", async ({
-    database,
-    migratorOrm,
-    parent,
-  }) => {
-    await seedExportFirm(migratorOrm, "acme");
-    // The owner can give up its own privilege, so only the export's insert fails.
-    await migratorOrm.execute(sql`revoke insert on audit_event from migrator`);
-
-    const result = await runCli({
-      databaseUrl: database.url("migrator"),
-      args: ["--slug", "acme", "--out", join(parent, "out"), "--reason", "Firm's own request"],
-    });
-
-    expect(result.code).toBe(1);
-    expect(result.stderr).toMatch(/permission denied/);
-    expect(await readdir(parent)).toEqual([]);
-  });
-
-  test("warns when --out is inside the repository", async ({ database, migratorOrm }) => {
-    await seedExportFirm(migratorOrm, "acme");
-    const dir = await mkdtemp(join(import.meta.dirname, "../.org-export-test-"));
-    try {
-      const result = await runCli({
-        databaseUrl: database.url("migrator"),
-        args: ["--slug", "acme", "--out", join(dir, "out"), "--reason", "Firm's own request"],
-      });
-
-      expect(result.code).toBe(0);
-      expect(result.stderr).toMatch(/inside the repository/);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
   });
 });
