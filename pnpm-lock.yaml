@@ -423,6 +423,9 @@ importers:
       '@types/node':
         specifier: 26.6.5
         version: 26.6.5
+      csv-parse:
+        specifier: 7.0.3
+        version: 7.0.3
       drizzle-kit:
         specifier: 0.31.11
         version: 0.31.11

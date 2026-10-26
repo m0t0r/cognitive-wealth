@@ -17,6 +17,7 @@ flowchart LR
   mail["SMTP: Mailpit in dev and e2e<br/>Resend in production"]
   migrate["migrate job<br/>drizzle migrations"]
   cli["pnpm org:create"]
+  export["pnpm org:export<br/>Records export"]
 
   person -->|HTTPS| proxy
   proxy --> pages
@@ -30,3 +31,5 @@ flowchart LR
   migrate -->|"migrator role, DDL"| pg
   operator --> cli
   cli -->|app role| pg
+  operator --> export
+  export -->|"migrator role, read only"| pg

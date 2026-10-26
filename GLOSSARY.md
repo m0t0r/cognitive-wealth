@@ -49,6 +49,10 @@ _Avoid_: Organization, workspace, tenant, company
 A Firm that no longer uses Cognitive Wealth, because it stopped doing business or moved elsewhere. Its records are kept for their retention period, but no User can sign in to it or act in it. It can be reactivated.
 _Avoid_: Deleted, archived, closed, suspended
 
+**Records export**:
+A complete copy of a Firm's records as Cognitive Wealth holds them, with an index of what's in it, made by Cognitive Wealth's operator so the Firm can hand it to the Commission or keep it. Making one is recorded in the Firm's audit trail.
+_Avoid_: Backup, Data dump
+
 **Removal**:
 A Firm taking a User off its staff. The User keeps their sign-in but loses the Firm's records at once; the Firm's records about them stay.
 _Avoid_: Kicked, deleted, revoked
