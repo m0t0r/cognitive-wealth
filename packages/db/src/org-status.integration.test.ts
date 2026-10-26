@@ -95,6 +95,7 @@ describe("deactivateOrganization", () => {
       slug: "acme",
       at: expect.any(Date),
       canceledInvitations: 0,
+      dryRun: false,
     });
     expect(await deactivatedAt(orm, "acme")).toEqual(result.at);
     expect(await statusEvents(orm)).toEqual([
@@ -162,7 +163,10 @@ describe("deactivateOrganization", () => {
     const events = await orm.$count(auditEvent);
 
     await expect(deactivateOrganization(orm, { slug: "nope", reason: "Closed" })).rejects.toThrow(
-      new CliError(`No organization has the slug "nope".`),
+      new CliError({
+        code: "unknown_organization",
+        message: `No organization has the slug "nope".`,
+      }),
     );
     expect(await orm.$count(auditEvent)).toBe(events);
   });
@@ -172,14 +176,52 @@ describe("deactivateOrganization", () => {
     const first = await deactivateOrganization(orm, { slug: "acme", reason: "Closed" });
     const events = await orm.$count(auditEvent);
 
-    await expect(deactivateOrganization(orm, { slug: "acme", reason: "Again" })).rejects.toThrow(
-      CliError,
-    );
-    await expect(deactivateOrganization(orm, { slug: "acme", reason: "Again" })).rejects.toThrow(
-      /already deactivated/,
-    );
+    const again = deactivateOrganization(orm, { slug: "acme", reason: "Again" });
+    await expect(again).rejects.toBeInstanceOf(CliError);
+    await expect(again).rejects.toMatchObject({
+      code: "already_deactivated",
+      message: expect.stringMatching(/already deactivated/),
+    });
     expect(await deactivatedAt(orm, "acme")).toEqual(first.at);
     expect(await orm.$count(auditEvent)).toBe(events);
+  });
+
+  test("with dryRun, counts what it would cancel and writes nothing", async ({ orm }) => {
+    const firm = await createFirm(orm, "acme");
+    const pending = await seedInvitation(orm, { firmId: firm.id, email: "new@example.com" });
+    const events = await orm.$count(auditEvent);
+
+    const result = await deactivateOrganization(orm, {
+      slug: "acme",
+      reason: "Closed",
+      dryRun: true,
+    });
+
+    expect(result).toEqual({
+      publicId: firm.publicId,
+      name: "acme",
+      slug: "acme",
+      at: expect.any(Date),
+      canceledInvitations: 1,
+      dryRun: true,
+    });
+    expect(await deactivatedAt(orm, "acme")).toBeNull();
+    expect(
+      await orm
+        .select({ status: invitation.status })
+        .from(invitation)
+        .where(eq(invitation.publicId, pending)),
+    ).toEqual([{ status: "pending" }]);
+    expect(await orm.$count(auditEvent)).toBe(events);
+  });
+
+  test("with dryRun, refuses what a real run would", async ({ orm }) => {
+    await createFirm(orm, "acme");
+    await deactivateOrganization(orm, { slug: "acme", reason: "Closed" });
+
+    await expect(
+      deactivateOrganization(orm, { slug: "acme", reason: "Again", dryRun: true }),
+    ).rejects.toMatchObject({ code: "already_deactivated" });
   });
 
   test.for(["", "   "])("refuses an empty reason (%j)", async (reason, { orm }) => {
@@ -224,16 +266,35 @@ describe("reactivateOrganization", () => {
     await createFirm(orm, "acme");
     const events = await orm.$count(auditEvent);
 
-    await expect(reactivateOrganization(orm, { slug: "acme", reason: "Back" })).rejects.toThrow(
-      /isn't deactivated/,
-    );
+    await expect(
+      reactivateOrganization(orm, { slug: "acme", reason: "Back" }),
+    ).rejects.toMatchObject({
+      code: "not_deactivated",
+      message: expect.stringMatching(/isn't deactivated/),
+    });
     expect(await orm.$count(auditEvent)).toBe(events);
   });
 
   test("refuses an unknown slug", async ({ orm }) => {
-    await expect(reactivateOrganization(orm, { slug: "nope", reason: "Back" })).rejects.toThrow(
-      new CliError(`No organization has the slug "nope".`),
-    );
+    await expect(
+      reactivateOrganization(orm, { slug: "nope", reason: "Back" }),
+    ).rejects.toMatchObject({ code: "unknown_organization" });
+  });
+
+  test("with dryRun, leaves the Firm deactivated and writes nothing", async ({ orm }) => {
+    await createFirm(orm, "acme");
+    const { at } = await deactivateOrganization(orm, { slug: "acme", reason: "Closed" });
+    const events = await orm.$count(auditEvent);
+
+    const result = await reactivateOrganization(orm, {
+      slug: "acme",
+      reason: "Back",
+      dryRun: true,
+    });
+
+    expect(result).toMatchObject({ slug: "acme", dryRun: true });
+    expect(await deactivatedAt(orm, "acme")).toEqual(at);
+    expect(await orm.$count(auditEvent)).toBe(events);
   });
 });
 

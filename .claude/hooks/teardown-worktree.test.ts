@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -24,17 +24,25 @@ interface Layout {
   calls: string;
 }
 
-// The stand-in for packages/dev-env/src/cli/prune.ts: logs the call, then fails when the test
-// asks it to, the way the real one reports a teardown that failed.
-const FAKE_PRUNE = `
+// The stand-in for packages/cli/src/cli.ts (`cw dev prune --json`): logs the call, then answers
+// the way the real one does, JSON on stdout and exit 1 for a failure the test asks for.
+const FAKE_CW = `
 import { appendFileSync } from "node:fs";
 appendFileSync(process.env.PRUNE_CALLS, JSON.stringify({ args: process.argv.slice(2), cwd: process.cwd() }) + "\\n");
-if (process.env.PRUNE_FAIL) {
-  console.error("Teardown of wt_task failed to drop the database: permission denied");
-  process.exitCode = 1;
+const answer = (output, code = 0) => {
+  console.log(JSON.stringify(output));
+  process.exitCode = code;
+};
+// A checkout that pulled a new dependency but never ran pnpm install: cw itself can't load.
+if (process.env.PRUNE_UNINSTALLED) await import("incur");
+else if (process.env.PRUNE_FAIL) {
+  answer({ code: "prune_failed", message: "Tore down 0, and failed on:\\nTeardown of wt_task failed to drop the database: permission denied", retryable: true }, 1);
+} else if (process.env.PRUNE_MISSING_MODULE) {
+  // cw loaded, but a module a command imports when it runs didn't.
+  answer({ code: "ERR_MODULE_NOT_FOUND", message: "Cannot find package 'postgres'", retryable: false }, 1);
+} else {
+  answer({ dryRun: false, removed: process.env.PRUNE_REMOVED ? ["wt_gone: dropped"] : [], orphans: [], servers: [] });
 }
-// A checkout that pulled a new dependency but never ran pnpm install fails to load it.
-if (process.env.PRUNE_UNINSTALLED) await import("@repo/db");
 `;
 
 // Each test gets its own repo, so none can see another's files. Vitest requires a destructuring
@@ -60,11 +68,11 @@ const test = base.extend("layout", async ({}, { onCleanup }): Promise<Layout> =>
     "init",
   );
   git("-C", main, "worktree", "add", "-q", "-b", "task", worktree);
-  const cli = join(main, "packages/dev-env/src/cli");
-  mkdirSync(cli, { recursive: true });
-  writeFileSync(join(cli, "prune.ts"), FAKE_PRUNE);
+  const src = join(main, "packages/cli/src");
+  mkdirSync(src, { recursive: true });
+  writeFileSync(join(src, "cli.ts"), FAKE_CW);
   // An installed main checkout; SessionStart warns without it.
-  mkdirSync(join(main, "packages/dev-env/node_modules"));
+  mkdirSync(join(main, "packages/cli/node_modules"));
   return { main, worktree, calls: join(root, "calls.log") };
 });
 
@@ -98,6 +106,8 @@ type RunArgs = {
   input?: Record<string, string>;
   fail?: boolean;
   uninstalled?: boolean;
+  missingModule?: boolean;
+  removed?: boolean;
 };
 
 /** Runs the hook; returns what it printed and the sweeps it ran. */
@@ -109,8 +119,10 @@ function run({
   input,
   fail = false,
   uninstalled = false,
+  missingModule = false,
+  removed = false,
 }: RunArgs) {
-  const out = execFileSync("node", [HOOK], {
+  const result = spawnSync("node", [HOOK], {
     input: JSON.stringify({
       hook_event_name: event,
       tool_name: tool,
@@ -122,13 +134,18 @@ function run({
       PRUNE_CALLS: layout.calls,
       ...(fail ? { PRUNE_FAIL: "1" } : {}),
       ...(uninstalled ? { PRUNE_UNINSTALLED: "1" } : {}),
+      ...(missingModule ? { PRUNE_MISSING_MODULE: "1" } : {}),
+      ...(removed ? { PRUNE_REMOVED: "1" } : {}),
     }),
     encoding: "utf8",
   });
-  return { out, calls: callsIn(layout.calls) };
+  if (result.status !== 0) throw new Error(`The hook exited ${result.status}: ${result.stderr}`);
+  return { out: result.stdout, stderr: result.stderr, calls: callsIn(layout.calls) };
 }
 
-const sweptFromMain = (layout: Layout): Call[] => [{ args: [], cwd: layout.main }];
+const sweptFromMain = (layout: Layout): Call[] => [
+  { args: ["dev", "prune", "--json"], cwd: layout.main },
+];
 
 describe("after ExitWorktree", () => {
   test("sweeps once the worktree is removed", ({ layout }) => {
@@ -168,17 +185,33 @@ describe("after ExitWorktree", () => {
     expect(out).toContain("pnpm dev:prune");
   });
 
-  test("names the install when the main checkout's dependencies are missing", ({ layout }) => {
+  test.for([
+    { name: "cw itself can't load", uninstalled: true },
+    { name: "cw reports ERR_MODULE_NOT_FOUND", missingModule: true },
+  ])("names the install when $name", ({ uninstalled, missingModule }, { layout }) => {
     const { out } = run({
       layout,
       event: "PostToolUse",
       cwd: layout.worktree,
       tool: "ExitWorktree",
       input: { action: "remove" },
-      uninstalled: true,
+      uninstalled,
+      missingModule,
     });
     expect(JSON.parse(out)).toMatchObject({ decision: "block" });
     expect(out).toContain(`pnpm -C ${layout.main} install --frozen-lockfile`);
+  });
+
+  test("passes on what it tore down, read from cw's fields", ({ layout }) => {
+    const { out, stderr } = run({
+      layout,
+      event: "PostToolUse",
+      tool: "ExitWorktree",
+      input: { action: "remove" },
+      removed: true,
+    });
+    expect(out).toBe("");
+    expect(stderr).toBe("Tore down what was left of removed worktrees:\n  wt_gone: dropped\n");
   });
 });
 
@@ -244,7 +277,7 @@ describe("at the edges of a session", () => {
   });
 
   test("says at once when the main checkout isn't installed", ({ layout }) => {
-    rmSync(join(layout.main, "packages/dev-env/node_modules"), { recursive: true });
+    rmSync(join(layout.main, "packages/cli/node_modules"), { recursive: true });
     const { out } = run({ layout, event: "SessionStart" });
     expect(contextOf(out)).toContain(`pnpm -C ${layout.main} install --frozen-lockfile`);
   });

@@ -6,7 +6,7 @@
     "dev": "turbo run dev",
     "dev:env": "node packages/dev-env/src/cli/env.ts",
     "dev:teardown": "node packages/dev-env/src/cli/teardown.ts",
-    "dev:prune": "node packages/dev-env/src/cli/prune.ts",
+    "dev:prune": "node packages/cli/src/cli.ts dev prune",
     "lint": "oxlint && turbo run lint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt && turbo run format",
@@ -25,9 +25,10 @@
     "docs:diagrams:preview": "node .claude/skills/pr-visual/scripts/render.mjs docs/diagrams --png-dir .dev/diagrams",
     "org:create": "node packages/db/src/cli/org-create.ts",
     "org:export": "node packages/db/src/cli/org-export.ts",
-    "org:deactivate": "node packages/db/src/cli/org-status.ts deactivate",
-    "org:reactivate": "node packages/db/src/cli/org-status.ts reactivate",
-    "cve:scan": "node packages/cve-scan/src/cli/scan.ts"
+    "org:deactivate": "node packages/cli/src/cli.ts org deactivate",
+    "org:reactivate": "node packages/cli/src/cli.ts org reactivate",
+    "cve:scan": "node packages/cve-scan/src/cli/scan.ts",
+    "cw": "node packages/cli/src/cli.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

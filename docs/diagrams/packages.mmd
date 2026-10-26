@@ -9,6 +9,7 @@ flowchart TB
   portfolio["@repo/portfolio<br/>Ingestion of the Custodian feed"]
   testing["@repo/testing<br/>Vitest config, test Postgres, sign-in harness"]
   devenv["@repo/dev-env<br/>a worktree's own dev database and Redis prefix"]
+  cli["@repo/cli<br/>pnpm cw, on incur"]
   custodian["custodian<br/>FastAPI, Python, uv"]
   client["@repo/custodian-client<br/>Orval fetch client, Zod schemas"]
 
@@ -33,5 +34,8 @@ flowchart TB
   web -.->|"pnpm dev"| devenv
   devenv -.-> db
   devenv -.-> testing
+
+  cli --> db
+  cli --> devenv
 
   client -.->|"generated from openapi.json"| custodian

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Sweeps away what removed worktrees left behind: runs `pnpm dev:prune`, which tears down the dev
+// Sweeps away what removed worktrees left behind: runs `pnpm dev:prune` (`cw dev prune --json`,
+// ADR 0026, whose fields it reads rather than its text), which tears down the dev
 // environment (its `pnpm dev`, its database and Redis keys on the verification services) of every
 // worktree git no longer lists. The sweep only touches worktrees that are gone, so it's safe at
 // any time, and it runs at every point a worktree can have gone:
@@ -15,11 +16,11 @@
 // nowhere), so those sweeps record a failure in the main checkout's
 // `.dev/worktree-env/sweep-failed.txt`, and the next SessionStart hands it to Claude as
 // `additionalContext`; any sweep that succeeds clears it. SessionStart also says at once when the
-// main checkout has no `packages/dev-env/node_modules`, the usual cause (a pull without install).
+// main checkout has no `packages/cli/node_modules`, the usual cause (a pull without install).
 //
 // Only this project's own `pnpm dev:prune` runs (from the main checkout, found through
-// CLAUDE_PROJECT_DIR), never a script named by the command. A checkout without
-// `packages/dev-env` (before it merged) has nothing to sweep. `pnpm dev` sweeps on start too.
+// CLAUDE_PROJECT_DIR), never a script named by the command. A checkout without `packages/cli`
+// (before it merged) has nothing this hook can run. `pnpm dev` sweeps on start too.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -100,24 +101,48 @@ function installFix(main) {
   );
 }
 
-// Runs the main checkout's `pnpm dev:prune`. Returns null when it succeeds, or what failed and how
-// to fix it. A session edge's sweep (`record`) keeps that for the next SessionStart; any success
-// clears it.
+function cliOf(main) {
+  return join(main, "packages/cli/src/cli.ts");
+}
+
+function parsed(json) {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return undefined;
+  }
+}
+
+// Runs the main checkout's `cw dev prune --json` (`pnpm dev:prune`). Returns null when it succeeds,
+// or what failed and how to fix it. A session edge's sweep (`record`) keeps that for the next
+// SessionStart; any success clears it.
 function sweep({ main, record }) {
   try {
-    const out = execFileSync("node", [join(main, "packages/dev-env/src/cli/prune.ts")], {
+    const out = execFileSync("node", [cliOf(main), "dev", "prune", "--json"], {
       cwd: main,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 50_000,
     });
-    process.stderr.write(out);
+    const removed = parsed(out)?.removed ?? [];
+    if (removed.length > 0) {
+      process.stderr.write(
+        `Tore down what was left of removed worktrees:\n  ${removed.join("\n  ")}\n`,
+      );
+    }
     rmSync(failureFile(main), { force: true });
     return null;
   } catch (error) {
-    const report = [error.stderr, error.stdout].filter(Boolean).join("").trim() || error.message;
+    // `cw` reports a failure as JSON on stdout (`{ code, message }`); one that can't start, such
+    // as a missing dependency of its own, leaves only Node's error on stderr.
+    const reported = parsed(error.stdout ?? "");
+    const report =
+      reported?.message ??
+      ([error.stderr, error.stdout].filter(Boolean).join("").trim() || error.message);
     // The main checkout pulled a dependency it never installed (a fast-forward doesn't install).
-    const failure = /ERR_MODULE_NOT_FOUND/.test(report)
+    const missing =
+      reported?.code === "ERR_MODULE_NOT_FOUND" || /ERR_MODULE_NOT_FOUND/.test(error.stderr ?? "");
+    const failure = missing
       ? `${report} ${installFix(main)}`
       : `${report} Fix the cause, then run \`pnpm dev:prune\` from the main checkout until it succeeds.`;
     if (record) {
@@ -138,7 +163,7 @@ if (!wanted) process.exit(0);
 const projectDir = process.env.CLAUDE_PROJECT_DIR ?? resolve(import.meta.dirname, "../..");
 const common = git(projectDir, "rev-parse", "--path-format=absolute", "--git-common-dir");
 const main = common && dirname(common);
-const script = main && join(main, "packages/dev-env/src/cli/prune.ts");
+const script = main && cliOf(main);
 if (!script || !existsSync(script)) process.exit(0);
 
 if (event === "SessionStart") {
@@ -148,7 +173,7 @@ if (event === "SessionStart") {
       `The last session's sweep failed: ${readFileSync(failureFile(main), "utf8").trim()}`,
     );
   }
-  if (!existsSync(join(main, "packages/dev-env/node_modules"))) notes.push(installFix(main));
+  if (!existsSync(join(main, "packages/cli/node_modules"))) notes.push(installFix(main));
   if (notes.length > 0) {
     console.log(
       JSON.stringify({

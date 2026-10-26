@@ -1,12 +1,9 @@
-import { parseArgs } from "node:util";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { TransactionRollbackError, and, eq, isNotNull } from "drizzle-orm";
 import type { Database } from "../index.ts";
 import { auditEvent, invitation, member, organization, user } from "../schema/index.ts";
+import { CliError } from "./cli-error.ts";
 
-/** A problem with the operator's input, printed as is (no stack trace). */
-export class CliError extends Error {
-  override name = "CliError";
-}
+export { CliError };
 
 export const SLUG_MAX_LENGTH = 48;
 
@@ -111,50 +108,25 @@ export async function createOrganization(
   });
 }
 
-/** What `pnpm org:deactivate` or `org:reactivate` changed. */
+/** What `cw org deactivate` or `cw org reactivate` changed, or with `dryRun` would change. */
 export type OrganizationStatusChange = {
   publicId: string;
   name: string;
   slug: string;
-  /** When it was deactivated (or reactivated). */
+  /** When it was deactivated (or reactivated); for a dry run, when it would have been. */
   at: Date;
   /** Pending invitations canceled by a deactivation; always 0 for a reactivation. */
   canceledInvitations: number;
+  /** Whether nothing was written: the change ran and was rolled back. */
+  dryRun: boolean;
 };
 
-type OrganizationStatusArgs = { slug: string; reason: string };
-
-/**
- * `pnpm org:deactivate` and `org:reactivate`'s arguments, `--slug <slug> --reason <text>`:
- * `{ help: true }` for `--help`, otherwise both, checked (a `CliError` with `usage` when one is
- * missing).
- */
-export function parseOrganizationStatusArgs({
-  args,
-  usage,
-}: {
-  args: string[];
-  usage: string;
-}): { help: true } | ({ help: false } & OrganizationStatusArgs) {
-  // `pnpm org:deactivate -- --slug …` passes the separator through.
-  const rest = args[0] === "--" ? args.slice(1) : args;
-  let values;
-  try {
-    ({ values } = parseArgs({
-      args: rest,
-      options: {
-        slug: { type: "string" },
-        reason: { type: "string" },
-        help: { type: "boolean", short: "h", default: false },
-      },
-    }));
-  } catch (error) {
-    throw new CliError(`${error instanceof Error ? error.message : String(error)}\n\n${usage}`);
-  }
-  if (values.help) return { help: true };
-  if (values.slug === undefined || values.reason === undefined) throw new CliError(usage);
-  return { help: false, slug: normalizeSlug(values.slug), reason: parseReason(values.reason) };
-}
+type OrganizationStatusArgs = {
+  slug: string;
+  reason: string;
+  /** Run every check and write, then roll back, so the result is exactly what a real run does. */
+  dryRun?: boolean | undefined;
+};
 
 /** The reason is a note in the audit log, not a document. */
 export const REASON_MAX_LENGTH = 500;
@@ -174,7 +146,8 @@ export function parseReason(raw: string): string {
  * and audits `org.deactivated` with the operator's reason, in one transaction. Its records and
  * memberships are untouched, and nobody is signed out: `getViewer` stops offering the Firm from
  * its members' next request, and `withFirm` refuses it. Throws `CliError`, writing nothing, for an
- * unknown slug or a Firm that is already deactivated.
+ * unknown slug (`unknown_organization`) or a Firm that is already deactivated
+ * (`already_deactivated`).
  */
 export async function deactivateOrganization(
   db: Database,
@@ -182,46 +155,59 @@ export async function deactivateOrganization(
 ): Promise<OrganizationStatusChange> {
   const reason = parseReason(input.reason);
   const slug = normalizeSlug(input.slug);
-  return db.transaction(async (tx) => {
-    const org = await lockOrganization(tx, slug);
-    if (org.deactivatedAt !== null) {
-      throw new CliError(
-        `${org.name} (${slug}) is already deactivated, since ${org.deactivatedAt.toISOString()}. Nothing was changed.`,
-      );
-    }
-    const [updated] = await tx
-      .update(organization)
-      .set({ deactivatedAt: new Date() })
-      .where(eq(organization.id, org.id))
-      .returning({ at: organization.deactivatedAt });
-    if (!updated?.at) throw new Error(`${slug} vanished mid-transaction`);
-    const canceled = await tx
-      .update(invitation)
-      .set({ status: "canceled" })
-      .where(and(eq(invitation.organizationId, org.id), eq(invitation.status, "pending")))
-      .returning({ publicId: invitation.publicId });
-    // The operator running the CLI isn't a user, so no event has an actor.
-    if (canceled.length > 0) {
-      await tx.insert(auditEvent).values(
-        canceled.map((row) => ({
-          action: "org.invitation.cancelled",
-          actorUserId: null,
-          organizationId: org.id,
-          targetType: "invitation",
-          targetId: row.publicId,
-          metadata: { reason: "firm_deactivated" },
-        })),
-      );
-    }
-    await auditStatusChange(tx, { org, action: "org.deactivated", reason });
-    return { ...describeOrganization(org), at: updated.at, canceledInvitations: canceled.length };
+  return changeOrRollBack(db, {
+    dryRun: input.dryRun ?? false,
+    change: (tx) => deactivate(tx, { slug, reason }),
   });
+}
+
+type StatusChange = Omit<OrganizationStatusChange, "dryRun">;
+type CheckedStatusArgs = { slug: string; reason: string };
+
+async function deactivate(
+  tx: Database,
+  { slug, reason }: CheckedStatusArgs,
+): Promise<StatusChange> {
+  const org = await lockOrganization(tx, slug);
+  if (org.deactivatedAt !== null) {
+    throw new CliError({
+      code: "already_deactivated",
+      message: `${org.name} (${slug}) is already deactivated, since ${org.deactivatedAt.toISOString()}. Nothing was changed.`,
+    });
+  }
+  const [updated] = await tx
+    .update(organization)
+    .set({ deactivatedAt: new Date() })
+    .where(eq(organization.id, org.id))
+    .returning({ at: organization.deactivatedAt });
+  if (!updated?.at) throw new Error(`${slug} vanished mid-transaction`);
+  const canceled = await tx
+    .update(invitation)
+    .set({ status: "canceled" })
+    .where(and(eq(invitation.organizationId, org.id), eq(invitation.status, "pending")))
+    .returning({ publicId: invitation.publicId });
+  // The operator running the CLI isn't a user, so no event has an actor.
+  if (canceled.length > 0) {
+    await tx.insert(auditEvent).values(
+      canceled.map((row) => ({
+        action: "org.invitation.cancelled",
+        actorUserId: null,
+        organizationId: org.id,
+        targetType: "invitation",
+        targetId: row.publicId,
+        metadata: { reason: "firm_deactivated" },
+      })),
+    );
+  }
+  await auditStatusChange(tx, { org, action: "org.deactivated", reason });
+  return { ...describeOrganization(org), at: updated.at, canceledInvitations: canceled.length };
 }
 
 /**
  * Reactivates the Firm `slug`: clears `deactivated_at` and audits `org.reactivated`, so its
  * members find it again on their next request. Invitations canceled at deactivation stay
- * canceled. Throws `CliError`, writing nothing, for an unknown slug or a Firm that is active.
+ * canceled. Throws `CliError`, writing nothing, for an unknown slug (`unknown_organization`) or a
+ * Firm that is active (`not_deactivated`).
  */
 export async function reactivateOrganization(
   db: Database,
@@ -229,19 +215,57 @@ export async function reactivateOrganization(
 ): Promise<OrganizationStatusChange> {
   const reason = parseReason(input.reason);
   const slug = normalizeSlug(input.slug);
-  return db.transaction(async (tx) => {
-    const org = await lockOrganization(tx, slug);
-    const [updated] = await tx
-      .update(organization)
-      .set({ deactivatedAt: null })
-      .where(and(eq(organization.id, org.id), isNotNull(organization.deactivatedAt)))
-      .returning({ id: organization.id });
-    if (updated === undefined) {
-      throw new CliError(`${org.name} (${slug}) isn't deactivated. Nothing was changed.`);
-    }
-    await auditStatusChange(tx, { org, action: "org.reactivated", reason });
-    return { ...describeOrganization(org), at: new Date(), canceledInvitations: 0 };
+  return changeOrRollBack(db, {
+    dryRun: input.dryRun ?? false,
+    change: (tx) => reactivate(tx, { slug, reason }),
   });
+}
+
+async function reactivate(
+  tx: Database,
+  { slug, reason }: CheckedStatusArgs,
+): Promise<StatusChange> {
+  const org = await lockOrganization(tx, slug);
+  const [updated] = await tx
+    .update(organization)
+    .set({ deactivatedAt: null })
+    .where(and(eq(organization.id, org.id), isNotNull(organization.deactivatedAt)))
+    .returning({ id: organization.id });
+  if (updated === undefined) {
+    throw new CliError({
+      code: "not_deactivated",
+      message: `${org.name} (${slug}) isn't deactivated. Nothing was changed.`,
+    });
+  }
+  await auditStatusChange(tx, { org, action: "org.reactivated", reason });
+  return { ...describeOrganization(org), at: new Date(), canceledInvitations: 0 };
+}
+
+type ChangeOrRollBackArgs = {
+  dryRun: boolean;
+  change: (tx: Database) => Promise<StatusChange>;
+};
+
+/**
+ * Runs `change` in one transaction and commits it, or for a dry run rolls it back once it's done,
+ * so a dry run makes every check, takes every lock and counts every row a real run would. Its
+ * only trace is the sequence values its inserts used.
+ */
+async function changeOrRollBack(
+  db: Database,
+  { dryRun, change }: ChangeOrRollBackArgs,
+): Promise<OrganizationStatusChange> {
+  let result: StatusChange | undefined;
+  try {
+    await db.transaction(async (tx) => {
+      result = await change(tx);
+      if (dryRun) tx.rollback();
+    });
+  } catch (error) {
+    if (!(dryRun && error instanceof TransactionRollbackError)) throw error;
+  }
+  if (result === undefined) throw new Error("The transaction ended without a result");
+  return { ...result, dryRun };
 }
 
 type LockedOrganization = {
@@ -265,7 +289,12 @@ async function lockOrganization(tx: Database, slug: string): Promise<LockedOrgan
     .from(organization)
     .where(eq(organization.slug, slug))
     .for("update");
-  if (org === undefined) throw new CliError(`No organization has the slug "${slug}".`);
+  if (org === undefined) {
+    throw new CliError({
+      code: "unknown_organization",
+      message: `No organization has the slug "${slug}".`,
+    });
+  }
   return org;
 }
 

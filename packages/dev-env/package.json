@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./checkout": "./src/checkout.ts",
     "./names": "./src/names.ts",
-    "./env-file": "./src/env-file.ts"
+    "./env-file": "./src/env-file.ts",
+    "./prune": "./src/prune.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",
