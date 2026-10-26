@@ -130,3 +130,8 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 | `atexit.register(link.close)`: runs it when Python exits       | `process.on("exit", () => link.close())`                  |
 | `except BaseException:` catches Ctrl-C too, not just errors    | a `catch` (a signal isn't an exception in Node)           |
 | `threading.Thread(target=f, daemon=True).start()`              | a `Worker`, roughly (or just an async callback)           |
+| `with suppress(NotFound):` ignores that one error in the block | a `catch` that rethrows anything but `NotFound`           |
+| `[*misses, None]`: a new list, `misses` spread, then `None`    | `[...misses, null]`                                       |
+| `field(default_factory=list[str])`: a fresh list per instance  | a field initialiser such as `filters: string[] = []`      |
+| `with (a() as x, b()):` enters both; leaves them in reverse    | two nested `using` declarations                           |
+| a `def` in a `def` sees outer locals (`nonlocal` to rebind)    | a closure: an inner function or arrow                     |
