@@ -23,4 +23,7 @@ sequenceDiagram
   S->>A: requireTenant, then tenant-scoped reads
   A->>D: select … where organization_id = tenant
   A-->>S: DTOs with publicIds only
+  opt a domain page (Households)
+    S->>D: withFirm: set_firm_id(tenant), then … where firm_id = tenant, under RLS
+  end
   S-->>B: HTML or action result, no internal IDs

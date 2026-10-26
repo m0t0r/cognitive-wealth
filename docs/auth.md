@@ -1,6 +1,6 @@
 # Auth reference
 
-How sign-in, sessions and tenancy work today. The decisions behind them, and why, are ADRs [0001](adr/0001-better-auth-passwordless-invite-only.md) to [0008](adr/0008-production-mode-everywhere.md), and where auth sits in the platform is in [docs/architecture.md](architecture.md). This file describes current behaviour: update it, and its diagrams in `docs/diagrams/`, in the same change as the code. Values the code states plainly (column lists, plugin options, DTO fields) live only in the code (`packages/auth/src/auth.ts`, `packages/db/src/schema/`).
+How sign-in, sessions and tenancy work today. The decisions behind them, and why, are ADRs [0001](adr/0001-better-auth-passwordless-invite-only.md) to [0008](adr/0008-production-mode-everywhere.md) and [0020](adr/0020-firm-isolation-by-row-level-security.md), and where auth sits in the platform is in [docs/architecture.md](architecture.md). This file describes current behaviour: update it, and its diagrams in `docs/diagrams/`, in the same change as the code. Values the code states plainly (column lists, plugin options, DTO fields) live only in the code (`packages/auth/src/auth.ts`, `packages/db/src/schema/`).
 
 Packages: `@repo/auth` is framework-agnostic (takes `Headers`, returns DTOs or typed `Result`s); `apps/web/lib/auth/*` adapts it to `next/headers` and `redirect()`. `createAuth(deps)` is a factory, so tests inject a test database, a memory mailer and memory storage.
 
@@ -34,6 +34,7 @@ What the schema files don't make obvious:
 - `member` is unique on `(organization_id, user_id)`.
 - `audit_event` is append-only for the `app` role: migration `0002_audit_append_only` revokes `update` and `delete` when that role exists (guarded, so a database without that role still migrates).
 - IDs: see [ADR 0003](adr/0003-internal-bigint-ids-public-uuids.md).
+- Every domain table with a `firm_id` (the Household and Custodian feed tables, not Better Auth's or `audit_event`) has row-level security: a `firm_isolation` policy lets `app` see and write only the rows of the transaction's Firm, `app.firm_id`. `withFirm(db, { firmId, query })` (`@repo/db/firm`) sets it for one transaction, from the tenant `requireTenant` returned; without it, a query on those tables fails with `Firm not set`. Better Auth deleting an organization (as `app`, no Firm set) still cascades to them. RLS catches a query that forgets its Firm filter. It can't catch a Firm taken from anywhere but the session, and it's no defence against SQL injection: any SQL running as `app` can set `app.firm_id` itself, so injection still exposes every Firm and queries must stay parameterized. The rules below still apply ([ADR 0020](adr/0020-firm-isolation-by-row-level-security.md)).
 
 ## Sign-in request
 
