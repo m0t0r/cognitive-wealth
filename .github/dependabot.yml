@@ -88,6 +88,20 @@ updates:
     commit-message:
       prefix: "build(docker)"
 
+  # The workflows' actions, pinned by commit SHA (`.github/workflows/cve-now.yml`).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "build(actions)"
+    groups:
+      actions:
+        patterns: ["*"]
+
   - package-ecosystem: docker-compose
     directory: /
     schedule:

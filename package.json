@@ -25,7 +25,8 @@
     "docs:diagrams:preview": "node .claude/skills/pr-visual/scripts/render.mjs docs/diagrams --png-dir .dev/diagrams",
     "org:create": "node packages/db/src/cli/org-create.ts",
     "org:deactivate": "node packages/db/src/cli/org-status.ts deactivate",
-    "org:reactivate": "node packages/db/src/cli/org-status.ts reactivate"
+    "org:reactivate": "node packages/db/src/cli/org-status.ts reactivate",
+    "cve:scan": "node packages/cve-scan/src/cli/scan.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
