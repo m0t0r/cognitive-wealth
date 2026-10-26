@@ -23,6 +23,7 @@ import {
 } from "@repo/design-system/components/table";
 import { cn } from "@repo/design-system/lib/utils";
 import type { Metadata } from "next";
+import { AppShellSync } from "@/components/app-shell/app-shell-sync";
 import { LocalDate } from "@/components/local-date";
 import { INVITATIONS_HEADING_ID, InvitationActions } from "@/components/members/invitation-actions";
 import { InviteForm } from "@/components/members/invite-form";
@@ -64,6 +65,7 @@ export default async function MembersPage() {
       organizationPublicId={tenant.organization.publicId}
       organizationName={organizationName}
     >
+      <AppShellSync />
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-10">
         <header className="flex flex-col gap-1">
           <h1 className="font-heading text-2xl font-semibold tracking-tight">Members</h1>

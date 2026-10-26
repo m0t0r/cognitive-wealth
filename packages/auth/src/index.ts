@@ -30,6 +30,7 @@ export type {
   PublicMembership,
   PublicOrganization,
   PublicUser,
+  RemovedFirm,
   Tenant,
 } from "./dto";
 export { consumeRateLimit, type RateLimitResult, type RateLimitRule } from "./rate-limit";
@@ -56,6 +57,7 @@ export {
   changeMemberRole,
   clientIp,
   declineInvitation,
+  dismissRemovalNotice,
   getInvitation,
   getViewer,
   inviteMember,

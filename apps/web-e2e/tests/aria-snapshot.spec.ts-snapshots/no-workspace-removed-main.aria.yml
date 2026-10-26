@@ -1,0 +1,5 @@
+- main:
+    - paragraph: Cognitive Wealth
+    - heading "You're no longer a member of Acme" [level=1]
+    - text: To join another workspace, ask a workspace owner or admin to invite member-3a7a05729e1609f94427-c3fb9975f11a8ec244fa-0@e2e.test.
+    - button "Sign out"

@@ -40,6 +40,12 @@ export const session = pgTable(
     activeOrganizationId: bigintString("active_organization_id").references(() => organization.id, {
       onDelete: "set null",
     }),
+    // The Firm `getViewer` last moved this session off because its membership was gone, until
+    // the User is told and it's cleared (ADR 0023). Firms aren't deleted (ADR 0021).
+    removedFromOrganizationId: bigintString("removed_from_organization_id").references(
+      () => organization.id,
+      { onDelete: "set null" },
+    ),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

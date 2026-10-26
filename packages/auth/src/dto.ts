@@ -53,6 +53,15 @@ export interface DeactivatedFirm {
   deactivatedAt: Date;
 }
 
+/**
+ * The Firm a Removal moved the viewer's session off (ADR 0023), for the notice on app pages and
+ * `/no-workspace`. Never says who removed them.
+ */
+export interface RemovedFirm {
+  publicId: string;
+  name: string;
+}
+
 /** The viewer's active organization and their place in it. */
 export interface Tenant {
   organization: PublicOrganization;

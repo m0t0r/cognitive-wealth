@@ -21,13 +21,19 @@ const INVITATION: PublicInvitation = {
 };
 const ACME = { name: "Acme" };
 const GLOBEX = { name: "Globex" };
+const INITECH = { name: "Initech" };
 
 const body = () => screen.getByRole("heading", { level: 1 }).closest("[data-slot=card]")!;
 
 describe("NoWorkspaceCard", () => {
   it("says a viewer's only Firm no longer uses Cognitive Wealth", async () => {
     const { container } = setup(
-      <NoWorkspaceCard email={EMAIL} deactivatedFirms={[ACME]} invitations={[]} />,
+      <NoWorkspaceCard
+        email={EMAIL}
+        removedFrom={null}
+        deactivatedFirms={[ACME]}
+        invitations={[]}
+      />,
     );
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
@@ -42,7 +48,12 @@ describe("NoWorkspaceCard", () => {
 
   it("names several Firms together", async () => {
     const { container } = setup(
-      <NoWorkspaceCard email={EMAIL} deactivatedFirms={[ACME, GLOBEX]} invitations={[]} />,
+      <NoWorkspaceCard
+        email={EMAIL}
+        removedFrom={null}
+        deactivatedFirms={[ACME, GLOBEX]}
+        invitations={[]}
+      />,
     );
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
@@ -62,7 +73,12 @@ describe("NoWorkspaceCard", () => {
     ],
   ] as const)("points to pending invitations (%#)", ([firms, text]) => {
     setup(
-      <NoWorkspaceCard email={EMAIL} deactivatedFirms={[...firms]} invitations={[INVITATION]} />,
+      <NoWorkspaceCard
+        email={EMAIL}
+        removedFrom={null}
+        deactivatedFirms={[...firms]}
+        invitations={[INVITATION]}
+      />,
     );
 
     expect(body()).toHaveTextContent(text);
@@ -72,13 +88,85 @@ describe("NoWorkspaceCard", () => {
     );
   });
 
-  it("keeps today's text for a viewer who was never in a Firm", async () => {
+  it("says a viewer was removed from a Firm and how to join another", async () => {
     const { container } = setup(
-      <NoWorkspaceCard email={EMAIL} deactivatedFirms={[]} invitations={[]} />,
+      <NoWorkspaceCard email={EMAIL} removedFrom="Acme" deactivatedFirms={[]} invitations={[]} />,
     );
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "You're not in a workspace yet",
+      "You're no longer a member of Acme",
+    );
+    expect(body()).toHaveTextContent(
+      `To join another workspace, ask a workspace owner or admin to invite ${EMAIL}.`,
+    );
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    await expect(container).toHaveNoA11yViolations();
+  });
+
+  it("points a removed viewer to their invitations", async () => {
+    const { container } = setup(
+      <NoWorkspaceCard
+        email={EMAIL}
+        removedFrom="Acme"
+        deactivatedFirms={[]}
+        invitations={[INVITATION]}
+      />,
+    );
+
+    expect(body()).toHaveTextContent("Open an invitation to join another workspace.");
+    expect(body()).not.toHaveTextContent(EMAIL);
+    expect(screen.getByRole("link", { name: "View invitation to Initech" })).toBeInTheDocument();
+    await expect(container).toHaveNoA11yViolations();
+  });
+
+  it.for([
+    [
+      [GLOBEX],
+      `Globex also no longer uses Cognitive Wealth. To join another workspace, ask a workspace owner or admin to invite ${EMAIL}.`,
+    ],
+    [
+      [GLOBEX, INITECH],
+      `Globex and Initech also no longer use Cognitive Wealth. To join another workspace, ask a workspace owner or admin to invite ${EMAIL}.`,
+    ],
+  ] as const)("adds a removed viewer's Deactivated Firms (%#)", async ([firms, text]) => {
+    const { container } = setup(
+      <NoWorkspaceCard
+        email={EMAIL}
+        removedFrom="Acme"
+        deactivatedFirms={[...firms]}
+        invitations={[]}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "You're no longer a member of Acme",
+    );
+    expect(body()).toHaveTextContent(text);
+    await expect(container).toHaveNoA11yViolations();
+  });
+
+  it("says a removed viewer's other Firm went, beside their invitations", () => {
+    setup(
+      <NoWorkspaceCard
+        email={EMAIL}
+        removedFrom="Acme"
+        deactivatedFirms={[GLOBEX]}
+        invitations={[INVITATION]}
+      />,
+    );
+
+    expect(body()).toHaveTextContent(
+      "Globex also no longer uses Cognitive Wealth. Open an invitation to join another workspace.",
+    );
+  });
+
+  it("keeps today's text for a viewer who was never in a Firm", async () => {
+    const { container } = setup(
+      <NoWorkspaceCard email={EMAIL} removedFrom={null} deactivatedFirms={[]} invitations={[]} />,
+    );
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "You're not in a workspace",
     );
     expect(body()).toHaveTextContent(
       `Cognitive Wealth is invite-only. Ask a workspace owner or admin to invite ${EMAIL}.`,
@@ -87,7 +175,14 @@ describe("NoWorkspaceCard", () => {
   });
 
   it("keeps today's invitation text for a viewer who was never in a Firm", () => {
-    setup(<NoWorkspaceCard email={EMAIL} deactivatedFirms={[]} invitations={[INVITATION]} />);
+    setup(
+      <NoWorkspaceCard
+        email={EMAIL}
+        removedFrom={null}
+        deactivatedFirms={[]}
+        invitations={[INVITATION]}
+      />,
+    );
     expect(body()).toHaveTextContent("Open an invitation to join its workspace.");
   });
 });

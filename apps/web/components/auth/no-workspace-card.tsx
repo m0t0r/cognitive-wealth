@@ -18,13 +18,19 @@ import {
 import Link from "next/link";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { deactivatedCopy, firmNames } from "@/lib/deactivated-firms";
+import { REMOVAL } from "@/lib/removal";
 import { INVITED_YOU_AS } from "@/lib/roles";
 
 type NoWorkspaceCardProps = {
   email: string;
   /**
+   * The name of the Firm a Removal moved this session off (ADR 0023), or `null`: the card says
+   * they're no longer a member of it, and names any Deactivated Firms after.
+   */
+  removedFrom: string | null;
+  /**
    * The viewer's Deactivated Firms, when those are all the Firms they have (ADR 0022): the card
-   * says they no longer use Cognitive Wealth instead of "not in a workspace yet".
+   * says they no longer use Cognitive Wealth instead of "not in a workspace".
    */
   deactivatedFirms: { name: string }[];
   /** Invitations to the viewer's own address that they can still accept. */
@@ -32,17 +38,39 @@ type NoWorkspaceCardProps = {
 };
 
 /** `/no-workspace`: why the viewer has no workspace, their invitations, and a way out. */
-export function NoWorkspaceCard({ email, deactivatedFirms, invitations }: NoWorkspaceCardProps) {
-  const copy = deactivatedFirms.length > 0 ? deactivatedCopy(deactivatedFirms.length) : null;
+export function NoWorkspaceCard({
+  email,
+  removedFrom,
+  deactivatedFirms,
+  invitations,
+}: NoWorkspaceCardProps) {
   const address = <span className="font-medium wrap-anywhere text-foreground">{email}</span>;
   const hasInvitations = invitations.length > 0;
+  let heading: string;
   let description: React.ReactNode;
-  if (copy !== null) {
-    description = hasInvitations ? copy.openInvitation : copy.askForInvitation(address);
-  } else if (hasInvitations) {
-    description = "Open an invitation to join its workspace.";
-  } else {
+  if (removedFrom !== null) {
+    heading = REMOVAL.heading(removedFrom);
+    const also =
+      deactivatedFirms.length === 0
+        ? null
+        : REMOVAL.alsoDeactivated[deactivatedFirms.length === 1 ? "one" : "several"](
+            firmNames(deactivatedFirms),
+          );
     description = (
+      <>
+        {also === null ? null : <>{also} </>}
+        {hasInvitations ? REMOVAL.openInvitation : REMOVAL.askForInvitation(address)}
+      </>
+    );
+  } else if (deactivatedFirms.length > 0) {
+    const copy = deactivatedCopy(deactivatedFirms.length);
+    heading = copy.heading(firmNames(deactivatedFirms));
+    description = hasInvitations ? copy.openInvitation : copy.askForInvitation(address);
+  } else {
+    heading = "You're not in a workspace";
+    description = hasInvitations ? (
+      "Open an invitation to join its workspace."
+    ) : (
       <>Cognitive Wealth is invite-only. Ask a workspace owner or admin to invite {address}.</>
     );
   }
@@ -51,9 +79,7 @@ export function NoWorkspaceCard({ email, deactivatedFirms, invitations }: NoWork
     <Card>
       <CardHeader>
         <CardTitle>
-          <h1 className="font-heading text-xl wrap-anywhere">
-            {copy ? copy.heading(firmNames(deactivatedFirms)) : "You're not in a workspace yet"}
-          </h1>
+          <h1 className="font-heading text-xl wrap-anywhere">{heading}</h1>
         </CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>

@@ -60,14 +60,15 @@ test("an owner switches workspaces, removes a member, and the member loses acces
   await expect(page.getByText("Cy Member was removed from Acme.")).toBeVisible();
   await expect(page.getByRole("table", { name: /^Members/ })).not.toContainText("Cy Member");
 
-  // Browser B: Cy's next navigation finds no workspace (Acme was their only one).
+  // Browser B: Cy's next navigation finds no workspace (Acme was their only one), and says why
+  // (removal.spec.ts covers what that page tells them).
   await member.page
     .getByRole("navigation", { name: "Main" })
     .getByRole("link", { name: "Members" })
     .click();
   await expect(member.page).toHaveURL("/no-workspace");
   await expect(
-    member.page.getByRole("heading", { name: "You're not in a workspace yet" }),
+    member.page.getByRole("heading", { name: "You're no longer a member of Acme" }),
   ).toBeVisible();
 
   expect(ownerViolations).toEqual([]);

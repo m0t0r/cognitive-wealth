@@ -35,6 +35,7 @@ import {
   type PublicMembership,
   type PublicOrganization,
   type PublicUser,
+  type RemovedFirm,
   type Tenant,
 } from "./dto";
 import { consumeRateLimit, type RateLimitRule } from "./rate-limit";
@@ -70,6 +71,8 @@ export interface Viewer {
   memberships: PublicMembership[];
   /** Firms the viewer is a member of that are deactivated (ADR 0022), most recently joined first. */
   deactivatedFirms: DeactivatedFirm[];
+  /** The Firm a Removal moved this session off, until it's cleared (ADR 0023). */
+  removedFrom: RemovedFirm | null;
   /** Server only: never put these in props, responses or logs sent to the browser. */
   internal: { userId: number; organizationId: number | null; memberId: number | null };
 }
@@ -111,7 +114,8 @@ const organizationColumns = {
  * every member of a Firm that was deactivated, loses the tenant immediately: the session falls
  * back to their most recent other membership (and is updated), or to no tenant. Memberships in
  * Deactivated Firms are left out of `memberships` and reported in `deactivatedFirms`, on every
- * call, so pages can say why (ADR 0022).
+ * call, so pages can say why (ADR 0022). A move off a Firm whose membership is gone (a Removal)
+ * is stored on the session and reported in `removedFrom` until it's cleared (ADR 0023).
  */
 export async function getViewer(auth: Auth, headers: Headers): Promise<Viewer | null> {
   const result = await auth.api.getSession({ headers });
@@ -135,6 +139,7 @@ export async function getViewer(auth: Auth, headers: Headers): Promise<Viewer | 
   const deactivatedFirms = all.flatMap(({ organization: org, deactivatedAt }) =>
     deactivatedAt === null ? [] : [{ publicId: org.publicId, name: org.name, deactivatedAt }],
   );
+  const isMemberOf = (id: string | null) => all.some((row) => String(row.organization.id) === id);
 
   // Added by the organization plugin, which Better Auth's session type doesn't pick up.
   const activeId =
@@ -142,19 +147,35 @@ export async function getViewer(auth: Auth, headers: Headers): Promise<Viewer | 
     typeof result.session.activeOrganizationId === "string"
       ? result.session.activeOrganizationId
       : null;
+  const storedNotice = result.session.removedFromOrganizationId ?? null;
+  let removedFromId = storedNotice;
+  const changes: { activeOrganizationId?: string | null } = {};
+
   let active = rows.find((row) => String(row.organization.id) === activeId);
   if (active === undefined) {
     active = rows[0];
     const fallbackId = active === undefined ? null : String(active.organization.id);
     if (fallbackId !== activeId) {
-      // Membership was just verified above, so this skips `setActiveOrganization` (which would
-      // also try to rewrite the cookie, impossible from a Server Component). The cookie only
-      // holds the session token, so updating the row is enough.
-      const context = await auth.$context;
-      await context.internalAdapter.updateSession(result.session.token, {
-        activeOrganizationId: fallbackId,
-      });
+      changes.activeOrganizationId = fallbackId;
+      // A Removal deletes the membership; a deactivation keeps it and is told from it instead.
+      // A first pick, from no Firm, ends the notice of a session that had none to show it on.
+      if (activeId !== null && !isMemberOf(activeId)) removedFromId = activeId;
+      else if (activeId === null) removedFromId = null;
     }
+  }
+  // Back in the Firm, so the notice no longer holds.
+  if (isMemberOf(removedFromId)) removedFromId = null;
+
+  if (changes.activeOrganizationId !== undefined || removedFromId !== storedNotice) {
+    // Membership was just verified above, so this skips `setActiveOrganization` (which would
+    // also try to rewrite the cookie, impossible from a Server Component). The cookie only
+    // holds the session token, so updating the row is enough. One call, so the cached session
+    // in Redis moves with the row (ADR 0005).
+    const context = await auth.$context;
+    await context.internalAdapter.updateSession(result.session.token, {
+      ...changes,
+      removedFromOrganizationId: removedFromId,
+    });
   }
 
   const createdAt = new Date(result.session.createdAt);
@@ -178,12 +199,39 @@ export async function getViewer(auth: Auth, headers: Headers): Promise<Viewer | 
       toPublicMembership({ ...row, isActive: row.memberId === active?.memberId }),
     ),
     deactivatedFirms,
+    removedFrom: removedFromId === null ? null : await removedFirm(db, removedFromId),
     internal: {
       userId,
       organizationId: active?.organization.id ?? null,
       memberId: active?.memberId ?? null,
     },
   };
+}
+
+/** The Firm a notice names. Firms are never deleted (ADR 0021), so it's always there. */
+async function removedFirm(db: Database, organizationId: string): Promise<RemovedFirm | null> {
+  const [row] = await db
+    .select({ publicId: organization.publicId, name: organization.name })
+    .from(organization)
+    .where(eq(organization.id, Number(organizationId)))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Clears the viewer's Removal notice from their own session (ADR 0023): their Dismiss, or a
+ * switch of workspace. Other sessions keep theirs, each told on its own.
+ */
+export async function dismissRemovalNotice(auth: Auth, headers: Headers): Promise<Result<null>> {
+  const result = await auth.api.getSession({ headers });
+  if (!result) return fail("unauthenticated");
+  if ((result.session.removedFromOrganizationId ?? null) !== null) {
+    const context = await auth.$context;
+    await context.internalAdapter.updateSession(result.session.token, {
+      removedFromOrganizationId: null,
+    });
+  }
+  return ok(null);
 }
 
 /** A viewer with a verified tenant, from `requireTenant` or `tenantOf`. */
@@ -244,6 +292,8 @@ export async function switchOrganization(
     auth.api.setActiveOrganization({ headers, body: { organizationId: String(target.id) } }),
   );
   if (!called.ok) return called;
+  // A switch is the User choosing where they are, so the notice has done its job (ADR 0023).
+  if (viewer.removedFrom !== null) await dismissRemovalNotice(auth, headers);
   await audit(auth, {
     headers,
     event: {
@@ -605,6 +655,8 @@ export async function acceptInvitation(
     auth.api.acceptInvitation({ headers, body: { invitationId: String(invitationId) } }),
   );
   if (!accepted.ok) return accepted;
+  // Joining makes it the session's workspace: a switch, so the notice goes (ADR 0023).
+  if (viewer.removedFrom !== null) await dismissRemovalNotice(auth, headers);
 
   const [org] = await auth.$deps.db
     .select(organizationColumns)
