@@ -50,15 +50,15 @@ case "${1:-}" in
       (cd "$top" &&
         DATABASE_URL=$(printf "$url" migrator) DATABASE_PASSWORD_FILE="$top/.secrets/db_migrator_password" \
           pnpm --silent --filter @repo/db db:migrate)
-      export DATABASE_URL=$(printf "$url" app) DATABASE_PASSWORD_FILE="$top/.secrets/db_app_password"
-      cw_json db seed | jq -r '"Seed: added \(.added.users) users, \(.added.households) Households"' >&2
+      DATABASE_URL=$(printf "$url" app) DATABASE_PASSWORD_FILE="$top/.secrets/db_app_password" \
+        cw_json db seed | jq -r '"Seed: added \(.added.users) users, \(.added.households) Households"' >&2
       feed="$top/apps/custodian/fixtures/feed"
       for delivery in "$feed"/*/; do
         # A Delivery already ingested on an earlier `up` succeeds with `status: already_ingested`.
-        cw_json custodian ingest "$(basename "$delivery")" --root "$feed" |
+        DATABASE_URL=$(printf "$url" app) DATABASE_PASSWORD_FILE="$top/.secrets/db_app_password" \
+          cw_json custodian ingest "$(basename "$delivery")" --root "$feed" |
           jq -r '"Delivery \(.asOf): \(.status)"' >&2
       done
-      unset DATABASE_URL DATABASE_PASSWORD_FILE
       echo "Database: $(printf "$url" app) (password file $top/.secrets/db_app_password), seeded" >&2
     fi
     echo "Project $VERIFY_COMPOSE_PROJECT: web http://localhost:$WEB_PORT, custodian http://127.0.0.1:$CUSTODIAN_PORT, Mailpit http://127.0.0.1:$MAILPIT_PORT" >&2

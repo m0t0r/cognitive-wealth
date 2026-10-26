@@ -195,7 +195,8 @@ export function devCommands({ devEnv }: Pick<Dependencies, "devEnv">) {
         "Tear down a worktree's dev environment, to start it over: stop its pnpm dev, drop its " +
         "database and Redis keys, and remove what its verifier-web runs left",
       hint:
-        "The next pnpm dev sets it up again. A removed worktree's environment goes with " +
+        "Idempotent, so it's safe to rerun. The next pnpm dev sets it up again. A removed " +
+        "worktree's environment goes with " +
         "dev prune, which the hooks run.",
       options: z.object({
         worktree: z

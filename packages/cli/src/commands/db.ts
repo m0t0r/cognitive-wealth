@@ -94,7 +94,8 @@ export function dbCommands({ openDatabase }: Pick<Dependencies, "openDatabase">)
       "and Globex) to a local database, then the world file's Households, People, Accounts and " +
       "Account roles to Larkspur",
     hint:
-      "Idempotent: existing rows are left as they are. Refuses a remote database, NODE_ENV " +
+      "Idempotent, in one transaction: existing rows are left as they are, and the same world " +
+      "file again skips its Households, People, Accounts and Account roles. Refuses a remote database, NODE_ENV " +
       "production, and a changed world file whose earlier rows now differ (seed_conflict).",
     options: z.object({
       world: z
