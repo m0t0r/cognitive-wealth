@@ -31,7 +31,7 @@ function cveScan({ github, stepSummaryFile }: FakeScanArgs = {}) {
     root: "/repo",
     github,
     stepSummaryFile,
-    scan: vi.fn(async () => ({
+    scan: vi.fn<CveScan["scan"]>(async () => ({
       packages: 412,
       findings: [FINDING],
       skipped: [{ id: "CVE-2026-2", reason: "already reported" }],
@@ -64,7 +64,7 @@ describe("cw cve scan", () => {
       skipped: [{ id: "CVE-2026-2", reason: "already reported" }],
       issues: [],
     });
-    const [[args]] = env.scan.mock.calls as unknown as [[Parameters<CveScan["scan"]>[0]]];
+    const args = env.scan.mock.calls[0]![0];
     expect(args).toMatchObject({ root: "/repo", minCvss: 7, known: new Set() });
     expect(Date.now() - args.since.getTime()).toBeCloseTo(30 * 24 * 60 * 60 * 1000, -4);
     expect(env.fileIssues).not.toHaveBeenCalled();

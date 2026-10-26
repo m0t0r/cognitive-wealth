@@ -85,7 +85,7 @@ pnpm dev:sign-in owner@cognitive-wealth.test
 agent-browser --state .dev/auth/owner@cognitive-wealth.test.json open https://cognitive-wealth.localhost
 ```
 
-`dev:sign-in` runs the real flow (request the email, read it from Mailpit, verify the token as the confirm page does) and saves the session cookies to `.dev/auth/<email>.json` (gitignored, mode 0600). The same file works as a Playwright `storageState`. `--state <file>` saves elsewhere, `--app <url>` targets another local app (such as a worktree's `https://<branch>.cognitive-wealth.localhost`), `--mailpit <url>` another Mailpit (by default `MAILPIT_URL`, from the shell or else this checkout's `apps/web/.env.local`), and `--help` lists the rest. It only talks to local hosts.
+`dev:sign-in` runs the real flow (request the email, read it from Mailpit, verify the token as the confirm page does) and saves the session cookies to `.dev/auth/<email>.json` (gitignored, mode 0600), returning that file as `statePath`. The same file works as a Playwright `storageState`. `--state <file>` saves elsewhere, `--app <url>` targets another local app (such as a worktree's `https://<branch>.cognitive-wealth.localhost`), `--mailpit <url>` another Mailpit (by default `MAILPIT_URL`, from the shell or else this checkout's `apps/web/.env.local`), and `--help` lists the rest. It only talks to local hosts (`not_local` otherwise). It's `pnpm cw dev sign-in`, so `--json` gives the result as JSON.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/dev-sign-in.dark.svg">
@@ -109,7 +109,7 @@ pnpm dev:sign-in admin@cognitive-wealth.test --app http://localhost:3000 --ip 10
 
 Either:
 
-- `pnpm dev:sign-in owner@cognitive-wealth.test --link` requests the email and prints the confirm link and code. Open the link, or type the code on the sign-in page.
+- `pnpm dev:sign-in owner@cognitive-wealth.test --link` requests the email and returns the confirm link and code (`link`, `code`). Open the link, or type the code on the sign-in page.
 - Use the form at `https://cognitive-wealth.localhost/sign-in`, then open the email in the Mailpit UI at <http://127.0.0.1:8025>.
 
 ## 4. Add organizations and users
@@ -165,8 +165,8 @@ The previews run at `https://emails.cognitive-wealth.localhost`, from each templ
 
 ## Troubleshooting
 
-- **`dev:sign-in` fails with a certificate error, or warns "no portless CA".** The portless CA doesn't exist until the proxy has started once: run `pnpm dev` (or `portless proxy start`) in a terminal and accept the `sudo` prompt. The harness then trusts `~/.portless/ca.pem` (or `$PORTLESS_STATE_DIR/ca.pem`) by itself.
-- **No email arrived.** The address must be a user (`pnpm db:seed`, `pnpm org:create`) or have a pending invitation. Anyone else gets the same success response and no email, by design. Also check that Mailpit is up (<http://127.0.0.1:8025>) and that `SMTP_URL` in `apps/web/.env.local` is `smtp://localhost:1025`.
+- **`dev:sign-in` fails with a certificate error.** The portless CA doesn't exist until the proxy has started once: run `pnpm dev` (or `portless proxy start`) in a terminal and accept the `sudo` prompt. The harness then trusts `~/.portless/ca.pem` (or `$PORTLESS_STATE_DIR/ca.pem`) by itself.
+- **No email arrived** (`no_email`). The address must be a user (`pnpm db:seed`, `pnpm org:create`) or have a pending invitation. Anyone else gets the same success response and no email, by design. Also check that Mailpit is up (<http://127.0.0.1:8025>) and that `SMTP_URL` in `apps/web/.env.local` is `smtp://localhost:1025`.
 - **Sign-in stopped sending emails, or returns `rate_limited`.** Requests are limited per IP and per address (`ROUTE_RATE_LIMITS` and `SIGN_IN_EMAIL_LIMITS` in `@repo/auth`), and an address over its limit silently gets no email. Wait out the window, or clear the counters: Redis keeps nothing on disk, so `docker compose -f compose.yaml -f compose.dev.yaml restart redis` resets them (and the session cache, which Postgres rebuilds).
 - **`Refusing to seed: …`.** The message names the reason: unset `NODE_ENV=production`, or point `DATABASE_URL` at the local stack.
 - **`password authentication failed`.** Roles get their passwords when the `pgdata` volume is first created; a regenerated `.secrets/` file doesn't change them. Run `docker compose -f compose.yaml -f compose.dev.yaml down -v`, start the stack again and reseed.

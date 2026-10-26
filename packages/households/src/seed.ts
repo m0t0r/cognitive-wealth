@@ -42,7 +42,7 @@ export interface CrmSeedResult {
 }
 
 /**
- * `pnpm db:seed`: the dev users and Firms (`seedDevData`), then the world file's CRM half loaded
+ * `cw db seed`: the dev users and Firms (`seedDevData`), then the world file's CRM half loaded
  * into the world's Firm, all in one transaction. The world file is checked first, and a world
  * whose Firm isn't the seeded one is refused, so either way nothing is written.
  *

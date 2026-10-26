@@ -12,8 +12,10 @@ The repository's commands (`org:*`, `db:seed`, `custodian:ingest`, `dev:*`, `cve
 5. **No MCP tools.** incur gives every CLI an MCP server (`--mcp`, `mcp add`, and an HTTP endpoint on `cli.fetch`). `cw`'s root excludes every tool (`mcp: { tools: { exclude: ["*"] } }`), and every command that writes also says `mcp: false`. `app.test.ts` checks both: `cw`'s MCP server lists nothing, and on a root without the exclusion every `cw` command stays hidden. A read-only command may be exposed one day, by its own change to this ADR; a command that writes, never.
 6. **`cli.fetch` is never served.** incur's fetch handler runs any command over HTTP, `mcp: false` or not. Only tests call it, in-process, to reach the MCP endpoint.
 7. **incur's other built-ins are off where they act on their own**: generated skill files (`sync: false`) and self-update (`update: false`).
-8. **Tests run commands in-process.** `createCli(dependencies)` takes the database and the dev environment as one object, and `serve(argv, { stdout, exit })` runs the real command with a test's own. The domain keeps its rules and their tests; `cw`'s tests own the wiring: options, output shape, codes and exit status.
+8. **Tests run commands in-process.** `createCli(dependencies)` takes the database, the dev environment and the cve.now scan as one object, and `serve(argv, { stdout, exit })` runs the real command with a test's own. The domain keeps its rules and their tests; `cw`'s tests own the wiring: options, output shape, codes and exit status.
 9. **The old script names stay**, as aliases of `cw` commands (`pnpm org:deactivate` is `cw org deactivate`), so the docs, runbooks and muscle memory that name them keep working. The rest of the CLIs move over one group at a time (#234), tracked in #232.
+
+   _Status note (2026-10-26):_ all of them have (#234): `org create` and `org export`, `custodian ingest`, `db seed`, `dev sign-in`, `dev env` and `dev teardown`, and `cve scan`. `db:studio` and `with-postgres` stay plain Node: one hands the terminal to drizzle-kit, the other runs a command under a Postgres, and neither returns data. incur 0.7.1 prints no `hint` in an error, so a refusal's fix goes in its `message` (`seed_conflict`).
 
 ## Why
 

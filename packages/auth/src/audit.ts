@@ -9,7 +9,7 @@ export type AuditAction =
   // Written by `pnpm org:deactivate` and `org:reactivate` (`@repo/db`), with no actor.
   | "org.deactivated"
   | "org.reactivated"
-  // Written by `pnpm org:export` (`@repo/db`), with no actor.
+  // Written by `cw org export` (`@repo/db`), with no actor.
   | "org.records_exported"
   | "org.invitation.created"
   | "org.invitation.accepted"

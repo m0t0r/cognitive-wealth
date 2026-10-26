@@ -1,7 +1,7 @@
 // Which tables hold a Firm's records, and which don't (#206): what `pnpm org:export` writes into a
 // Records export (GLOSSARY.md), and later what retention covers (#194). Kept as data, beside the
 // schema, so a new table has to be put in one list or the other: `records.test.ts` fails until it
-// is. `pnpm org:export` loads this through Node, so its imports keep their `.ts` extension.
+// is. `cw org export` loads this through Node, so its imports keep their `.ts` extension.
 import type { PgTable } from "drizzle-orm/pg-core";
 import {
   account,

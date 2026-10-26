@@ -14,7 +14,7 @@
 # x-forwarded-for, so the app sees the client's address rather than the proxy's. A client can
 # prepend its own entries, which only matters on this machine. BETTER_AUTH_URL can stay unset:
 # the app falls back to PORTLESS_URL outside production.
-# `pnpm dev:sign-in <email>` then signs in through the real flow (see packages/testing).
+# `pnpm dev:sign-in <email>` then signs in through the real flow (`cw dev sign-in`).
 
 services:
   db:
