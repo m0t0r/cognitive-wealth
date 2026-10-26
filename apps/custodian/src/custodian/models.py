@@ -263,4 +263,5 @@ class BuildRecord(Base):
     """The CRSP month the Factor file was built from, such as `202608`: shown in a refusal, never
     compared, since the file's SHA-256 already decides it."""
     treasury_yields_sha256: Mapped[str]
+    security_catalog_sha256: Mapped[str]
     recorded_at: Mapped[datetime] = mapped_column(server_default=func.clock_timestamp())

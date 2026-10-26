@@ -1,10 +1,10 @@
 """Which market inputs built the custodian's database, and the check that they still do.
 
 Everything the custodian stores about the market (prices, from #46) is worked out from the Factor
-file and the Treasury yields. If the Pin moved and the database kept its old rows, one history
-would mix two worlds' prices. So the first load records both inputs' SHA-256, and from then on
-the API and every command that needs market data refuse a database built from other inputs: it
-must be rebuilt from empty (ADR 0019).
+file, the Treasury yields and the Security catalog. If the Pin moved and the database kept its old
+rows, one history would mix two worlds' prices. So the first load records each input's SHA-256,
+and from then on the API and every command that needs market data refuse a database built from
+other inputs: it must be rebuilt from empty (ADR 0019).
 """
 
 import hashlib
@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from custodian.factor_file import PIN_PATH, factor_file, read_pin
 from custodian.models import BuildRecord
+from custodian.security_catalog import SECURITY_CATALOG_PATH
 from custodian.treasury_yields import TREASURY_YIELDS_PATH
 
 __all__ = [
@@ -44,6 +45,7 @@ class MarketInputs:
 
     factor_file_sha256: str
     treasury_yields_sha256: str
+    security_catalog_sha256: str
     factor_file_crsp_month: str = field(compare=False)
 
 
@@ -70,7 +72,8 @@ def market_inputs(environ: Mapping[str, str] = os.environ) -> MarketInputs:
     return MarketInputs(
         factor_file_sha256=pin.sha256,
         factor_file_crsp_month=pin.crsp_month,
-        treasury_yields_sha256=hashlib.sha256(TREASURY_YIELDS_PATH.read_bytes()).hexdigest(),
+        treasury_yields_sha256=_sha256(TREASURY_YIELDS_PATH),
+        security_catalog_sha256=_sha256(SECURITY_CATALOG_PATH),
     )
 
 
@@ -83,6 +86,7 @@ def record_build(session: Session, inputs: MarketInputs) -> None:
                     factor_file_sha256=inputs.factor_file_sha256,
                     factor_file_crsp_month=inputs.factor_file_crsp_month,
                     treasury_yields_sha256=inputs.treasury_yields_sha256,
+                    security_catalog_sha256=inputs.security_catalog_sha256,
                 )
             )
     check_build(session, inputs)
@@ -99,6 +103,12 @@ def check_build(session: Session, inputs: MarketInputs) -> None:
         for name, built, now in (
             ("Factor file", _factor_file(recorded), _factor_file(inputs)),
             ("Treasury yields", recorded.treasury_yields_sha256, inputs.treasury_yields_sha256),
+            (
+                "Security catalog",
+                # Empty in a database built before the catalog was recorded (migration 0006).
+                recorded.security_catalog_sha256 or "not recorded",
+                inputs.security_catalog_sha256,
+            ),
         )
         if built != now
     ]
@@ -117,8 +127,13 @@ def _recorded(session: Session) -> MarketInputs | None:
         factor_file_sha256=record.factor_file_sha256,
         factor_file_crsp_month=record.factor_file_crsp_month,
         treasury_yields_sha256=record.treasury_yields_sha256,
+        security_catalog_sha256=record.security_catalog_sha256,
     )
 
 
 def _factor_file(inputs: MarketInputs) -> str:
     return f"the {inputs.factor_file_crsp_month} CRSP file ({inputs.factor_file_sha256})"
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()

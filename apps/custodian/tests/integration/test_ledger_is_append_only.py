@@ -147,5 +147,10 @@ def test_the_app_has_only_the_access_each_table_grants(database: Database) -> No
             "amount",
         },
         "price": {"security_id", "price_date", "price"},
-        "build_record": {"factor_file_sha256", "factor_file_crsp_month", "treasury_yields_sha256"},
+        "build_record": {
+            "factor_file_sha256",
+            "factor_file_crsp_month",
+            "treasury_yields_sha256",
+            "security_catalog_sha256",
+        },
     }

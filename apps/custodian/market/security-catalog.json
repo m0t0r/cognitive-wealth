@@ -1,0 +1,259 @@
+{
+  "securities": [
+    {
+      "identifier": "LKSF",
+      "name": "Larkspur Stock Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#large-blend-stock-fund",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "1.00",
+        "smb": "0.00",
+        "hml": "0.00",
+        "own_volatility": "0.010"
+      }
+    },
+    {
+      "identifier": "LKGF",
+      "name": "Larkspur Growth Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#large-growth-stock-fund",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "1.06",
+        "smb": "-0.19",
+        "hml": "-0.29",
+        "own_volatility": "0.034"
+      }
+    },
+    {
+      "identifier": "LKVF",
+      "name": "Larkspur Value Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#large-value-stock-fund",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "0.90",
+        "smb": "-0.06",
+        "hml": "0.36",
+        "own_volatility": "0.040"
+      }
+    },
+    {
+      "identifier": "LKSC",
+      "name": "Larkspur Small Cap Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#small-blend-stock-fund",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "0.97",
+        "smb": "0.84",
+        "hml": "0.39",
+        "own_volatility": "0.034"
+      }
+    },
+    {
+      "identifier": "LKSV",
+      "name": "Larkspur Small Cap Value Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#small-value-stock-fund",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "0.99",
+        "smb": "0.89",
+        "hml": "0.59",
+        "own_volatility": "0.035"
+      }
+    },
+    {
+      "identifier": "LKDF",
+      "name": "Larkspur Dividend Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#dividend-stock-fund",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "0.81",
+        "smb": "0.08",
+        "hml": "0.54",
+        "own_volatility": "0.065"
+      }
+    },
+    {
+      "identifier": "HVPW",
+      "name": "Harrow Valley Power",
+      "kind": "stock",
+      "research": "docs/research/security-catalog.md#utility-company",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "0.55",
+        "smb": "-0.24",
+        "hml": "0.24",
+        "own_volatility": "0.208"
+      }
+    },
+    {
+      "identifier": "QLNC",
+      "name": "Quillon Software",
+      "kind": "stock",
+      "research": "docs/research/security-catalog.md#software-company",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "1.10",
+        "smb": "-0.25",
+        "hml": "-0.49",
+        "own_volatility": "0.279"
+      }
+    },
+    {
+      "identifier": "FNMB",
+      "name": "Fenmoor Bank",
+      "kind": "stock",
+      "research": "docs/research/security-catalog.md#bank",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "1.08",
+        "smb": "0.22",
+        "hml": "0.70",
+        "own_volatility": "0.259"
+      }
+    },
+    {
+      "identifier": "BRWP",
+      "name": "Brightwell Pharmaceuticals",
+      "kind": "stock",
+      "research": "docs/research/security-catalog.md#pharmaceutical-company",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "0.55",
+        "smb": "0.01",
+        "hml": "-0.02",
+        "own_volatility": "0.263"
+      }
+    },
+    {
+      "identifier": "TMRE",
+      "name": "Tamarind Energy",
+      "kind": "stock",
+      "research": "docs/research/security-catalog.md#oil-and-gas-company",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "0.99",
+        "smb": "0.26",
+        "hml": "1.21",
+        "own_volatility": "0.255"
+      }
+    },
+    {
+      "identifier": "CPLN",
+      "name": "Copperline Stores",
+      "kind": "stock",
+      "research": "docs/research/security-catalog.md#retailer",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "1.01",
+        "smb": "-0.03",
+        "hml": "-0.30",
+        "own_volatility": "0.281"
+      }
+    },
+    {
+      "identifier": "LKST",
+      "name": "Larkspur Short-Term Treasury Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#short-term-treasury-fund",
+      "price_driver": {
+        "type": "treasury",
+        "tenor": "2y",
+        "duration": "1.9",
+        "own_volatility": "0.005"
+      }
+    },
+    {
+      "identifier": "LKBF",
+      "name": "Larkspur Bond Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#intermediate-term-treasury-fund",
+      "price_driver": {
+        "type": "treasury",
+        "tenor": "5y",
+        "duration": "4.8",
+        "own_volatility": "0.007"
+      }
+    },
+    {
+      "identifier": "LKLT",
+      "name": "Larkspur Long-Term Treasury Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#long-term-treasury-fund",
+      "price_driver": {
+        "type": "treasury",
+        "tenor": "20y",
+        "duration": "13.6",
+        "own_volatility": "0.016"
+      }
+    },
+    {
+      "identifier": "LKAG",
+      "name": "Larkspur Aggregate Bond Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#aggregate-bond-fund",
+      "price_driver": {
+        "type": "treasury",
+        "tenor": "7y",
+        "duration": "5.8",
+        "own_volatility": "0.019"
+      }
+    },
+    {
+      "identifier": "LKBL",
+      "name": "Larkspur Balanced Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#6040-balanced-fund",
+      "price_driver": {
+        "type": "blend",
+        "factors": {
+          "weight": "0.60",
+          "mkt_rf": "1.00",
+          "smb": "0.00",
+          "hml": "0.00"
+        },
+        "treasury": {
+          "weight": "0.40",
+          "tenor": "7y",
+          "duration": "5.8"
+        },
+        "own_volatility": "0.010"
+      }
+    },
+    {
+      "identifier": "LKCB",
+      "name": "Larkspur Conservative Balanced Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#4060-conservative-balanced-fund",
+      "price_driver": {
+        "type": "blend",
+        "factors": {
+          "weight": "0.40",
+          "mkt_rf": "1.00",
+          "smb": "0.00",
+          "hml": "0.00"
+        },
+        "treasury": {
+          "weight": "0.60",
+          "tenor": "7y",
+          "duration": "5.8"
+        },
+        "own_volatility": "0.012"
+      }
+    },
+    {
+      "identifier": "SWEEP",
+      "name": "Larkspur Bank Sweep",
+      "kind": "cash_sweep",
+      "research": "docs/research/security-catalog.md#cash-sweep",
+      "price_driver": {
+        "type": "none"
+      }
+    }
+  ]
+}

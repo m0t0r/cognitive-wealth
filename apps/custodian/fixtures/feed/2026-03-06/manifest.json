@@ -19,8 +19,8 @@
     },
     {
       "name": "securities.csv",
-      "rows": 3,
-      "sha256": "c18814eeaf6a54d83909e0841f77e338cbd6e51d5d9f13ff5e826320bb549e95"
+      "rows": 19,
+      "sha256": "1af7eacf178bd734c226d5f6fc5d87f5e33989e5e08eb0dec680d5f7f69762e6"
     },
     {
       "name": "transactions.csv",

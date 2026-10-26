@@ -12,6 +12,7 @@ from custodian.ledger_fixture import LEDGER_V0_PATH, read_ledger_fixture
 from custodian.load import load
 from custodian.money import Shares
 from custodian.positions import positions_as_of
+from custodian.security_catalog import SECURITY_CATALOG_PATH, read_security_catalog
 from custodian.world import WORLD_V0_PATH, read_world
 
 JOINT = "CW-000001"
@@ -19,7 +20,12 @@ IRA = "CW-000002"
 
 
 def load_v0(session: Session) -> None:
-    load(session, read_world(WORLD_V0_PATH), read_ledger_fixture(LEDGER_V0_PATH))
+    load(
+        session,
+        world=read_world(WORLD_V0_PATH),
+        catalog=read_security_catalog(SECURITY_CATALOG_PATH),
+        ledger=read_ledger_fixture(LEDGER_V0_PATH),
+    )
 
 
 # The primer's "Positions at the end of each day", and Friday from Parts 4 and 5. Each day is
@@ -87,7 +93,12 @@ def test_a_settlement_date_never_moves_a_position(session: Session) -> None:
             ]
         }
     )
-    load(session, read_world(WORLD_V0_PATH), late)
+    load(
+        session,
+        world=read_world(WORLD_V0_PATH),
+        catalog=read_security_catalog(SECURITY_CATALOG_PATH),
+        ledger=late,
+    )
 
     assert positions_as_of(session, JOINT, date(2026, 3, 4), known_on=date(2026, 3, 4)) == {
         "SWEEP": Shares("7474.00"),

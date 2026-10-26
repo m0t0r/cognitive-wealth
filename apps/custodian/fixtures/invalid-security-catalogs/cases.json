@@ -1,0 +1,46 @@
+[
+  {
+    "file": "duplicate-identifier.json",
+    "field": "securities.2.identifier"
+  },
+  {
+    "file": "field-of-another-driver.json",
+    "field": "securities.0.price_driver.factors.tenor"
+  },
+  {
+    "file": "missing-driver-field.json",
+    "field": "securities.0.price_driver.factors.hml"
+  },
+  {
+    "file": "unknown-driver.json",
+    "field": "securities.0.price_driver"
+  },
+  {
+    "file": "unknown-tenor.json",
+    "field": "securities.1.price_driver.treasury.tenor"
+  },
+  {
+    "file": "blend-weights-dont-add-up.json",
+    "field": "securities.2.price_driver"
+  },
+  {
+    "file": "zero-duration.json",
+    "field": "securities.1.price_driver.treasury.duration"
+  },
+  {
+    "file": "negative-duration.json",
+    "field": "securities.2.price_driver.blend.treasury.duration"
+  },
+  {
+    "file": "negative-own-volatility.json",
+    "field": "securities.0.price_driver.factors.own_volatility"
+  },
+  {
+    "file": "driver-wrong-for-kind.json",
+    "field": "securities.3.price_driver"
+  },
+  {
+    "file": "number-not-a-string.json",
+    "field": "securities.0.price_driver.factors.mkt_rf"
+  }
+]

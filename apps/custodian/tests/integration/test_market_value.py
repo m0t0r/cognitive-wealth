@@ -10,6 +10,7 @@ from custodian.load import load
 from custodian.market_value import ValuedPosition, market_value_as_of
 from custodian.models import Security, SecurityKind, SecurityPrice, Transaction, TransactionKind
 from custodian.money import Money, Price, Shares
+from custodian.security_catalog import SECURITY_CATALOG_PATH, read_security_catalog
 from custodian.world import WORLD_V0_PATH, read_world
 from tests.integration.examples import a_transaction_id, danas_account
 
@@ -25,7 +26,12 @@ FRIDAYS_POSITIONS = (
 
 
 def load_v0(session: Session) -> None:
-    load(session, read_world(WORLD_V0_PATH), read_ledger_fixture(LEDGER_V0_PATH))
+    load(
+        session,
+        world=read_world(WORLD_V0_PATH),
+        catalog=read_security_catalog(SECURITY_CATALOG_PATH),
+        ledger=read_ledger_fixture(LEDGER_V0_PATH),
+    )
 
 
 def test_danas_market_value_on_friday(session: Session) -> None:
@@ -52,7 +58,12 @@ def test_a_day_with_no_price_uses_the_last_one_before_it(session: Session, day: 
 def test_a_security_with_no_price_is_left_out_of_the_total(session: Session) -> None:
     ledger = read_ledger_fixture(LEDGER_V0_PATH)
     no_bond_prices = ledger.model_copy(update={"prices": {"LKSF": ledger.prices["LKSF"]}})
-    load(session, read_world(WORLD_V0_PATH), no_bond_prices)
+    load(
+        session,
+        world=read_world(WORLD_V0_PATH),
+        catalog=read_security_catalog(SECURITY_CATALOG_PATH),
+        ledger=no_bond_prices,
+    )
 
     value = market_value_as_of(session, JOINT, date(2026, 3, 6))
 

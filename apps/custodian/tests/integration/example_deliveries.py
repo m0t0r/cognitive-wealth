@@ -18,6 +18,7 @@ from custodian.feed import write_delivery
 from custodian.feed_store import FeedStore, LocalFeedStore
 from custodian.ledger_fixture import LEDGER_V0_PATH, read_ledger_fixture
 from custodian.load import load
+from custodian.security_catalog import SECURITY_CATALOG_PATH, read_security_catalog
 from custodian.world import WORLD_V0_PATH, read_world
 from tests.integration.postgres import (
     CUSTODIAN,
@@ -35,7 +36,12 @@ EXAMPLE_DAYS = (date(2026, 3, 2), date(2026, 3, 6))
 def write_example_deliveries(database: Database, store: FeedStore) -> None:
     """Load the v0 world into `database` (migrated, and empty) and write each example day."""
     with Session(database.app) as session:
-        load(session, read_world(WORLD_V0_PATH), read_ledger_fixture(LEDGER_V0_PATH))
+        load(
+            session,
+            world=read_world(WORLD_V0_PATH),
+            catalog=read_security_catalog(SECURITY_CATALOG_PATH),
+            ledger=read_ledger_fixture(LEDGER_V0_PATH),
+        )
     for day in EXAMPLE_DAYS:
         write_delivery(database.app, store, day)
 

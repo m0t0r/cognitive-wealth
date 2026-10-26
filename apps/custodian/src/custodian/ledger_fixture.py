@@ -1,4 +1,4 @@
-"""A hand-written ledger: Securities, prices and Transactions, until the market and the Close exist.
+"""A hand-written ledger: prices and Transactions, until the market and the Close exist.
 
 `fixtures/ledger-v0.json` is Dana's week from docs/learn/01-ledger-positions-and-dates.md, rows 1
 to 11 numbered as there, in the world's joint Account, plus two rows opening the IRA. It is the
@@ -6,7 +6,9 @@ custodian's alone: the world file names the Accounts, and this says what happene
 
 Slices 15 to 19 replace it with simulated prices, dividends and the Close; until then, a short,
 hand-checked ledger lets everything after it (Positions, the feed, ingestion) be built and tested
-against numbers a person has worked out on paper.
+against numbers a person has worked out on paper. It names Securities by identifier only: the
+Security catalog (`security_catalog.py`) says what each one is, and the loader refuses a ledger
+naming one the catalog doesn't have.
 """
 
 from datetime import date
@@ -15,12 +17,11 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from custodian.models import SecurityKind, TransactionKind
+from custodian.models import TransactionKind
 from custodian.money import Money, Price, Shares
 
 __all__ = [
     "LEDGER_V0_PATH",
-    "FixtureSecurity",
     "FixtureTransaction",
     "LedgerFixture",
     "read_ledger_fixture",
@@ -33,12 +34,6 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class FixtureSecurity(_Strict):
-    identifier: str
-    name: str
-    kind: SecurityKind
-
-
 class FixtureTransaction(_Strict):
     number: int
     """The row's number in the fixture, counting from 1, as the primer numbers Dana's rows."""
@@ -46,6 +41,7 @@ class FixtureTransaction(_Strict):
     """An account number in the world file."""
     kind: TransactionKind
     security: str | None = None
+    """A Security's identifier in the Security catalog."""
     shares: Shares | None = None
     amount: Money
     trade_date: date
@@ -67,7 +63,6 @@ class FixtureTransaction(_Strict):
 
 
 class LedgerFixture(_Strict):
-    securities: list[FixtureSecurity]
     prices: dict[str, dict[date, Price]]
     """Each Security's closing price by Business day, keyed by identifier."""
     transactions: list[FixtureTransaction]
@@ -77,18 +72,10 @@ class LedgerFixture(_Strict):
     # that names the row in the file, rather than a constraint name.
     @model_validator(mode="after")
     def _rows_fit_together(self) -> Self:
-        identifiers = {security.identifier for security in self.securities}
-        for identifier in self.prices:
-            if identifier not in identifiers:
-                raise ValueError(f"prices.{identifier}: not a Security in this fixture")
         for index, transaction in enumerate(self.transactions):
             where = f"transactions.{index}"
             if transaction.number != index + 1:
                 raise ValueError(f"{where}.number: row {transaction.number} should be {index + 1}")
-            if transaction.security is not None and transaction.security not in identifiers:
-                raise ValueError(
-                    f"{where}.security: {transaction.security!r} isn't in this fixture"
-                )
             if transaction.reverses is not None:
                 if not 1 <= transaction.reverses < transaction.number:
                     raise ValueError(

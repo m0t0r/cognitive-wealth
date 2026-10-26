@@ -1,6 +1,8 @@
-"""Loads the world file's custodian half and a ledger fixture into the custodian's database.
+"""Loads the world file's custodian half, the Security catalog and a ledger fixture.
 
-`pnpm --filter custodian world:load` runs it with world/v0.json and fixtures/ledger-v0.json.
+`pnpm --filter custodian world:load` runs it with world/v0.json, market/security-catalog.json and
+fixtures/ledger-v0.json. The catalog is always the committed one: it's a market input, so the
+build record keeps its SHA-256 (ADR 0019).
 Loading adds what is missing and refuses to change what is there, all in one database
 transaction, so running it again changes nothing, and a file that disagrees with the database
 changes nothing either. Rebuilding a different world means starting from an empty database.
@@ -26,13 +28,18 @@ from custodian.database import engine_from_env
 from custodian.factor_file import FactorFileError
 from custodian.ledger_fixture import (
     LEDGER_V0_PATH,
-    FixtureSecurity,
     FixtureTransaction,
     LedgerFixture,
     read_ledger_fixture,
 )
 from custodian.models import Account, Security, SecurityPrice, Transaction, TransactionKind
 from custodian.money import Money, Price, Shares
+from custodian.security_catalog import (
+    SECURITY_CATALOG_PATH,
+    CatalogSecurity,
+    SecurityCatalog,
+    read_security_catalog,
+)
 from custodian.world import WORLD_V0_PATH, CustodianAccount, WorldFile, read_world
 
 __all__ = ["LoadConflict", "load", "main"]
@@ -43,15 +50,33 @@ class LoadConflict(Exception):
     """The database already holds something the files would change."""
 
 
-def load(session: Session, world: WorldFile, ledger: LedgerFixture) -> None:
-    # First check that the two files agree with each other, before touching the database.
+def _check_files_agree(
+    *, world: WorldFile, catalog: SecurityCatalog, ledger: LedgerFixture
+) -> None:
+    """Refuse a ledger naming an Account or a Security the other files don't have."""
     numbers = {account.account_number for account in world.custodian.accounts}
+    identifiers = {security.identifier for security in catalog.securities}
+    for identifier in ledger.prices:
+        if identifier not in identifiers:
+            raise ValueError(f"prices.{identifier}: not a Security in the catalog")
     for transaction in ledger.transactions:
         if transaction.account not in numbers:
             raise ValueError(
                 f"Transaction {transaction.number}: {transaction.account!r} isn't an Account in"
                 " the world file"
             )
+        if transaction.security is not None and transaction.security not in identifiers:
+            raise ValueError(
+                f"Transaction {transaction.number}: {transaction.security!r} isn't a Security in"
+                " the catalog"
+            )
+
+
+def load(
+    session: Session, *, world: WorldFile, catalog: SecurityCatalog, ledger: LedgerFixture
+) -> None:
+    # First check that the files agree with each other, before touching the database.
+    _check_files_agree(world=world, catalog=catalog, ledger=ledger)
 
     with session.begin():  # commits at the end, or rolls everything back on an error
         accounts = {
@@ -59,7 +84,7 @@ def load(session: Session, world: WorldFile, ledger: LedgerFixture) -> None:
             for account in world.custodian.accounts
         }
         securities = {
-            security.identifier: _security(session, security) for security in ledger.securities
+            security.identifier: _security(session, security) for security in catalog.securities
         }
         for identifier, prices in ledger.prices.items():
             _prices(session, securities[identifier], prices)
@@ -96,7 +121,7 @@ def _account(session: Session, wanted: CustodianAccount) -> Account:
     return account
 
 
-def _security(session: Session, wanted: FixtureSecurity) -> Security:
+def _security(session: Session, wanted: CatalogSecurity) -> Security:
     identifier = wanted.identifier
     security = session.scalars(
         select(Security).where(Security.identifier == identifier)
@@ -232,10 +257,15 @@ def main(argv: Sequence[str] | None = None) -> None:
     ledger_path: Path = arguments.ledger
     try:
         world = read_world(world_path)
+        catalog = read_security_catalog(SECURITY_CATALOG_PATH)
         ledger = read_ledger_fixture(ledger_path)
     except ValidationError as error:
         # The message names each bad field, such as custodian.accounts.1.registration_type.
         raise SystemExit(f"{error.title} is malformed:\n{error}") from None
+    try:
+        _check_files_agree(world=world, catalog=catalog, ledger=ledger)
+    except ValueError as error:
+        raise SystemExit(f"Nothing was loaded: {error}") from None
 
     # Market data first, with nothing written yet: the verified Factor file (downloaded into the
     # cache on a first run) and the inputs it and the Treasury yields make.
@@ -249,14 +279,14 @@ def main(argv: Sequence[str] | None = None) -> None:
         with Session(engine) as session:
             # Before any row: an empty database records the inputs, any other must match them.
             record_build(session, inputs)
-            load(session, world, ledger)
+            load(session, world=world, catalog=catalog, ledger=ledger)
     except (BuildMismatch, LoadConflict) as error:
         raise SystemExit(f"Nothing was loaded: {error}") from None
     finally:
         engine.dispose()
     prices = sum(len(by_day) for by_day in ledger.prices.values())
     print(
-        f"Loaded {len(world.custodian.accounts)} Accounts, {len(ledger.securities)} Securities,"
+        f"Loaded {len(world.custodian.accounts)} Accounts, {len(catalog.securities)} Securities,"
         f" {prices} prices and {len(ledger.transactions)} Transactions"
     )
 

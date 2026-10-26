@@ -23,6 +23,11 @@ from custodian.load import load
 from custodian.market_value import market_value_as_of
 from custodian.money import Shares
 from custodian.positions import positions_as_of
+from custodian.security_catalog import (
+    SECURITY_CATALOG_PATH,
+    SecurityCatalog,
+    read_security_catalog,
+)
 from custodian.world import WORLD_V0_PATH, WorldFile, read_world
 from tests.integration.example_deliveries import EXAMPLE_DELIVERIES, write_example_deliveries
 from tests.integration.postgres import CUSTODIAN, MIGRATED_DATABASE, Database, PostgresServer
@@ -33,7 +38,12 @@ REPO = CUSTODIAN.parents[1]
 
 
 def load_v0(session: Session) -> None:
-    load(session, read_world(WORLD_V0_PATH), read_ledger_fixture(LEDGER_V0_PATH))
+    load(
+        session,
+        world=read_world(WORLD_V0_PATH),
+        catalog=read_security_catalog(SECURITY_CATALOG_PATH),
+        ledger=read_ledger_fixture(LEDGER_V0_PATH),
+    )
 
 
 def days(first: date, last: date) -> Iterator[date]:
@@ -71,12 +81,13 @@ def test_the_reyes_delivery_for_monday_2_march(
         "2026-03-02/securities.csv",
         "2026-03-02/transactions.csv",
     ]
-    assert store.get("2026-03-02/securities.csv") == (
-        b"identifier,name,kind\n"
-        b"LKBF,Larkspur Bond Fund,fund\n"
-        b"LKSF,Larkspur Stock Fund,fund\n"
-        b"SWEEP,Larkspur Bank Sweep,cash_sweep\n"
+    # The Security master: every Security in the catalog, by identifier.
+    catalog = read_security_catalog(SECURITY_CATALOG_PATH)
+    master = rows_of(store, "2026-03-02/securities.csv")
+    assert [row["identifier"] for row in master] == sorted(
+        security.identifier for security in catalog.securities
     )
+    assert {"identifier": "LKBF", "name": "Larkspur Bond Fund", "kind": "fund"} in master
     assert store.get("2026-03-02/accounts.csv") == (
         b"account_number,registration_type,opened_on\n"
         b"CW-000001,joint,2026-02-26\n"
@@ -118,7 +129,7 @@ def test_the_manifest_lists_each_files_rows_and_content_hash(
         ("accounts.csv", 2),
         ("positions.csv", 5),
         ("prices.csv", 3),
-        ("securities.csv", 3),
+        ("securities.csv", 19),
         ("transactions.csv", 4),
     ]
     for file in manifest["files"]:
@@ -152,8 +163,9 @@ def test_a_world_rebuilt_in_another_order_gives_the_same_bytes(
     # The second database is loaded with its Accounts and Securities the other way round, so
     # every `id` differs: the IRA's rows are numbered first. Nothing published depends on them.
     world = read_world(WORLD_V0_PATH)
+    catalog = read_security_catalog(SECURITY_CATALOG_PATH)
     ledger = read_ledger_fixture(LEDGER_V0_PATH)
-    load(session, world, ledger)
+    load(session, world=world, catalog=catalog, ledger=ledger)
     reversed_world = world.model_copy(
         update={
             "custodian": world.custodian.model_copy(
@@ -161,10 +173,12 @@ def test_a_world_rebuilt_in_another_order_gives_the_same_bytes(
             )
         }
     )
-    reversed_ledger = ledger.model_copy(update={"securities": ledger.securities[::-1]})
+    reversed_catalog = catalog.model_copy(update={"securities": catalog.securities[::-1]})
     first, second = LocalFeedStore(tmp_path / "first"), LocalFeedStore(tmp_path / "second")
 
-    with rebuilt(postgres_server, reversed_world, reversed_ledger) as other:
+    with rebuilt(
+        postgres_server, world=reversed_world, catalog=reversed_catalog, ledger=ledger
+    ) as other:
         for day in FIXTURE_DAYS:
             write_delivery(database.app, first, day)
             write_delivery(other, second, day)
@@ -175,13 +189,15 @@ def test_a_world_rebuilt_in_another_order_gives_the_same_bytes(
 
 
 @contextmanager
-def rebuilt(server: PostgresServer, world: WorldFile, ledger: LedgerFixture) -> Generator[Engine]:
-    """A second migrated database holding `world` and `ledger`, dropped on leaving the `with`."""
+def rebuilt(
+    server: PostgresServer, *, world: WorldFile, catalog: SecurityCatalog, ledger: LedgerFixture
+) -> Generator[Engine]:
+    """A second migrated database holding the three files, dropped on leaving the `with`."""
     name = server.create_database(MIGRATED_DATABASE)
     engine = create_engine(server.url_for(name, "app"))
     try:
         with Session(engine) as session:
-            load(session, world, ledger)
+            load(session, world=world, catalog=catalog, ledger=ledger)
         yield engine
     finally:
         engine.dispose()
@@ -285,7 +301,12 @@ def test_a_position_with_no_price_is_sent_without_one(
     # It is still a Position, so it is still sent, but with no value rather than $0.00.
     ledger = read_ledger_fixture(LEDGER_V0_PATH)
     no_bond_prices = ledger.model_copy(update={"prices": {"LKSF": ledger.prices["LKSF"]}})
-    load(session, read_world(WORLD_V0_PATH), no_bond_prices)
+    load(
+        session,
+        world=read_world(WORLD_V0_PATH),
+        catalog=read_security_catalog(SECURITY_CATALOG_PATH),
+        ledger=no_bond_prices,
+    )
     store = LocalFeedStore(tmp_path)
 
     write_delivery(database.app, store, MONDAY)
