@@ -7,7 +7,7 @@ import { verifyResources } from "../names.ts";
 import { chromeFiles, refCheckoutsDir, stateDirOf, verifyDir } from "../verify.ts";
 
 const { mainCheckout, worktreeId, top } = checkoutAt(process.cwd());
-const { token, ports, databases, session } = verifyResources(worktreeId);
+const { token, ports, databases, session, compose } = verifyResources(worktreeId);
 const chrome = chromeFiles(mainCheckout);
 
 const values: Record<string, string | number> = {
@@ -19,6 +19,10 @@ const values: Record<string, string | number> = {
   VERIFY_DATABASE: databases.head,
   VERIFY_REF_DATABASE: databases.ref,
   VERIFY_SESSION: session,
+  VERIFY_COMPOSE_PROJECT: compose.project,
+  VERIFY_COMPOSE_WEB_PORT: compose.ports.web,
+  VERIFY_COMPOSE_CUSTODIAN_PORT: compose.ports.custodian,
+  VERIFY_COMPOSE_MAILPIT_PORT: compose.ports.mailpit,
   VERIFY_DIR: verifyDir(mainCheckout),
   VERIFY_STATE: stateDirOf({ mainCheckout, token }),
   VERIFY_REF_CHECKOUTS: refCheckoutsDir(mainCheckout),

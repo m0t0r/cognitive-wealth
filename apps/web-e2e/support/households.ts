@@ -12,6 +12,7 @@ import {
   person,
 } from "@repo/db/schema";
 import { seedDevWorld } from "@repo/households/seed";
+import { eq } from "drizzle-orm";
 import { ingestDelivery, localFeedSource } from "@repo/portfolio";
 import type { SeededUser } from "./seed";
 
@@ -69,10 +70,10 @@ export async function seedIngestedWorld(
  */
 export async function seedHouseholdOfGrace(db: Database): Promise<string> {
   // The world file's People are all Larkspur's.
-  const people = await db
-    .select({ id: person.id, firmId: person.firmId, seedKey: person.seedKey })
-    .from(person);
-  const jordan = people.find((row) => row.seedKey === "jordan-reyes");
+  const [jordan] = await db
+    .select({ id: person.id, firmId: person.firmId })
+    .from(person)
+    .where(eq(person.seedKey, "jordan-reyes"));
   if (!jordan) throw new Error("Seed the world first: no Person 'jordan-reyes'");
   const { firmId } = jordan;
 

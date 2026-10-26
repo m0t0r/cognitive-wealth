@@ -3,11 +3,21 @@
 // that import this directly (type stripping), so relative imports keep their `.ts` extension.
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { type WorktreeResources, verifyDatabasesOf, verifySessionOf } from "./names.ts";
+import {
+  type WorktreeResources,
+  composeProjectOf,
+  verifyDatabasesOf,
+  verifySessionOf,
+} from "./names.ts";
 import { alive, commandOf, stop } from "./processes.ts";
 import { deleteRecord } from "./registry.ts";
 import { connectJanitor, dropDatabase, isRefused } from "./services.ts";
-import { releaseChrome, removeRefCheckouts, stopVerifyServers } from "./verify.ts";
+import {
+  releaseChrome,
+  removeComposeProject,
+  removeRefCheckouts,
+  stopVerifyServers,
+} from "./verify.ts";
 
 /** A running `pnpm dev`: the `dev.ts` wrapper and, when known, `next dev`'s process group. */
 export type Server = { pid: number; group?: number | undefined };
@@ -146,6 +156,7 @@ export async function tearDown({
     ],
     ["delete the Redis keys", () => deleteKeys({ mainCheckout, prefix: target.redisPrefix })],
     ["remove the --ref checkouts", async () => removeRefCheckouts({ mainCheckout, token })],
+    ["remove the Compose project", async () => removeComposeProject(composeProjectOf(token))],
   ];
   const done: string[] = [];
   const failed: string[] = [];

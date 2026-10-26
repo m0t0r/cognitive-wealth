@@ -59,7 +59,7 @@ Each checkout has its own port pair (the main checkout's is `:3100` and `:3101`)
     line [2500, 2500]
   ```
 
-  Do the same for INP when the change has interactions. Add a table of the exact numbers under the chart.
+  Do the same for INP when the change has interactions. Add a table of the exact numbers under the chart. With one touched route, skip the chart and give only the table: one route's budget line is a lone dot, and two short bars on a 0–3000 axis say less than the numbers.
 
 - **Client JS**: gzip-summed bytes of `apps/web/.next/static/chunks/**/*.js` in each build (the base build lives in `.dev/worktrees/<sha>`). Report it when it moves by more than 1 kB.
 - **Accessibility**: `agent-browser a11y` violation counts per touched route on both servers.

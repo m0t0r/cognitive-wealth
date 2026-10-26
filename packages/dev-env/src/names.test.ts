@@ -1,5 +1,6 @@
 import {
   orphanTokens,
+  tokenOfComposeProject,
   tokenOfDatabase,
   tokenOfRedisKey,
   tokenOfRefCheckout,
@@ -16,6 +17,10 @@ describe("verifyResources", () => {
       ports: { head: 3786, ref: 3787 },
       databases: { head: "verify_task_0ebb429f_head", ref: "verify_task_0ebb429f_ref" },
       session: "verify-task_0ebb429f",
+      compose: {
+        project: "cw-compose-task_0ebb429f",
+        ports: { web: 4786, custodian: 5786, mailpit: 6786 },
+      },
     });
   });
 
@@ -25,6 +30,7 @@ describe("verifyResources", () => {
       ports: { head: 3100, ref: 3101 },
       databases: { head: "verify_main_head", ref: "verify_main_ref" },
       session: "verify",
+      compose: { project: "cw-compose-main", ports: { web: 4100, custodian: 5100, mailpit: 6100 } },
     });
   });
 
@@ -76,6 +82,13 @@ describe("orphanTokens", () => {
     redisKeys: ["cw:session", "cw:wt:gone_0000000d:x"],
     stateDirs: ["main", "gone_0000000e", "live_0000000c"],
     refCheckouts: ["main-56862fe", "gone_0000000f-56862fe", "live_0000000c-56862fe"],
+    composeProjects: [
+      "cognitive-wealth",
+      "cognitive-wealth-verify",
+      "cw-compose-main",
+      "cw-compose-gone_00000010",
+      "cw-compose-live_0000000c",
+    ],
   };
 
   it("finds the worktrees that are gone from every kind of leftover, each token once", () => {
@@ -91,6 +104,7 @@ describe("orphanTokens", () => {
       "gone_0000000d",
       "gone_0000000e",
       "gone_0000000f",
+      "gone_00000010",
     ]);
   });
 
@@ -102,9 +116,23 @@ describe("orphanTokens", () => {
         redisKeys: [],
         stateDirs: ["main", "live_0000000c"],
         refCheckouts: ["main-56862fe", "live_0000000c-56862fe"],
+        composeProjects: ["cognitive-wealth", "cw-compose-main", "cw-compose-live_0000000c"],
       }),
     ).toEqual([]);
   });
+});
+
+describe("tokenOfComposeProject", () => {
+  it("reads the token back out of a worktree's Compose project", () => {
+    expect(tokenOfComposeProject("cw-compose-task_0ebb429f")).toBe("task_0ebb429f");
+  });
+
+  it.each(["cognitive-wealth", "cognitive-wealth-verify", "cw-compose-main", "cw-compose-task"])(
+    "ignores %s, which isn't a worktree's Compose project",
+    (name) => {
+      expect(tokenOfComposeProject(name)).toBeUndefined();
+    },
+  );
 });
 
 describe("tokenOfRefCheckout", () => {

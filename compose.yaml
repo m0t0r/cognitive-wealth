@@ -13,7 +13,8 @@
 # Cognitive Wealth's services join, and Cognitive Wealth's roles don't exist in it. A second server
 # rather than a second database: it costs about 30 MiB idle, and it initializes its own volume even
 # where `pgdata` already exists. The custodian's API, with its docs at /docs, is on
-# http://127.0.0.1:8000 (`CUSTODIAN_PORT` changes the host port).
+# http://127.0.0.1:8000 (`CUSTODIAN_PORT` changes the host port, as `WEB_PORT` and `MAILPIT_PORT`
+# do the app's and Mailpit's; verifier-web's compose.sh sets all three for a project of its own).
 # Postgres, Redis and SMTP are only reachable from the stack. For `pnpm dev` on the host, also load
 # compose.dev.yaml.
 
@@ -186,7 +187,7 @@ services:
       timeout: 5s
       retries: 10
     ports:
-      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
     # SMTP (1025) is only published in compose.dev.yaml; the stack reaches it over `mail`.
     # Publishing the UI needs a network with a route to the host, which also gives Mailpit outbound
     # access (it needs none: no relay is configured). Only Mailpit is on `mail-ui`.

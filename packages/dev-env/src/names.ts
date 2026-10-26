@@ -51,6 +51,11 @@ export type VerifyResources = {
   ports: { head: number; ref: number };
   databases: { head: string; ref: string };
   session: string;
+  /**
+   * `compose.sh`'s own Compose project, for changes only `compose.yaml`'s images exercise, and the
+   * host ports its services publish: offset from `ports.head`, so two checkouts never share them.
+   */
+  compose: { project: string; ports: { web: number; custodian: number; mailpit: number } };
 };
 
 /** Port pairs from 3100 up; the first is the main checkout's. Pair n is 3100 + 2n and the next. */
@@ -64,6 +69,9 @@ export function verifyDatabasesOf(token: string): VerifyResources["databases"] {
 
 /** A worktree's agent-browser session, so two worktrees' cookies never share a tab. */
 export const verifySessionOf = (token: string) => `verify-${token}`;
+
+/** A checkout's own Compose project, never `cognitive-wealth` (dev) or `cognitive-wealth-verify`. */
+export const composeProjectOf = (token: string) => `cw-compose-${token}`;
 
 /** The main checkout's token: it has no hash, so it never matches a worktree's (`TOKEN`). */
 const MAIN_TOKEN = "main";
@@ -81,6 +89,10 @@ export function verifyResources(id: string | undefined): VerifyResources {
     ports: { head, ref: head + 1 },
     databases: verifyDatabasesOf(token),
     session: id === undefined ? "verify" : verifySessionOf(token),
+    compose: {
+      project: composeProjectOf(token),
+      ports: { web: head + 1000, custodian: head + 2000, mailpit: head + 3000 },
+    },
   };
 }
 
@@ -91,6 +103,12 @@ export function tokenOfDatabase(name: string): string | undefined {
 
 const VERIFY_DATABASE = new RegExp(`^verify_(${TOKEN})_(?:head|ref)$`);
 const REF_CHECKOUT = new RegExp(`^(${TOKEN})-[0-9a-f]+$`);
+const COMPOSE_PROJECT = new RegExp(`^cw-compose-(${TOKEN})$`);
+
+/** The token of a worktree's own Compose project, or undefined for any other, the main checkout's included. */
+export function tokenOfComposeProject(name: string): string | undefined {
+  return COMPOSE_PROJECT.exec(name)?.[1];
+}
 
 /**
  * The token of a worktree's verification database, or undefined for any other database, the main
@@ -121,6 +139,8 @@ type OrphanTokensArgs = {
   stateDirs: string[];
   /** The directories under the main checkout's `.dev/worktrees/`. */
   refCheckouts: string[];
+  /** Every Compose project's name (`docker compose ls --all`). */
+  composeProjects: string[];
 };
 
 /**
@@ -133,12 +153,14 @@ export function orphanTokens({
   redisKeys,
   stateDirs,
   refCheckouts,
+  composeProjects,
 }: OrphanTokensArgs): string[] {
   const found = new Set([
     ...databases.flatMap((name) => tokenOfDatabase(name) ?? tokenOfVerifyDatabase(name) ?? []),
     ...redisKeys.flatMap((key) => tokenOfRedisKey(key) ?? []),
     ...stateDirs.flatMap((name) => STATE_DIR.exec(name)?.[1] ?? []),
     ...refCheckouts.flatMap((name) => tokenOfRefCheckout(name) ?? []),
+    ...composeProjects.flatMap((name) => tokenOfComposeProject(name) ?? []),
   ]);
   return [...found.difference(live)];
 }

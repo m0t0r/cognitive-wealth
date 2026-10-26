@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // SessionStart and PostToolUse(EnterWorktree) hook: a fresh worktree has the tracked files and
-// what .worktreeinclude copies, but no node_modules and no Python virtual environment. Install
-// them (about 3 s from the pnpm store, about 1 s from uv's cache) so lint, tests and builds work on
+// what .worktreeinclude copies, but no .dev/scratch/, no node_modules and no Python virtual
+// environment. Create and install them (about 3 s from the pnpm store, about 1 s from uv's cache) so lint, tests and builds work on
 // the first try. Does nothing in the main checkout, and skips each step whose result is already
 // there. Output goes to stderr: it's for the transcript, not the model.
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const { cwd } = JSON.parse(readFileSync(0, "utf8"));
@@ -26,6 +26,10 @@ const linked =
   git("rev-parse", "--path-format=absolute", "--git-dir") !==
     git("rev-parse", "--path-format=absolute", "--git-common-dir");
 if (!linked) process.exit(0);
+
+// CLAUDE.md sends a task's scratch files to .dev/scratch/ (gitignored), which a fresh worktree
+// lacks, so the first `> .dev/scratch/x.log` fails before the command runs (#165).
+mkdirSync(join(top, ".dev/scratch"), { recursive: true });
 
 if (!existsSync(join(top, "node_modules"))) {
   try {

@@ -46,6 +46,7 @@ The reader is a senior TypeScript engineer who is learning finance from scratch:
 
 - Cite a primary source for every regulatory fact, such as the eCFR rule or an SEC release.
 - Label a deliberate simplification as one ("the example pays interest on Friday to keep the week short").
+- When the primer sets a rule for the simulated world (when a Transaction is written, which date decides something, how a rate is set), cite how real Custodians do it, or label it as a simplification and name the slice that decides it. A rule the primer makes up is neither a fact nor an example's shortcut, so it needs one of the two.
 - Have a reviewer check the primer for factual errors and for places a beginner would get lost (see **Independent review** below).
 
 **Pictures.** Add a diagram where it explains faster than text: who does what, a timeline, or what is stored versus worked out. Write it in `docs/diagrams/` and render it with `pnpm docs:diagrams`. Look at it with `pnpm docs:diagrams:preview <name>`, which writes PNGs to `.dev/diagrams/`.
@@ -53,7 +54,7 @@ The reader is a senior TypeScript engineer who is learning finance from scratch:
 **Independent review.** The reader learns the domain from these primers and can't check them, so a primer must be correct before it's opened as a PR. Every new primer, and every section added to one later, gets a review by an independent reviewer: a subagent with a fresh context, given the changed text, the cited sources and these rules, but not the author's conclusions. The owner is never the reviewer. The reviewer:
 
 1. Opens every cited source again (following [web research](../agents/web-research.md) when a page is blocked) and checks each quote word for word, its attribution, and that the text claims no more than the source says.
-2. Searches for evidence against the primer's main claims, not only for it.
+2. Searches for evidence against the primer's main claims, not only for it, and checks every rule the primer sets for the simulated world against how real Custodians do it.
 3. Recomputes every worked number, and checks dates, names and Glossary terms against the other primers.
 4. Checks the text against the rules on this page, as a reader starting from zero.
 

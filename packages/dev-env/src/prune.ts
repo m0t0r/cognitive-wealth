@@ -1,7 +1,8 @@
 // The sweep that keeps worktree environments from outliving their worktrees: tears down every one
 // whose worktree git no longer lists, however it went (a removal hook, the session exit prompt, a
 // subagent's cleanup, `rm -rf`). It finds them from the records and, so a lost record can't hide
-// anything, from the databases, Redis keys, verifier-web state and `--ref` checkouts named after a
+// anything, from the databases, Redis keys, verifier-web state, `--ref` checkouts and Compose
+// projects named after a
 // worktree's token, and running `pnpm dev` processes themselves. Only worktrees that are gone are
 // touched, so it's safe to run at any time. Node runs the CLIs that import this directly (type
 // stripping), so relative imports keep their `.ts` extension.
@@ -15,7 +16,7 @@ import {
 } from "./names.ts";
 import { readRecords } from "./registry.ts";
 import { connectAdmin, connectJanitor, isRefused } from "./services.ts";
-import { namesIn, refCheckoutsDir, verifyDir } from "./verify.ts";
+import { composeProjectNames, namesIn, refCheckoutsDir, verifyDir } from "./verify.ts";
 import {
   type Server,
   type TeardownTarget,
@@ -67,6 +68,7 @@ export async function findOrphans(mainCheckout: string) {
     redisKeys: await worktreeRedisKeys(mainCheckout),
     stateDirs: namesIn(verifyDir(mainCheckout)),
     refCheckouts: namesIn(refCheckoutsDir(mainCheckout)),
+    composeProjects: composeProjectNames(),
   });
   const targets = new Map<string, TeardownTarget>(
     tokens.map((token) => [token, resourcesOfToken(token)]),
