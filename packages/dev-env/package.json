@@ -7,7 +7,9 @@
     "./checkout": "./src/checkout.ts",
     "./names": "./src/names.ts",
     "./env-file": "./src/env-file.ts",
-    "./prune": "./src/prune.ts"
+    "./prune": "./src/prune.ts",
+    "./setup": "./src/setup.ts",
+    "./teardown": "./src/teardown.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",
