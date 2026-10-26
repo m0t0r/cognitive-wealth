@@ -4,12 +4,13 @@
 // `--schema` come from the same schemas, so they can't drift from the code.
 import { Cli } from "incur";
 import { devCommands } from "./commands/dev.ts";
+import { frictionCommands } from "./commands/friction.ts";
 import { orgCommands } from "./commands/org.ts";
 import { type Dependencies, defaultDependencies } from "./dependencies.ts";
 
 /** Every command group `cw` mounts, apart from the root so a test can mount them on its own. */
 export function commandGroups(dependencies: Dependencies) {
-  return [orgCommands(dependencies), devCommands(dependencies)];
+  return [orgCommands(dependencies), devCommands(dependencies), frictionCommands(dependencies)];
 }
 
 export function createCli(dependencies: Dependencies = defaultDependencies) {

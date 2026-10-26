@@ -10,6 +10,8 @@ export function dependencies(overrides: Partial<Dependencies> = {}): Dependencie
   return {
     openDatabase: () => Promise.reject(new Error("The test gave this command no database")),
     devEnv: () => Promise.reject(new Error("The test gave this command no dev environment")),
+    github: () => Promise.reject(new Error("The test gave this command no GitHub")),
+    claude: () => Promise.reject(new Error("The test gave this command no Claude")),
     ...overrides,
   };
 }
