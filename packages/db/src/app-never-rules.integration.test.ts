@@ -1,0 +1,208 @@
+// What the `app` role must never be able to do, whatever `APP_PRIVILEGES` and the migrations say.
+// `app-privileges.integration.test.ts` checks that the two agree, so a change to both passes it;
+// these rules name their tables and natural keys here, or cover every table from the catalog, so
+// breaking one means changing this file too, which a reviewer reads as a rule change, not a grant.
+// Records are kept safe from alteration and destruction (Rule 204-2(g)(3)(i), #189).
+//
+// The names are the schema's Drizzle tables and columns, not strings: dropping or renaming one in
+// `src/schema/` fails type checking here, and a changed SQL name follows the schema.
+import { getTableName, sql } from "drizzle-orm";
+import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
+import { BETTER_AUTH_TABLES } from "./better-auth-tables";
+import type { connect } from "./connect";
+import {
+  accountRole,
+  auditEvent,
+  custodialAccount,
+  custodialPosition,
+  custodialTransaction,
+  custodianDelivery,
+  household,
+  householdMember,
+  person,
+  security,
+  securityPrice,
+  worldSeed,
+} from "./schema";
+import { test } from "./testing";
+
+// postgres.js's Drizzle type, so `execute` takes the rows' type.
+type PostgresDatabase = ReturnType<typeof connect>["db"];
+
+/** Rows are added and read, never changed or removed. */
+const FACTS: PgTable[] = [
+  auditEvent,
+  custodianDelivery,
+  custodialPosition,
+  custodialTransaction,
+  securityPrice,
+];
+
+/**
+ * The Custodian's Accounts and Securities: Ingestion brings their details up to date, but the
+ * facts above refer to them, so a row is never removed.
+ */
+const CUSTODIAN_RECORDS: PgTable[] = [custodialAccount, security];
+
+const NEVER_DELETED: PgTable[] = [...FACTS, ...CUSTODIAN_RECORDS];
+
+/**
+ * Cognitive Wealth's own tables whose rows `app` may change or remove, as far as its grants allow:
+ * the CRM (#192, #193) and the seed's record of the world file it loaded.
+ */
+const MAY_CHANGE: PgTable[] = [accountRole, household, householdMember, person, worldSeed];
+
+/**
+ * Every table in `public` belongs to exactly one, so a new one fails until it's sorted: a fact a
+ * migration adds doesn't get past these rules by never being listed.
+ */
+const GROUPS: Record<string, readonly string[]> = {
+  facts: tableNames(FACTS),
+  "Custodian records": tableNames(CUSTODIAN_RECORDS),
+  "Better Auth": BETTER_AUTH_TABLES,
+  "may change": tableNames(MAY_CHANGE),
+};
+
+/** The columns that identify a row by the Custodian's or the world's key, besides `id`s. */
+const NATURAL_KEYS: PgColumn[] = [
+  custodialAccount.accountNumber,
+  custodialTransaction.transactionId,
+  security.identifier,
+];
+
+/** Their names in Postgres. */
+function tableNames(tables: PgTable[]) {
+  return tables.map((table) => getTableName(table));
+}
+
+/** Every table in `public` that's in no group or in several, empty when each is in one. */
+async function unsortedTables(db: PostgresDatabase): Promise<string[]> {
+  const tables = await db.execute<{ name: string }>(sql`
+    select c.relname::text as name
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind in ('r', 'p')
+    order by c.relname
+  `);
+  return tables.flatMap(({ name }) => {
+    const groups = Object.keys(GROUPS).filter((group) => GROUPS[group]!.includes(name));
+    if (groups.length === 0) return [`${name} is in no group`];
+    if (groups.length > 1) return [`${name} is in ${groups.join(" and ")}`];
+    return [];
+  });
+}
+
+/** A `text[]` literal; Drizzle would spread a plain array into a list of parameters. */
+function textArray(values: readonly string[]) {
+  return sql`array[${sql.join(
+    values.map((value) => sql`${value}`),
+    sql`, `,
+  )}]::text[]`;
+}
+
+/** Every rule `app`'s privileges break in this database, empty when none. */
+async function neverRuleBreaches(db: PostgresDatabase): Promise<string[]> {
+  // has_any_column_privilege, since has_table_privilege sees only a table-wide `update`.
+  const updates = await db.execute<{ breach: string }>(sql`
+    select format('app may update %s', t.name) as breach
+    from unnest(${textArray(tableNames(FACTS))}) as t(name)
+    where has_any_column_privilege('app', format('public.%I', t.name), 'UPDATE')
+  `);
+  const deletes = await db.execute<{ breach: string }>(sql`
+    select format('app may delete %s', t.name) as breach
+    from unnest(${textArray(tableNames(NEVER_DELETED))}) as t(name)
+    where has_table_privilege('app', format('public.%I', t.name), 'DELETE')
+  `);
+  // Every table, so one a later migration creates is covered too.
+  const truncates = await db.execute<{ breach: string }>(sql`
+    select format('app may truncate %s', c.relname) as breach
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind in ('r', 'p')
+      and has_table_privilege('app', c.oid, 'TRUNCATE')
+  `);
+  // Every `firm_id`, and every `id` and `public_id` off Better Auth's tables, so a table a later
+  // migration creates is covered too. Better Auth updates its rows through table-wide `update`,
+  // which covers those two, so they hold on Cognitive Wealth's own tables only.
+  const identifiers = await db.execute<{ breach: string }>(sql`
+    select format('app may update %s.%s', c.relname, a.attname) as breach
+    from pg_attribute a
+    join pg_class c on c.oid = a.attrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind in ('r', 'p') and a.attnum > 0
+      and not a.attisdropped
+      and (a.attname = 'firm_id'
+        or (a.attname in ('id', 'public_id')
+          and c.relname <> all(${textArray(BETTER_AUTH_TABLES)})))
+      and has_column_privilege('app', c.oid, a.attnum, 'UPDATE')
+  `);
+  // A column the schema has but the database doesn't makes has_column_privilege throw.
+  const naturalKeys = await db.execute<{ breach: string }>(sql`
+    select format('app may update %s.%s', k.table_name, k.column_name) as breach
+    from unnest(
+      ${textArray(tableNames(NATURAL_KEYS.map(({ table }) => table)))},
+      ${textArray(NATURAL_KEYS.map(({ name }) => name))}
+    ) as k(table_name, column_name)
+    where has_column_privilege('app', format('public.%I', k.table_name), k.column_name, 'UPDATE')
+  `);
+  return [...updates, ...deletes, ...truncates, ...identifiers, ...naturalKeys]
+    .map(({ breach }) => breach)
+    .toSorted();
+}
+
+describe("app's never-rules", () => {
+  test("hold on the migrated database", async ({ migratorOrm }) => {
+    expect(await neverRuleBreaches(migratorOrm)).toEqual([]);
+  });
+
+  test("report app deleting from a fact table", async ({ migratorOrm }) => {
+    await migratorOrm.execute(sql`grant delete on table custodial_transaction to app`);
+
+    expect(await neverRuleBreaches(migratorOrm)).toEqual(["app may delete custodial_transaction"]);
+  });
+
+  test.for(["custodial_account", "security"])(
+    "report app deleting from %s",
+    async (table, { migratorOrm }) => {
+      await migratorOrm.execute(sql`grant delete on table ${sql.identifier(table)} to app`);
+
+      expect(await neverRuleBreaches(migratorOrm)).toEqual([`app may delete ${table}`]);
+    },
+  );
+
+  test("report app updating any column of a fact table", async ({ migratorOrm }) => {
+    await migratorOrm.execute(sql`grant update (shares) on table custodial_position to app`);
+
+    expect(await neverRuleBreaches(migratorOrm)).toEqual(["app may update custodial_position"]);
+  });
+
+  test("report app updating a column that identifies a row", async ({ migratorOrm }) => {
+    await migratorOrm.execute(sql`grant update (identifier) on table security to app`);
+
+    expect(await neverRuleBreaches(migratorOrm)).toEqual(["app may update security.identifier"]);
+  });
+
+  test("report app updating a column that identifies a row's Firm", async ({ migratorOrm }) => {
+    await migratorOrm.execute(sql`grant update (firm_id) on table household to app`);
+
+    expect(await neverRuleBreaches(migratorOrm)).toEqual(["app may update household.firm_id"]);
+  });
+
+  test("report app truncating any table", async ({ migratorOrm }) => {
+    await migratorOrm.execute(sql`grant truncate on table session to app`);
+
+    expect(await neverRuleBreaches(migratorOrm)).toEqual(["app may truncate session"]);
+  });
+});
+
+describe("the tables' groups", () => {
+  test("hold every table on the migrated database, each once", async ({ migratorOrm }) => {
+    expect(await unsortedTables(migratorOrm)).toEqual([]);
+  });
+
+  test("report a table a migration creates until it's sorted", async ({ migratorOrm }) => {
+    await migratorOrm.execute(sql`create table custodial_lot (id bigint primary key)`);
+
+    expect(await unsortedTables(migratorOrm)).toEqual(["custodial_lot is in no group"]);
+  });
+});
