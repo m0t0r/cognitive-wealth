@@ -33,8 +33,19 @@ type NoWorkspaceCardProps = {
 
 /** `/no-workspace`: why the viewer has no workspace, their invitations, and a way out. */
 export function NoWorkspaceCard({ email, deactivatedFirms, invitations }: NoWorkspaceCardProps) {
-  const copy = deactivatedFirms.length > 0 ? deactivatedCopy(deactivatedFirms) : null;
+  const copy = deactivatedFirms.length > 0 ? deactivatedCopy(deactivatedFirms.length) : null;
   const address = <span className="font-medium wrap-anywhere text-foreground">{email}</span>;
+  const hasInvitations = invitations.length > 0;
+  let description: React.ReactNode;
+  if (copy !== null) {
+    description = hasInvitations ? copy.openInvitation : copy.askForInvitation(address);
+  } else if (hasInvitations) {
+    description = "Open an invitation to join its workspace.";
+  } else {
+    description = (
+      <>Cognitive Wealth is invite-only. Ask a workspace owner or admin to invite {address}.</>
+    );
+  }
 
   return (
     <Card>
@@ -44,25 +55,9 @@ export function NoWorkspaceCard({ email, deactivatedFirms, invitations }: NoWork
             {copy ? copy.heading(firmNames(deactivatedFirms)) : "You're not in a workspace yet"}
           </h1>
         </CardTitle>
-        <CardDescription>
-          {copy === null ? (
-            invitations.length > 0 ? (
-              "Open an invitation to join its workspace."
-            ) : (
-              <>
-                Cognitive Wealth is invite-only. Ask a workspace owner or admin to invite {address}.
-              </>
-            )
-          ) : invitations.length > 0 ? (
-            `${copy.gone} Open an invitation to join another one.`
-          ) : (
-            <>
-              {copy.gone} To join another one, ask a workspace owner or admin to invite {address}.
-            </>
-          )}
-        </CardDescription>
+        <CardDescription>{description}</CardDescription>
       </CardHeader>
-      {invitations.length > 0 ? (
+      {hasInvitations ? (
         <CardContent>
           <ul aria-label="Your invitations" className="flex flex-col gap-2.5">
             {invitations.map((invitation) => (

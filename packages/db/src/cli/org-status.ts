@@ -19,6 +19,8 @@ Deactivates an organization that leaves Cognitive Wealth (ADR 0022). Its records
 kept, its pending invitations are canceled, and from their next request its members can't act in
 it. Nobody is signed out. Undo it with pnpm org:reactivate.`,
     run: deactivateOrganization,
+    done: "Deactivated",
+    showCanceled: true,
   },
   reactivate: {
     usage: `Usage: pnpm org:reactivate --slug <slug> --reason <text>
@@ -26,6 +28,8 @@ it. Nobody is signed out. Undo it with pnpm org:reactivate.`,
 Reactivates a deactivated organization: its members find it again on their next request.
 Invitations canceled when it was deactivated stay canceled.`,
     run: reactivateOrganization,
+    done: "Reactivated",
+    showCanceled: false,
   },
 } as const;
 
@@ -58,11 +62,11 @@ async function main() {
   const { db, close } = connect(config, { max: 1 });
   try {
     const org = await command.run(db, { slug: parsed.slug, reason: parsed.reason });
-    console.log(`${name === "deactivate" ? "Deactivated" : "Reactivated"} ${org.name}`);
+    console.log(`${command.done} ${org.name}`);
     console.log(`  publicId: ${org.publicId}`);
     console.log(`  slug:     ${org.slug}`);
     console.log(`  at:       ${org.at.toISOString()}`);
-    if (name === "deactivate") {
+    if (command.showCanceled) {
       console.log(`  canceled: ${org.canceledInvitations} pending invitation(s)`);
     }
   } finally {

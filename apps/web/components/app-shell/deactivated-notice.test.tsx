@@ -16,7 +16,7 @@ const GLOBEX = {
 };
 
 beforeEach(() => {
-  vi.mocked(dismissDeactivatedNotice).mockResolvedValue({ dismissals: 1 });
+  vi.mocked(dismissDeactivatedNotice).mockResolvedValue({ submitted: 1 });
 });
 
 /** The notice where the app layout puts it: in `main`, above the page and its `h1`. */
@@ -62,9 +62,13 @@ describe("DeactivatedNotice", () => {
 
     await user.click(dismissButton);
 
+    const heading = screen.getByRole("heading", { level: 1, name: "Home" });
     await vi.waitFor(() => {
-      expect(screen.getByRole("heading", { level: 1, name: "Home" })).toHaveFocus();
+      expect(heading).toHaveFocus();
     });
+    // Like the app's other focus-target headings: focusable by script only, with no ring.
+    expect(heading).toHaveAttribute("tabindex", "-1");
+    expect(heading).toHaveClass("outline-none");
     expect(dismissDeactivatedNotice).toHaveBeenCalledOnce();
     const form = vi.mocked(dismissDeactivatedNotice).mock.calls[0]![1];
     expect(form.getAll("firm")).toEqual([
