@@ -9,6 +9,7 @@ describe("cw", () => {
       { name: "custodian ingest" },
       { name: "db seed" },
       { name: "dev prune" },
+      { name: "dev sign-in" },
       { name: "friction fix" },
       { name: "friction report" },
       { name: "friction search" },

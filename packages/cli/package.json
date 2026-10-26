@@ -16,13 +16,13 @@
     "@repo/friction-bot": "workspace:*",
     "@repo/households": "workspace:*",
     "@repo/portfolio": "workspace:*",
+    "@repo/testing": "workspace:*",
+    "drizzle-orm": "0.45.4",
     "incur": "0.7.1"
   },
   "devDependencies": {
-    "@repo/testing": "workspace:*",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "26.6.5",
-    "drizzle-orm": "0.45.4",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
   }
