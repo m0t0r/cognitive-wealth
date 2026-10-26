@@ -21,6 +21,7 @@ flowchart LR
   a20["0020 Row-level security<br/>per Firm"]
   a21["0021 Records can't<br/>be deleted"]
   a22["0022 A Firm that leaves<br/>is deactivated"]
+  a23["0023 A removed member is<br/>told through their session"]
 
   ir["incident-response.md"]
   host["Hosting must keep<br/>after() work alive"]
@@ -56,3 +57,5 @@ flowchart LR
   a21 -->|"a Firm that<br/>leaves stays"| a22
   a2 -->|"the tenant<br/>falls back"| a22
   a20 -->|"withFirm<br/>refuses it"| a22
+  a22 -->|"no data left<br/>to tell from"| a23
+  a5 -->|"written through<br/>Better Auth"| a23
