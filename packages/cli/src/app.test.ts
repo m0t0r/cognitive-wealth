@@ -7,6 +7,10 @@ describe("cw", () => {
     const { output } = await run({ cli: createCli(dependencies()), argv: ["--llms"] });
     expect(output.commands).toMatchObject([
       { name: "dev prune" },
+      { name: "friction fix" },
+      { name: "friction report" },
+      { name: "friction search" },
+      { name: "friction triage" },
       { name: "org deactivate" },
       { name: "org reactivate" },
     ]);
@@ -37,7 +41,7 @@ describe("cw over MCP (ADR 0026)", () => {
     expect(response.error?.message).toBe("Method not found");
   });
 
-  it("keeps every command out even where tools are allowed, since each one writes", async () => {
+  it("keeps every command out even where tools are allowed, since each says mcp: false", async () => {
     // A root without cw's `exclude: ["*"]`, with one read-only command so it has tools to list.
     const open = Cli.create("open", { sync: false, update: false }).command("ping", {
       run: () => ({ pong: true }),

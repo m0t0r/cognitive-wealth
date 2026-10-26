@@ -13,6 +13,7 @@
   "dependencies": {
     "@repo/db": "workspace:*",
     "@repo/dev-env": "workspace:*",
+    "@repo/friction-bot": "workspace:*",
     "incur": "0.7.1"
   },
   "devDependencies": {
