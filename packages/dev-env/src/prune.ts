@@ -89,20 +89,23 @@ export async function findOrphans(mainCheckout: string) {
   return { environments, servers };
 }
 
+/** What `prune` did: one line per thing removed, and one per orphan it couldn't remove. */
+export type Pruned = { removed: string[]; failed: string[] };
+
 /**
- * Tears down every orphan and returns one line per thing removed. Every orphan is tried even when
- * one fails; then it throws with every failure, and a later sweep retries what's left.
+ * Tears down every orphan. Every orphan is tried even when one fails, so `failed` lists every
+ * failure beside what was `removed`; a later sweep retries what's left.
  */
-export async function prune(mainCheckout: string): Promise<string[]> {
+export async function prune(mainCheckout: string): Promise<Pruned> {
   const { environments, servers } = await findOrphans(mainCheckout);
-  const done: string[] = [];
-  const failures: string[] = [];
+  const removed: string[] = [];
+  const failed: string[] = [];
   for (const server of servers) {
     try {
       // oxlint-disable-next-line no-await-in-loop -- one at a time, like the environments below
-      done.push(`${server.cwd}: ${await stopServer(server)}`);
+      removed.push(`${server.cwd}: ${await stopServer(server)}`);
     } catch (error) {
-      failures.push(error instanceof Error ? error.message : String(error));
+      failed.push(error instanceof Error ? error.message : String(error));
     }
   }
   for (const target of environments) {
@@ -110,13 +113,12 @@ export async function prune(mainCheckout: string): Promise<string[]> {
       // Sequential, so the output stays in order and one failure doesn't hide another's lines.
       // oxlint-disable-next-line no-await-in-loop
       const lines = await tearDown({ mainCheckout, target });
-      done.push(`${target.database}: ${lines.join("; ")}`);
+      removed.push(`${target.database}: ${lines.join("; ")}`);
     } catch (error) {
-      failures.push(error instanceof Error ? error.message : String(error));
+      failed.push(error instanceof Error ? error.message : String(error));
     }
   }
-  if (failures.length > 0) throw new Error(failures.join("\n"));
-  return done;
+  return { removed, failed };
 }
 
 /**
@@ -125,10 +127,11 @@ export async function prune(mainCheckout: string): Promise<string[]> {
  */
 export async function sweep(mainCheckout: string) {
   try {
-    const done = await prune(mainCheckout);
-    if (done.length > 0) {
-      console.log(`Tore down what was left of removed worktrees:\n  ${done.join("\n  ")}`);
+    const { removed, failed } = await prune(mainCheckout);
+    if (removed.length > 0) {
+      console.log(`Tore down what was left of removed worktrees:\n  ${removed.join("\n  ")}`);
     }
+    if (failed.length > 0) throw new Error(failed.join("\n"));
   } catch (error) {
     console.warn(
       `warning: couldn't tear down what's left of removed worktrees (retry: pnpm dev:prune): ${

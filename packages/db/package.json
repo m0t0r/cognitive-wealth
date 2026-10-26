@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./better-auth-tables": "./src/better-auth-tables.ts",
+    "./cli/cli-error": "./src/cli/cli-error.ts",
     "./cli/env": "./src/cli/env.ts",
     "./cli/organizations": "./src/cli/organizations.ts",
     "./cli/ts-resolution": "./src/cli/ts-resolution.ts",

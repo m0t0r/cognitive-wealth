@@ -4,8 +4,8 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
-// `pnpm org:deactivate` and `org:reactivate` both run this file with their command.
-const CLI = join(import.meta.dirname, "../../../packages/db/src/cli/org-status.ts");
+// `pnpm org:deactivate` and `org:reactivate` run `cw org deactivate` and `cw org reactivate`.
+const CLI = join(import.meta.dirname, "../../../packages/cli/src/cli.ts");
 
 type RunOrgStatusArgs = {
   /** The worker's database, as `app` (`workerDatabase.appUrl`): the role the CLI uses in production. */
@@ -30,7 +30,7 @@ export async function runOrgStatus({
   const env = { ...inherited, DATABASE_URL: databaseUrl };
   const { stdout } = await run(
     process.execPath,
-    [CLI, command, "--slug", slug, "--reason", reason],
+    [CLI, "org", command, "--slug", slug, "--reason", reason],
     { env },
   );
   return stdout;
