@@ -126,3 +126,7 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 | `rf"\d{{{n}}}"`: raw f-string, where `{{` is a literal `{`     | a `String.raw` template literal with `${n}`               |
 | `if match := pattern.search(text):` (assign, then test)        | `const match = pattern.exec(text); if (match) …`          |
 | `re.compile(r"^FROM …$", re.MULTILINE)`: `^` per line          | the `m` flag: `/^FROM …$/m`                               |
+| `@cache` on a `def` with no arguments: its body runs once      | a module-level flag that guards a one-time call           |
+| `atexit.register(link.close)`: runs it when Python exits       | `process.on("exit", () => link.close())`                  |
+| `except BaseException:` catches Ctrl-C too, not just errors    | a `catch` (a signal isn't an exception in Node)           |
+| `threading.Thread(target=f, daemon=True).start()`              | a `Worker`, roughly (or just an async callback)           |

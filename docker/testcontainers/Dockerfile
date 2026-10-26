@@ -2,7 +2,7 @@
 # its reaper (Ryuk), which removes a run's containers when the test process exits. Both harnesses
 # read the `FROM` line below instead of copying it, so this is the one place it lives:
 # - TypeScript: `reaperImage()` in packages/testing/src/reaper.ts (integration tests, e2e)
-# - Python: `reaper_image()` in apps/custodian/tests/integration/postgres.py
+# - Python: `reaper_image()` in apps/custodian/tests/integration/reaper.py
 #
 # Dependabot's `docker` entry for this directory bumps the tag and digest weekly, like every other
 # image. Before merging a bump, run what starts a reaper: `pnpm test:integration` and `pnpm e2e`.
