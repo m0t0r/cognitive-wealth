@@ -10,7 +10,6 @@
   },
   "scripts": {
     "check-types": "tsc --noEmit",
-    "db:seed": "node src/cli/seed.ts",
     "test": "vitest run --project unit --project ui",
     "test:integration": "vitest run --project integration",
     "test:watch": "vitest",

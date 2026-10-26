@@ -18,7 +18,7 @@
     "e2e": "turbo run e2e",
     "test:coverage": "turbo run test:coverage",
     "dev:sign-in": "node packages/testing/src/cli/dev-sign-in.ts",
-    "db:seed": "pnpm --filter @repo/households db:seed",
+    "db:seed": "node packages/cli/src/cli.ts db seed",
     "db:studio": "pnpm --filter @repo/db db:studio",
     "custodian:ingest": "node packages/cli/src/cli.ts custodian ingest",
     "docs:diagrams": "node .claude/skills/pr-visual/scripts/render.mjs docs/diagrams --svg-only",
