@@ -1,4 +1,4 @@
-import { auditEvent, household, invitation, member } from "@repo/db/schema";
+import { auditEvent, household, invitation, member, organization } from "@repo/db/schema";
 import { parseInvitationEmail } from "@repo/testing/mailpit";
 import { and, asc, eq } from "drizzle-orm";
 import {
@@ -1360,6 +1360,11 @@ describe("deleting a workspace through Better Auth", () => {
       }),
     ).rejects.toMatchObject({ statusCode: 404 });
 
+    const firm = await migratorOrm
+      .select({ id: organization.id })
+      .from(organization)
+      .where(eq(organization.id, world.acme.id));
+    expect(firm).toEqual([{ id: world.acme.id }]);
     const left = await migratorOrm.select({ firmId: household.firmId }).from(household);
     expect(left).toEqual([{ firmId: world.acme.id }]);
   });

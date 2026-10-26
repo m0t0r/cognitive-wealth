@@ -275,8 +275,8 @@ describe("Firm isolation", () => {
 
       for (const table of FIRM_SCOPED_TABLES) {
         // oxlint-disable-next-line no-await-in-loop -- reads, in order for a readable failure
-        const left = await firmsIn(migratorOrm, table);
-        expect({ table, firms: left.toSorted((x, y) => x - y) }).toEqual({
+        const remaining = await firmsIn(migratorOrm, table);
+        expect({ table, firms: remaining.toSorted((x, y) => x - y) }).toEqual({
           table,
           firms: [firms.a, firms.b],
         });
