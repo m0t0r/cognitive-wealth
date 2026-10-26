@@ -1,21 +1,4 @@
 {
-  "securities": [
-    {
-      "identifier": "LKSF",
-      "name": "Larkspur Stock Fund",
-      "kind": "fund"
-    },
-    {
-      "identifier": "LKBF",
-      "name": "Larkspur Bond Fund",
-      "kind": "fund"
-    },
-    {
-      "identifier": "SWEEP",
-      "name": "Larkspur Bank Sweep",
-      "kind": "cash_sweep"
-    }
-  ],
   "prices": {
     "LKSF": {
       "2026-02-26": "149.80",

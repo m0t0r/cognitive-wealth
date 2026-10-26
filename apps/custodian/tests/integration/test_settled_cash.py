@@ -13,13 +13,19 @@ from custodian.load import load
 from custodian.models import TransactionKind
 from custodian.money import Money, Shares
 from custodian.positions import settled_cash_as_of
+from custodian.security_catalog import SECURITY_CATALOG_PATH, read_security_catalog
 from custodian.world import WORLD_V0_PATH, read_world
 
 JOINT = "CW-000001"
 
 
 def load_v0(session: Session) -> None:
-    load(session, read_world(WORLD_V0_PATH), read_ledger_fixture(LEDGER_V0_PATH))
+    load(
+        session,
+        world=read_world(WORLD_V0_PATH),
+        catalog=read_security_catalog(SECURITY_CATALOG_PATH),
+        ledger=read_ledger_fixture(LEDGER_V0_PATH),
+    )
 
 
 # The primer's Part 3 table, plus the days it leaves out. Each day is asked that same evening.
@@ -64,7 +70,12 @@ def test_a_reversal_before_settlement_cancels_on_every_day(session: Session) -> 
         posting_date=date(2026, 3, 4),
     )
     reversed_sale = ledger.model_copy(update={"transactions": [*ledger.transactions, reversal]})
-    load(session, read_world(WORLD_V0_PATH), reversed_sale)
+    load(
+        session,
+        world=read_world(WORLD_V0_PATH),
+        catalog=read_security_catalog(SECURITY_CATALOG_PATH),
+        ledger=reversed_sale,
+    )
 
     def settled(day: date) -> Money:
         return settled_cash_as_of(session, JOINT, day, known_on=day)
@@ -101,7 +112,12 @@ def test_settled_cash_is_not_floored_at_zero(session: Session) -> None:
             ]
         }
     )
-    load(session, read_world(WORLD_V0_PATH), unpaid)
+    load(
+        session,
+        world=read_world(WORLD_V0_PATH),
+        catalog=read_security_catalog(SECURITY_CATALOG_PATH),
+        ledger=unpaid,
+    )
 
     day = date(2026, 2, 26)
     assert settled_cash_as_of(session, JOINT, day, known_on=day) == Money("-3000.00")

@@ -1,0 +1,59 @@
+{
+  "securities": [
+    {
+      "identifier": "LKSF",
+      "name": "Larkspur Stock Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#large-blend-stock-fund",
+      "price_driver": {
+        "type": "factors",
+        "mkt_rf": "1.00",
+        "smb": "-0.10",
+        "hml": "0.05",
+        "own_volatility": "0.010"
+      }
+    },
+    {
+      "identifier": "LKBF",
+      "name": "Larkspur Bond Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#intermediate-term-treasury-fund",
+      "price_driver": {
+        "type": "treasury",
+        "tenor": "5y",
+        "duration": "5.0",
+        "own_volatility": "0.008"
+      }
+    },
+    {
+      "identifier": "LKSF",
+      "name": "Larkspur Balanced Fund",
+      "kind": "fund",
+      "research": "docs/research/security-catalog.md#6040-balanced-fund",
+      "price_driver": {
+        "type": "blend",
+        "factors": {
+          "weight": "0.60",
+          "mkt_rf": "1.00",
+          "smb": "-0.10",
+          "hml": "0.05"
+        },
+        "treasury": {
+          "weight": "0.40",
+          "tenor": "7y",
+          "duration": "6.0"
+        },
+        "own_volatility": "0.006"
+      }
+    },
+    {
+      "identifier": "SWEEP",
+      "name": "Larkspur Bank Sweep",
+      "kind": "cash_sweep",
+      "research": "docs/research/security-catalog.md#cash-sweep",
+      "price_driver": {
+        "type": "none"
+      }
+    }
+  ]
+}

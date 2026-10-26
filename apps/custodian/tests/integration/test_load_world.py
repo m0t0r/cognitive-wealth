@@ -1,3 +1,4 @@
+import hashlib
 import os
 import shutil
 import subprocess
@@ -5,13 +6,15 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from sqlalchemy import Row, text
+from sqlalchemy import Row, select, text
 from sqlalchemy.orm import Session
 
 from custodian.factor_file import FIXTURE_PIN_PATH, read_pin
 from custodian.ledger_fixture import LEDGER_V0_PATH, read_ledger_fixture
 from custodian.load import LoadConflict, load
+from custodian.models import Security
 from custodian.money import Money, Price
+from custodian.security_catalog import SECURITY_CATALOG_PATH, read_security_catalog
 from custodian.world import WORLD_V0_PATH, read_world
 from tests.integration.postgres import CUSTODIAN, Database, PostgresServer
 
@@ -60,28 +63,34 @@ def test_loading_the_world_twice_changes_nothing(
     output = run_world_load(postgres_server, database, tmp_path)
 
     assert everything_in(database) == loaded
+    securities = len(read_security_catalog(SECURITY_CATALOG_PATH).securities)
     assert {table: len(rows) for table, rows in loaded.items()} == {
         "account": 2,
-        "security": 3,
+        "security": securities,
         "price": 14,
         '"transaction"': 13,
     }
-    assert "Loaded 2 Accounts, 3 Securities, 14 prices and 13 Transactions" in output
+    assert f"Loaded 2 Accounts, {securities} Securities, 14 prices and 13 Transactions" in output
     # The first load recorded the inputs: tests/conftest.py's fixture Pin, the committed yields.
     with database.migrator.connect() as connection:
         recorded = connection.execute(
-            text("select factor_file_sha256, factor_file_crsp_month from build_record")
+            text(
+                "select factor_file_sha256, factor_file_crsp_month, security_catalog_sha256"
+                " from build_record"
+            )
         ).one()
     pin = read_pin(FIXTURE_PIN_PATH)
-    assert tuple(recorded) == (pin.sha256, pin.crsp_month)
+    catalog_sha256 = hashlib.sha256(SECURITY_CATALOG_PATH.read_bytes()).hexdigest()
+    assert tuple(recorded) == (pin.sha256, pin.crsp_month, catalog_sha256)
 
 
 def test_a_load_that_would_change_the_ledger_is_refused(
     session: Session, database: Database
 ) -> None:
     world = read_world(WORLD_V0_PATH)
+    catalog = read_security_catalog(SECURITY_CATALOG_PATH)
     ledger = read_ledger_fixture(LEDGER_V0_PATH)
-    load(session, world, ledger)
+    load(session, world=world, catalog=catalog, ledger=ledger)
     loaded = everything_in(database)
     # The primer's row 8, the withdrawal, written down as $1,000.01 instead.
     changed = ledger.model_copy(
@@ -94,20 +103,57 @@ def test_a_load_that_would_change_the_ledger_is_refused(
     )
 
     with pytest.raises(LoadConflict, match="CW-000001's Ledger differs from the fixture at row 8"):
-        load(session, world, changed)
+        load(session, world=world, catalog=catalog, ledger=changed)
 
     assert everything_in(database) == loaded
 
 
 def test_a_load_that_would_change_a_price_is_refused(session: Session, database: Database) -> None:
     world = read_world(WORLD_V0_PATH)
+    catalog = read_security_catalog(SECURITY_CATALOG_PATH)
     ledger = read_ledger_fixture(LEDGER_V0_PATH)
-    load(session, world, ledger)
+    load(session, world=world, catalog=catalog, ledger=ledger)
     loaded = everything_in(database)
     bond_fund_prices = {**ledger.prices["LKBF"], date(2026, 2, 26): Price("10.01")}
     changed = ledger.model_copy(update={"prices": {**ledger.prices, "LKBF": bond_fund_prices}})
 
     with pytest.raises(LoadConflict, match=r"LKBF's price on 2026-02-26 is already 10\.00"):
-        load(session, world, changed)
+        load(session, world=world, catalog=catalog, ledger=changed)
 
     assert everything_in(database) == loaded
+
+
+def test_every_security_comes_from_the_catalog(session: Session) -> None:
+    catalog = read_security_catalog(SECURITY_CATALOG_PATH)
+
+    load(
+        session,
+        world=read_world(WORLD_V0_PATH),
+        catalog=catalog,
+        ledger=read_ledger_fixture(LEDGER_V0_PATH),
+    )
+
+    loaded = {
+        (security.identifier, security.name, security.kind)
+        for security in session.scalars(select(Security))
+    }
+    assert loaded == {
+        (security.identifier, security.name, security.kind) for security in catalog.securities
+    }
+
+
+def test_a_ledger_naming_a_security_the_catalog_doesnt_have_is_refused(
+    session: Session, database: Database
+) -> None:
+    world = read_world(WORLD_V0_PATH)
+    catalog = read_security_catalog(SECURITY_CATALOG_PATH)
+    ledger = read_ledger_fixture(LEDGER_V0_PATH)
+    # The catalog without the Bond Fund, which the ledger buys in row 2.
+    no_bond_fund = catalog.model_copy(
+        update={"securities": [s for s in catalog.securities if s.identifier != "LKBF"]}
+    )
+
+    with pytest.raises(ValueError, match=r"prices\.LKBF: not a Security in the catalog"):
+        load(session, world=world, catalog=no_bond_fund, ledger=ledger)
+
+    assert all(rows == [] for rows in everything_in(database).values())

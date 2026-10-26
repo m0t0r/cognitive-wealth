@@ -10,7 +10,10 @@ from custodian.main import app
 from tests.integration.postgres import Database, PostgresServer
 
 BUILT = MarketInputs(
-    factor_file_sha256="a" * 64, factor_file_crsp_month="202602", treasury_yields_sha256="b" * 64
+    factor_file_sha256="a" * 64,
+    factor_file_crsp_month="202602",
+    treasury_yields_sha256="b" * 64,
+    security_catalog_sha256="e" * 64,
 )
 
 
@@ -47,6 +50,13 @@ def test_changed_yields_are_refused_too(session: Session) -> None:
 
     with pytest.raises(BuildMismatch, match="Treasury yields"):
         check_build(session, replace(BUILT, treasury_yields_sha256="d" * 64))
+
+
+def test_a_changed_security_catalog_is_refused_too(session: Session) -> None:
+    record_build(session, BUILT)
+
+    with pytest.raises(BuildMismatch, match=f"the Security catalog was {'e' * 64} and is now"):
+        check_build(session, replace(BUILT, security_catalog_sha256="f" * 64))
 
 
 def test_the_api_refuses_to_start_on_a_database_built_from_other_inputs(

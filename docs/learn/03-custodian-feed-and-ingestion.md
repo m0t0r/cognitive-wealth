@@ -148,13 +148,29 @@ The joint account already had a history. On Thursday 26 February it received $5,
 
 These are the real files: what the simulated Custodian writes for 2 March, byte for byte, when you run `pnpm --filter custodian feed:write --date 2026-03-02` after `pnpm --filter custodian world:load` has loaded the world file and the hand-written Ledger (#37). The Manifest in Part 4 and its hashes are real too.
 
-**`securities.csv`**, the Security master. The same three rows arrive every day:
+**`securities.csv`**, the Security master. Every Security in the simulated Custodian's catalog arrives every day, the same 19 rows, sorted by identifier, whether or not anyone holds it. Dana's Accounts hold only three of them, LKBF, LKSF and SWEEP:
 
 ```csv
 identifier,name,kind
+BRWP,Brightwell Pharmaceuticals,stock
+CPLN,Copperline Stores,stock
+FNMB,Fenmoor Bank,stock
+HVPW,Harrow Valley Power,stock
+LKAG,Larkspur Aggregate Bond Fund,fund
 LKBF,Larkspur Bond Fund,fund
+LKBL,Larkspur Balanced Fund,fund
+LKCB,Larkspur Conservative Balanced Fund,fund
+LKDF,Larkspur Dividend Fund,fund
+LKGF,Larkspur Growth Fund,fund
+LKLT,Larkspur Long-Term Treasury Fund,fund
+LKSC,Larkspur Small Cap Fund,fund
 LKSF,Larkspur Stock Fund,fund
+LKST,Larkspur Short-Term Treasury Fund,fund
+LKSV,Larkspur Small Cap Value Fund,fund
+LKVF,Larkspur Value Fund,fund
+QLNC,Quillon Software,stock
 SWEEP,Larkspur Bank Sweep,cash_sweep
+TMRE,Tamarind Energy,stock
 ```
 
 SWEEP is the Cash sweep, where an Account's cash is kept, worth exactly $1.00 a share (first primer, Part 5).
@@ -288,8 +304,8 @@ The **Manifest** is that slip. Here's 2 March's, `manifest.json`, exactly as the
     },
     {
       "name": "securities.csv",
-      "rows": 3,
-      "sha256": "c18814eeaf6a54d83909e0841f77e338cbd6e51d5d9f13ff5e826320bb549e95"
+      "rows": 19,
+      "sha256": "1af7eacf178bd734c226d5f6fc5d87f5e33989e5e08eb0dec680d5f7f69762e6"
     },
     {
       "name": "transactions.csv",
@@ -418,7 +434,7 @@ An operation that gives the same result whether it runs once or many times is ca
 The Manifest holds the hash of every data file. So if any file changes, its hash changes, the Manifest changes, and so does the Manifest's own hash. One hash therefore stands for the whole Delivery. For 2 March it's:
 
 ```text
-20067846433cbe524c6aa4e5f748804f294f35e878fe318d0e6fd371e7f2b1d2
+77f896ad0c060514b71c25e32efa41ea3b5f65c9d1a7cc2140f96b1f802a0ab1
 ```
 
 Ingestion keeps it in the record of the Delivery. Before loading anything, it asks: "have I already loaded a Delivery with this hash?" If yes, it writes nothing and says "already ingested". Running it a second, third or tenth time leaves every table exactly as it was.

@@ -3,11 +3,14 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.orm import Session
 
+from custodian.build_record import BuildMismatch, MarketInputs, check_build
 from custodian.models import Base
 from tests.integration.postgres import CUSTODIAN, Database, PostgresServer, alembic_config
 
@@ -101,3 +104,29 @@ def test_rows_loaded_before_0004_get_the_id_world_load_gives_them(database: Data
         ).all()
 
     assert [tuple(row) for row in ids] == [(14, "TX-000000001"), (15, "TX-000000002")]
+
+
+def test_a_database_recorded_before_0006_must_be_rebuilt(database: Database) -> None:
+    # Its Securities came from the ledger fixture, not a catalog, so no catalog matches it.
+    with database.migrator.begin() as connection:
+        command.downgrade(alembic_config(connection), "0005")
+        connection.execute(
+            text("""
+                insert into build_record
+                    (factor_file_sha256, factor_file_crsp_month, treasury_yields_sha256)
+                values (repeat('a', 64), '202608', repeat('b', 64))
+            """)
+        )
+        command.upgrade(alembic_config(connection), "head")
+    committed = MarketInputs(
+        factor_file_sha256="a" * 64,
+        factor_file_crsp_month="202608",
+        treasury_yields_sha256="b" * 64,
+        security_catalog_sha256="c" * 64,
+    )
+
+    with (
+        Session(database.app) as session,
+        pytest.raises(BuildMismatch, match="the Security catalog was not recorded"),
+    ):
+        check_build(session, committed)

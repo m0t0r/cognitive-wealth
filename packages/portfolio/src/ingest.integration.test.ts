@@ -18,7 +18,7 @@ const WORLD = new URL("../../../world/v0.json", import.meta.url);
 const MONDAY = "2026-03-02";
 const FRIDAY = "2026-03-06";
 // docs/learn/03-custodian-feed-and-ingestion.md, Part 5, quotes it.
-const MONDAY_MANIFEST_SHA256 = "20067846433cbe524c6aa4e5f748804f294f35e878fe318d0e6fd371e7f2b1d2";
+const MONDAY_MANIFEST_SHA256 = "77f896ad0c060514b71c25e32efa41ea3b5f65c9d1a7cc2140f96b1f802a0ab1";
 
 /** The database `pnpm db:seed` gives: world file v0's Households and Accounts in its Firm. */
 async function seededFirm(db: Database, { slug = WORLD_FIRM_SLUG }: { slug?: string } = {}) {
@@ -52,7 +52,7 @@ describe("ingestDelivery", () => {
       status: "ingested",
       asOf: MONDAY,
       manifestSha256: MONDAY_MANIFEST_SHA256,
-      written: { securities: 3, accounts: 2, transactions: 4, positions: 5, prices: 3 },
+      written: { securities: 19, accounts: 2, transactions: 4, positions: 5, prices: 3 },
     });
     const rows = await feedRows(migratorOrm);
     expect(rows.deliveries).toEqual([
@@ -68,10 +68,27 @@ describe("ingestDelivery", () => {
       { accountNumber: "CW-000001", registrationType: "joint", openedOn: "2026-02-26" },
       { accountNumber: "CW-000002", registrationType: "traditional_ira", openedOn: "2026-03-02" },
     ]);
+    // The Security master sends the custodian's whole Security catalog, held or not.
     expect(rows.securities.map(({ identifier, kind }) => `${identifier} ${kind}`)).toEqual([
+      "BRWP stock",
+      "CPLN stock",
+      "FNMB stock",
+      "HVPW stock",
+      "LKAG fund",
       "LKBF fund",
+      "LKBL fund",
+      "LKCB fund",
+      "LKDF fund",
+      "LKGF fund",
+      "LKLT fund",
+      "LKSC fund",
       "LKSF fund",
+      "LKST fund",
+      "LKSV fund",
+      "LKVF fund",
+      "QLNC stock",
       "SWEEP cash_sweep",
+      "TMRE stock",
     ]);
     expect(rows.prices.map(({ asOfDate, price }) => `${asOfDate} ${price}`)).toEqual([
       "2026-03-02 10.00",
@@ -170,7 +187,7 @@ describe("ingestDelivery", () => {
     });
     const { deliveries, securities, transactions } = await feedRows(migratorOrm);
     expect(deliveries.map((row) => row.asOfDate)).toEqual([MONDAY, FRIDAY]);
-    expect(securities).toHaveLength(3);
+    expect(securities).toHaveLength(19);
     // Friday's Reversal undoes Tuesday's dividend, a Delivery never ingested here.
     expect(transactions.find((row) => row.kind === "reversal")).toMatchObject({
       transactionId: "TX-000000009",
