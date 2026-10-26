@@ -101,7 +101,7 @@ export const defaultDependencies: Dependencies = {
     const { studioConnection } = await import("@repo/db/cli/studio-connection");
     let envFile: string | undefined;
     let config;
-    let as = "";
+    let asRole = "";
     try {
       envFile = loadWebEnvFallback();
       if (asMigrator) {
@@ -109,7 +109,7 @@ export const defaultDependencies: Dependencies = {
         const { url, passwordFile, role } = studioConnection(process.env);
         const password = passwordFile ? () => readFileSync(passwordFile, "utf8").trim() : undefined;
         config = { url, password };
-        as = ` as ${role}`;
+        asRole = ` as ${role}`;
       } else {
         config = connectionConfig();
       }
@@ -124,7 +124,7 @@ export const defaultDependencies: Dependencies = {
     return {
       db,
       close,
-      target: `${describeDatabaseUrl(config.url)}${as}${from}`,
+      target: `${describeDatabaseUrl(config.url)}${asRole}${from}`,
       local: isLocal(() => assertSeedTarget(config.url, process.env.NODE_ENV)),
     };
   },

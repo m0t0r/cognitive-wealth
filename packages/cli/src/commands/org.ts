@@ -6,6 +6,7 @@ import type { OrganizationStatusChange } from "@repo/db/cli/organizations";
 import type { Dependencies } from "../dependencies.ts";
 import { REPO_ROOT, fromInvocation } from "../paths.ts";
 import { refusal } from "../refusal.ts";
+import { shellQuoted } from "../shell-quoted.ts";
 
 const options = z.object({
   slug: z.string().describe("The organization's slug: a-z, 0-9 and single hyphens"),
@@ -53,14 +54,6 @@ async function changeStatus({ change, input, openDatabase }: ChangeStatusArgs) {
   } finally {
     await close();
   }
-}
-
-/**
- * `value` quoted for a POSIX shell when it needs it. incur writes a CTA's option values as they
- * are, so `--reason Contract ended` would run with the reason `Contract`.
- */
-export function shellQuoted(value: string): string {
-  return /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 /** The command that would undo `change`, or with `dryRun` the one that makes it for real. */

@@ -1,6 +1,6 @@
 import { createCli } from "../app";
 import { dependencies, run } from "../testing";
-import { shellQuoted } from "./org";
+import { shellQuoted } from "../shell-quoted";
 
 describe("shellQuoted", () => {
   it.for([

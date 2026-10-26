@@ -77,7 +77,7 @@ describe("cw cve scan", () => {
     expect(env.scan).toHaveBeenCalledWith(
       expect.objectContaining({ known: new Set(["CVE-2026-2"]) }),
     );
-    expect(env.fileIssues).toHaveBeenCalledWith(GITHUB, [FINDING]);
+    expect(env.fileIssues).toHaveBeenCalledWith({ gh: GITHUB, findings: [FINDING] });
   });
 
   it("appends the report to the step summary", async () => {

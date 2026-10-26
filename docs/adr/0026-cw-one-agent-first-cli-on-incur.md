@@ -15,7 +15,7 @@ The repository's commands (`org:*`, `db:seed`, `custodian:ingest`, `dev:*`, `cve
 8. **Tests run commands in-process.** `createCli(dependencies)` takes the database, the dev environment and the cve.now scan as one object, and `serve(argv, { stdout, exit })` runs the real command with a test's own. The domain keeps its rules and their tests; `cw`'s tests own the wiring: options, output shape, codes and exit status.
 9. **The old script names stay**, as aliases of `cw` commands (`pnpm org:deactivate` is `cw org deactivate`), so the docs, runbooks and muscle memory that name them keep working. The rest of the CLIs move over one group at a time (#234), tracked in #232.
 
-   _Status note (2026-10-26):_ all of them have (#234): `org create` and `org export`, `custodian ingest`, `db seed`, `dev sign-in`, `dev env` and `dev teardown`, and `cve scan`. `db:studio` and `with-postgres` stay plain Node: one hands the terminal to drizzle-kit, the other runs a command under a Postgres, and neither returns data. incur 0.7.1 prints no `hint` in an error, so a refusal's fix goes in its `message` (`seed_conflict`).
+   _Status note (2026-10-26):_ all of them have (#234): `org create` and `org export`, `custodian ingest`, `db seed`, `dev sign-in`, `dev env` and `dev teardown`, and `cve scan`. `db:studio` and `with-postgres` stay plain Node: one hands the terminal to drizzle-kit, the other runs a command under a Postgres, and neither returns data. incur 0.7.1 prints no `hint` in an error, so a refusal's fix goes in its `message` (`seed_conflict`). Two commands write without `--dry-run`, since their plain form is the dry run: `cve scan` files issues only with `--create-issues`, and `dev sign-in --link` writes no session file.
 
 ## Why
 

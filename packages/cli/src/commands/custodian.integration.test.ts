@@ -23,6 +23,9 @@ test("ingests a Delivery, skips it the second time, and refuses one not delivere
   const ingest = (asOf: string, ...rest: string[]) =>
     run({ cli, argv: ["custodian", "ingest", asOf, "--root", FEED, ...rest] });
 
+  const dryRun = await ingest("2026-03-02", "--dry-run");
+  expect(dryRun).toMatchObject({ exitCode: 0, output: { status: "ingested", dryRun: true } });
+
   const first = await ingest("2026-03-02");
   expect(first).toMatchObject({
     exitCode: 0,
@@ -31,11 +34,12 @@ test("ingests a Delivery, skips it the second time, and refuses one not delivere
       firm: { slug: "larkspur", name: "Larkspur Wealth Partners" },
       asOf: "2026-03-02",
       status: "ingested",
+      dryRun: false,
       delivery: join(FEED, "2026-03-02"),
       manifestSha256: "77f896ad0c060514b71c25e32efa41ea3b5f65c9d1a7cc2140f96b1f802a0ab1",
     },
   });
-  expect(first.output.written).toMatchObject({ transactions: expect.any(Number) });
+  expect(first.output.written).toEqual(dryRun.output.written);
 
   const again = await ingest("2026-03-02");
   expect(again).toMatchObject({ exitCode: 0, output: { status: "already_ingested" } });

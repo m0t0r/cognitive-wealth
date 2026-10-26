@@ -15,7 +15,10 @@ const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const DEFAULT_APP = "https://cognitive-wealth.localhost";
 const DEFAULT_MAILPIT = "http://127.0.0.1:8025";
 
-/** A refusal with a `code` an agent can branch on (`cw`'s error output). */
+/**
+ * A refusal with a `code` an agent can branch on (`cw`'s error output). `@repo/db`'s `CliError`,
+ * written again: `@repo/db` depends on this package, so this one can't import it.
+ */
 export class DevSignInRefusal extends Error {
   override name = "DevSignInRefusal";
   readonly code: string;
