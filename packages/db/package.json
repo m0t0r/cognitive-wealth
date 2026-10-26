@@ -9,6 +9,8 @@
     "./cli/cli-error": "./src/cli/cli-error.ts",
     "./cli/env": "./src/cli/env.ts",
     "./cli/organizations": "./src/cli/organizations.ts",
+    "./cli/records-export": "./src/cli/records-export.ts",
+    "./cli/studio-connection": "./src/cli/studio-connection.ts",
     "./cli/ts-resolution": "./src/cli/ts-resolution.ts",
     "./client": "./src/client.ts",
     "./config": "./src/config.ts",

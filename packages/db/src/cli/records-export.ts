@@ -1,4 +1,4 @@
-// A Records export of one Firm (GLOSSARY.md, #206), as `pnpm org:export` writes it: one CSV per
+// A Records export of one Firm (GLOSSARY.md, #206), as `cw org export` writes it: one CSV per
 // table in `RECORD_TABLES`, `manifest.json` (the index) and `README.md`, read as `migrator` in one
 // snapshot and audited as `org.records_exported`. Rule 204-2(g)(2) asks for records arranged for
 // "easy location, access, and retrieval" and a "true and complete copy", and names no format, so
@@ -10,11 +10,11 @@ import { mkdir, mkdtemp, readdir, rename, rm, writeFile } from "node:fs/promises
 import { once } from "node:events";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { finished } from "node:stream/promises";
-import { parseArgs } from "node:util";
 import {
   type SQL,
   and,
   asc,
+  count,
   eq,
   getTableColumns,
   getTableName,
@@ -70,32 +70,43 @@ export type Manifest = {
   excluded: { table: string; reason: string }[];
 };
 
-/** What `exportRecords` wrote, for the CLI's summary. */
+/** What `exportRecords` wrote, or with `dryRun` would write, for the CLI's output. */
 export type RecordsExport = {
   out: string;
   firm: { slug: string; publicId: string; name: string };
   firmState: FirmState;
   exportedAt: Date;
   tables: { table: string; file: string; rows: number }[];
-  manifestHash: string;
+  /** `manifest.json`'s SHA-256; null for a dry run, which writes no manifest. */
+  manifestHash: string | null;
+  dryRun: boolean;
 };
 
-type ExportArgs = { slug: string; out: string; reason: string };
+type ExportArgs = {
+  slug: string;
+  out: string;
+  reason: string;
+  /** Make the same checks and count each table's rows in the same snapshot; write nothing. */
+  dryRun?: boolean | undefined;
+};
 
 /**
  * Writes the Firm `slug`'s Records export to `out`, active or deactivated. Every table is read in
  * one `repeatable read, read only` transaction as `migrator`, so the files are one snapshot and
  * Postgres refuses any write. The files go into a temporary folder beside `out` (mode 0700, files
  * 0600), the `org.records_exported` audit event is written, and only then is the folder moved to
- * `out`; a failure up to the audit write, that one included, removes the temporary folder and
- * throws. A failed move after it keeps the folder and names it. Throws `CliError`, writing nothing,
- * for an unknown slug, a non-empty `out` or another role.
+ * `out`; a failure up to the audit write, that one included (`audit_failed`), removes the
+ * temporary folder and throws. A failed move after it keeps the folder and names it. Throws
+ * `CliError`, writing nothing, for an unknown slug (`unknown_organization`), a non-empty `out`
+ * (`out_not_empty`) or another role (`wrong_role`). A dry run makes those checks and counts the
+ * rows, and writes no file and no audit event.
  */
 export async function exportRecords(db: Database, input: ExportArgs): Promise<RecordsExport> {
   const slug = normalizeSlug(input.slug);
   const reason = parseReason(input.reason);
   const out = resolve(input.out);
   await assertEmptyOrMissing(out);
+  if (input.dryRun) return countRecords(db, { slug, out });
   await mkdir(dirname(out), { recursive: true });
   // Beside `out`, so the final move is a rename on the same file system. mkdtemp makes it 0700.
   const temp = await mkdtemp(join(dirname(out), `.${basename(out)}.partial-`));
@@ -142,11 +153,12 @@ export async function exportRecords(db: Database, input: ExportArgs): Promise<Re
         metadata: { via: "cli", reason, firmState, tables, manifestHash },
       });
     } catch (error) {
-      throw new Error(
-        `Couldn't record the export in the audit trail, so nothing was written: ` +
+      throw new CliError({
+        code: "audit_failed",
+        message:
+          `Couldn't record the export in the audit trail, so nothing was written: ` +
           `${rootMessage(error)}. Fix that, then run it again.`,
-        { cause: error },
-      );
+      });
     }
     exported = {
       out,
@@ -155,6 +167,7 @@ export async function exportRecords(db: Database, input: ExportArgs): Promise<Re
       exportedAt: new Date(snapshot.exportedAt),
       tables: snapshot.files.map(({ table, file, rows }) => ({ table, file, rows })),
       manifestHash,
+      dryRun: false,
     };
   } catch (error) {
     await rm(temp, { recursive: true, force: true });
@@ -194,14 +207,18 @@ async function assertEmptyOrMissing(out: string): Promise<void> {
     const code = error instanceof Error && "code" in error ? error.code : undefined;
     if (code === "ENOENT") return;
     if (code === "ENOTDIR") {
-      throw new CliError(
-        `${out} exists and isn't a folder. Pick a new folder with --out; nothing was written.`,
-      );
+      throw new CliError({
+        code: "out_not_empty",
+        message: `${out} exists and isn't a folder. Pick a new folder with --out; nothing was written.`,
+      });
     }
     throw error;
   }
   if (entries.length > 0) {
-    throw new CliError(`${out} isn't empty. Pick a new folder with --out; nothing was written.`);
+    throw new CliError({
+      code: "out_not_empty",
+      message: `${out} isn't empty. Pick a new folder with --out; nothing was written.`,
+    });
   }
 }
 
@@ -212,6 +229,61 @@ type Snapshot = { firm: SnapshotFirm; exportedAt: string; files: ManifestFile[] 
 type ReadSnapshotArgs = { slug: string; dir: string };
 
 async function readSnapshot(tx: Database, { slug, dir }: ReadSnapshotArgs): Promise<Snapshot> {
+  const { firm, exportedAt } = await snapshotFirm(tx, slug);
+  const files: ManifestFile[] = [];
+  for (const spec of RECORD_TABLES) {
+    // One at a time: a transaction is one connection, which runs one query at a time.
+    // oxlint-disable-next-line no-await-in-loop
+    files.push(await writeTable(tx, { spec, firmId: firm.id, dir }));
+  }
+  return { firm, exportedAt, files };
+}
+
+/**
+ * A dry run of `exportRecords`: each table's row count for the Firm, read in the same kind of
+ * snapshot, as the same role, with the same refusals, and nothing written.
+ */
+async function countRecords(
+  db: Database,
+  { slug, out }: { slug: string; out: string },
+): Promise<RecordsExport> {
+  const { firm, exportedAt, tables } = await db.transaction(
+    async (tx) => {
+      const found = await snapshotFirm(tx, slug);
+      const counted = [];
+      for (const spec of RECORD_TABLES) {
+        const table = getTableName(spec.table);
+        // One at a time: a transaction is one connection, which runs one query at a time.
+        // oxlint-disable-next-line no-await-in-loop
+        const [row] = await tx
+          .select({ rows: count() })
+          .from(spec.table)
+          .where(firmFilter(tx, { spec, firmId: found.firm.id }));
+        counted.push({ table, file: `${table}.csv`, rows: row?.rows ?? 0 });
+      }
+      return { ...found, tables: counted };
+    },
+    { isolationLevel: "repeatable read", accessMode: "read only" },
+  );
+  return {
+    out,
+    firm: { slug, publicId: firm.publicId, name: firm.name },
+    firmState: firm.deactivatedAt === null ? "active" : "deactivated",
+    exportedAt: new Date(exportedAt),
+    tables,
+    manifestHash: null,
+    dryRun: true,
+  };
+}
+
+/**
+ * The Firm `slug` at the start of the snapshot, and that moment, refusing an unknown slug and any
+ * role but `migrator`.
+ */
+async function snapshotFirm(
+  tx: Database,
+  slug: string,
+): Promise<{ firm: SnapshotFirm; exportedAt: string }> {
   // Timestamps in UTC, whatever the server's default, so the files read the same anywhere.
   await tx.execute(sql`set local timezone = 'UTC'`);
   const [row] = await tx
@@ -228,24 +300,21 @@ async function readSnapshot(tx: Database, { slug, dir }: ReadSnapshotArgs): Prom
     .from(organization)
     .where(eq(organization.slug, slug));
   if (row === undefined) {
-    throw new CliError(
-      `No organization has the slug "${slug}". Check the slug (organization.slug); nothing was written.`,
-    );
+    throw new CliError({
+      code: "unknown_organization",
+      message: `No organization has the slug "${slug}". Check the slug (organization.slug); nothing was written.`,
+    });
   }
   if (row.role !== EXPORT_ROLE) {
-    throw new CliError(
-      `Connected as ${row.role}, but a Records export reads as ${EXPORT_ROLE}, whom row-level ` +
+    throw new CliError({
+      code: "wrong_role",
+      message:
+        `Connected as ${row.role}, but a Records export reads as ${EXPORT_ROLE}, whom row-level ` +
         `security doesn't hold. Point DATABASE_URL and DATABASE_PASSWORD_FILE at ${EXPORT_ROLE}.`,
-    );
+    });
   }
   const { exportedAt, role: _role, ...firm } = row;
-  const files: ManifestFile[] = [];
-  for (const spec of RECORD_TABLES) {
-    // One at a time: a transaction is one connection, which runs one query at a time.
-    // oxlint-disable-next-line no-await-in-loop
-    files.push(await writeTable(tx, { spec, firmId: firm.id, dir }));
-  }
-  return { firm, exportedAt, files };
+  return { firm, exportedAt };
 }
 
 type WriteTableArgs = { spec: RecordTable; firmId: number; dir: string };
@@ -347,44 +416,6 @@ function firmFilter(tx: Database, { spec, firmId }: Omit<WriteTableArgs, "dir">)
       throw new Error(`Unknown record scope ${String(scope)}`);
     }
   }
-}
-
-/**
- * `pnpm org:export`'s arguments, `--slug <slug> --out <dir> --reason <text>`: `{ help: true }` for
- * `--help`, otherwise all three, checked (a `CliError` with `usage` when one is missing).
- */
-export function parseExportArgs({
-  args,
-  usage,
-}: {
-  args: string[];
-  usage: string;
-}): { help: true } | ({ help: false } & ExportArgs) {
-  // `pnpm org:export -- --slug …` passes the separator through.
-  const rest = args[0] === "--" ? args.slice(1) : args;
-  let values;
-  try {
-    ({ values } = parseArgs({
-      args: rest,
-      options: {
-        slug: { type: "string" },
-        out: { type: "string" },
-        reason: { type: "string" },
-        help: { type: "boolean", short: "h", default: false },
-      },
-    }));
-  } catch (error) {
-    throw new CliError(`${error instanceof Error ? error.message : String(error)}\n\n${usage}`);
-  }
-  if (values.help) return { help: true };
-  const { slug, out, reason } = values;
-  if (slug === undefined || out === undefined || reason === undefined) {
-    const missing = Object.entries({ slug, out, reason })
-      .filter(([, value]) => value === undefined)
-      .map(([name]) => `--${name}`);
-    throw new CliError(`Missing ${missing.join(", ")}.\n\n${usage}`);
-  }
-  return { help: false, slug: normalizeSlug(slug), out, reason: parseReason(reason) };
 }
 
 /** Whether `path` is `root` or inside it, for warning about an export written into the repo. */

@@ -11,7 +11,9 @@ describe("cw", () => {
       { name: "friction report" },
       { name: "friction search" },
       { name: "friction triage" },
+      { name: "org create" },
       { name: "org deactivate" },
+      { name: "org export" },
       { name: "org reactivate" },
     ]);
   });

@@ -47,13 +47,18 @@ export interface CreateOrganizationInput {
   /** Generated from `name` when omitted. */
   slug?: string | undefined;
   ownerEmail: string;
+  /** Make every write and check, then roll back, as `deactivateOrganization`'s dry run does. */
+  dryRun?: boolean | undefined;
 }
 
 export interface CreatedOrganization {
+  /** For a dry run, the one it would have had: every run draws a new one. */
   publicId: string;
   name: string;
   slug: string;
   owner: { email: string; created: boolean };
+  /** Whether nothing was written: the transaction ran and was rolled back. */
+  dryRun: boolean;
 }
 
 /**
@@ -61,7 +66,7 @@ export interface CreatedOrganization {
  * organizations themselves. A missing owner is created with an empty name (they set it at
  * `/welcome`) and an unverified email (signing in verifies it). The user, organization,
  * membership and `org.created` audit event are written in one transaction, so a taken slug
- * leaves nothing behind.
+ * (`slug_taken`) leaves nothing behind, and a dry run rolls it all back once it's done.
  */
 export async function createOrganization(
   db: Database,
@@ -71,41 +76,60 @@ export async function createOrganization(
   if (!name) throw new CliError("The organization name is empty.");
   const email = parseOwnerEmail(input.ownerEmail);
   const slug = input.slug === undefined ? slugFromName(name) : normalizeSlug(input.slug);
+  const dryRun = input.dryRun ?? false;
 
-  return db.transaction(async (tx) => {
-    const inserted = await tx
-      .insert(user)
-      .values({ email, name: "", emailVerified: false })
-      .onConflictDoNothing({ target: user.email })
-      .returning({ id: user.id });
-    const [owner] = await tx.select({ id: user.id }).from(user).where(eq(user.email, email));
-    if (!owner) throw new Error(`Owner ${email} vanished mid-transaction`);
-
-    const [org] = await tx
-      .insert(organization)
-      .values({ name, slug })
-      .onConflictDoNothing({ target: organization.slug })
-      .returning({ id: organization.id, publicId: organization.publicId });
-    // Throwing rolls the transaction back, including a user created above.
-    if (!org) {
-      throw new CliError(
-        `An organization with slug "${slug}" already exists; pick another with --slug.`,
-      );
-    }
-
-    await tx.insert(member).values({ organizationId: org.id, userId: owner.id, role: "owner" });
-    await tx.insert(auditEvent).values({
-      action: "org.created",
-      // The operator running the CLI isn't a user, so there's no actor.
-      actorUserId: null,
-      organizationId: org.id,
-      targetType: "organization",
-      targetId: org.publicId,
-      metadata: { via: "cli" },
+  let created: Omit<CreatedOrganization, "dryRun"> | undefined;
+  try {
+    await db.transaction(async (tx) => {
+      created = await insertOrganization(tx, { name, slug, email });
+      if (dryRun) tx.rollback();
     });
+  } catch (error) {
+    if (!(dryRun && error instanceof TransactionRollbackError)) throw error;
+  }
+  if (created === undefined) throw new Error("The transaction ended without a result");
+  return { ...created, dryRun };
+}
 
-    return { publicId: org.publicId, name, slug, owner: { email, created: inserted.length > 0 } };
+type InsertOrganizationArgs = { name: string; slug: string; email: string };
+
+async function insertOrganization(
+  tx: Database,
+  { name, slug, email }: InsertOrganizationArgs,
+): Promise<Omit<CreatedOrganization, "dryRun">> {
+  const inserted = await tx
+    .insert(user)
+    .values({ email, name: "", emailVerified: false })
+    .onConflictDoNothing({ target: user.email })
+    .returning({ id: user.id });
+  const [owner] = await tx.select({ id: user.id }).from(user).where(eq(user.email, email));
+  if (!owner) throw new Error(`Owner ${email} vanished mid-transaction`);
+
+  const [org] = await tx
+    .insert(organization)
+    .values({ name, slug })
+    .onConflictDoNothing({ target: organization.slug })
+    .returning({ id: organization.id, publicId: organization.publicId });
+  // Throwing rolls the transaction back, including a user created above.
+  if (!org) {
+    throw new CliError({
+      code: "slug_taken",
+      message: `An organization with slug "${slug}" already exists; pick another with --slug.`,
+    });
+  }
+
+  await tx.insert(member).values({ organizationId: org.id, userId: owner.id, role: "owner" });
+  await tx.insert(auditEvent).values({
+    action: "org.created",
+    // The operator running the CLI isn't a user, so there's no actor.
+    actorUserId: null,
+    organizationId: org.id,
+    targetType: "organization",
+    targetId: org.publicId,
+    metadata: { via: "cli" },
   });
+
+  return { publicId: org.publicId, name, slug, owner: { email, created: inserted.length > 0 } };
 }
 
 /** What `cw org deactivate` or `cw org reactivate` changed, or with `dryRun` would change. */
