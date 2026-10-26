@@ -23,6 +23,7 @@ flowchart LR
   a22["0022 A Firm that leaves<br/>is deactivated"]
   a23["0023 A removed member is<br/>told through their session"]
   a24["0024 Weekly cve.now scan<br/>beside Dependabot"]
+  a25["0025 An edit keeps the old<br/>version in a history table"]
 
   ir["incident-response.md"]
   host["Hosting must keep<br/>after() work alive"]
@@ -60,3 +61,5 @@ flowchart LR
   a20 -->|"withFirm<br/>refuses it"| a22
   a22 -->|"no data left<br/>to tell from"| a23
   a5 -->|"written through<br/>Better Auth"| a23
+  a21 -->|"deletion refused,<br/>alteration still open"| a25
+  a20 -->|"Firm-scoped<br/>like its table"| a25
