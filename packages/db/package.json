@@ -10,6 +10,7 @@
     "./client": "./src/client.ts",
     "./config": "./src/config.ts",
     "./connect": "./src/connect.ts",
+    "./firm": "./src/firm.ts",
     "./migrator": "./src/migrator.ts",
     "./schema": "./src/schema/index.ts",
     "./schema/*": "./src/schema/*.ts",

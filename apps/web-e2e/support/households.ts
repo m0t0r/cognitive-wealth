@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Role } from "@repo/auth/access";
 import type { Database } from "@repo/db";
+import { withFirm } from "@repo/db/firm";
 import {
   accountRole,
   custodialAccount,
@@ -11,6 +12,7 @@ import {
   organization,
   person,
 } from "@repo/db/schema";
+import { WORLD_FIRM_SLUG } from "@repo/db/seed-data";
 import { seedDevWorld } from "@repo/households/seed";
 import { eq } from "drizzle-orm";
 import { ingestDelivery, localFeedSource } from "@repo/portfolio";
@@ -55,7 +57,10 @@ export async function seedIngestedWorld(
     if (result.status !== "ingested") throw new Error(`Ingesting ${asOf} gave ${result.status}`);
   }
   // World file v0 has one Household, in Larkspur.
-  const households = await db.select({ publicId: household.publicId }).from(household);
+  const households = await withFirm(db, {
+    firmId: firmId("larkspur"),
+    query: (tx) => tx.select({ publicId: household.publicId }).from(household),
+  });
   const [reyes, ...others] = households;
   if (!reyes || others.length > 0) {
     throw new Error(`Expected 1 seeded Household, not ${households.length}`);
@@ -69,38 +74,51 @@ export async function seedIngestedWorld(
  * so the Reyes overview has a Named-on Account to show. Returns her Household's `publicId`.
  */
 export async function seedHouseholdOfGrace(db: Database): Promise<string> {
-  // The world file's People are all Larkspur's.
-  const [jordan] = await db
-    .select({ id: person.id, firmId: person.firmId })
-    .from(person)
-    .where(eq(person.seedKey, "jordan-reyes"));
-  if (!jordan) throw new Error("Seed the world first: no Person 'jordan-reyes'");
-  const { firmId } = jordan;
+  // The world file's People are all Larkspur's. Written through `withFirm`, as the app writes
+  // them, so this works as `app` too (verifier-web's `start-app.sh --seed`), under row-level
+  // security (ADR 0020).
+  const [larkspur] = await db
+    .select({ id: organization.id })
+    .from(organization)
+    .where(eq(organization.slug, WORLD_FIRM_SLUG));
+  if (!larkspur) throw new Error(`Seed the world first: no Firm '${WORLD_FIRM_SLUG}'`);
+  const firmId = larkspur.id;
 
-  const [hers] = await db
-    .insert(household)
-    .values({ firmId, name: "The Grace Reyes Household", relationshipStatus: "client" })
-    .returning();
-  const [grace] = await db
-    .insert(person)
-    .values({ firmId, firstName: "Grace", lastName: "Reyes", bornOn: "1952-01-20" })
-    .returning();
-  await db
-    .insert(householdMember)
-    .values({ firmId, householdId: hers!.id, personId: grace!.id, role: "primary" });
-  const [ira] = await db
-    .insert(custodialAccount)
-    .values({ firmId, accountNumber: "CW-000003", registrationType: "traditional_ira" })
-    .returning();
-  await db.insert(accountRole).values([
-    { firmId, personId: grace!.id, accountId: ira!.id, role: "owner", startsOn: "2020-01-02" },
-    {
-      firmId,
-      personId: jordan.id,
-      accountId: ira!.id,
-      role: "beneficiary",
-      startsOn: "2020-01-02",
+  return withFirm(db, {
+    firmId,
+    query: async (tx) => {
+      const [jordan] = await tx
+        .select({ id: person.id })
+        .from(person)
+        .where(eq(person.seedKey, "jordan-reyes"));
+      if (!jordan) throw new Error("Seed the world first: no Person 'jordan-reyes'");
+
+      const [hers] = await tx
+        .insert(household)
+        .values({ firmId, name: "The Grace Reyes Household", relationshipStatus: "client" })
+        .returning();
+      const [grace] = await tx
+        .insert(person)
+        .values({ firmId, firstName: "Grace", lastName: "Reyes", bornOn: "1952-01-20" })
+        .returning();
+      await tx
+        .insert(householdMember)
+        .values({ firmId, householdId: hers!.id, personId: grace!.id, role: "primary" });
+      const [ira] = await tx
+        .insert(custodialAccount)
+        .values({ firmId, accountNumber: "CW-000003", registrationType: "traditional_ira" })
+        .returning();
+      await tx.insert(accountRole).values([
+        { firmId, personId: grace!.id, accountId: ira!.id, role: "owner", startsOn: "2020-01-02" },
+        {
+          firmId,
+          personId: jordan.id,
+          accountId: ira!.id,
+          role: "beneficiary",
+          startsOn: "2020-01-02",
+        },
+      ]);
+      return hers!.publicId;
     },
-  ]);
-  return hers!.publicId;
+  });
 }

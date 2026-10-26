@@ -1,4 +1,4 @@
-import { auditEvent, invitation, member } from "@repo/db/schema";
+import { auditEvent, household, invitation, member } from "@repo/db/schema";
 import { parseInvitationEmail } from "@repo/testing/mailpit";
 import { and, asc, eq } from "drizzle-orm";
 import {
@@ -1342,5 +1342,24 @@ describe("audit", () => {
       memberPublicId: world.members.ada.publicId,
     });
     expect(await auditActions(t)).toEqual([]);
+  });
+});
+
+// Better Auth deletes the organization as `app`, with no Firm set (ADR 0020): the cascade to the
+// Firm's own rows runs as the tables' owner, so their row-level security doesn't stop it.
+describe("deleting a workspace through Better Auth", () => {
+  test("removes its Firm-scoped rows too", async ({ t, world, migratorOrm }) => {
+    await migratorOrm.insert(household).values([
+      { firmId: world.acme.id, name: "Acme Household", relationshipStatus: "client" },
+      { firmId: world.globex.id, name: "Globex Household", relationshipStatus: "client" },
+    ]);
+
+    await t.auth.api.deleteOrganization({
+      headers: world.as.ada,
+      body: { organizationId: String(world.acme.id) },
+    });
+
+    const left = await migratorOrm.select({ firmId: household.firmId }).from(household);
+    expect(left).toEqual([{ firmId: world.globex.id }]);
   });
 });
