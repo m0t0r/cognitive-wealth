@@ -19,7 +19,7 @@ describe("verifyResources", () => {
       session: "verify-task_0ebb429f",
       compose: {
         project: "cw-compose-task_0ebb429f",
-        ports: { web: 4786, custodian: 5786, mailpit: 6786 },
+        ports: { web: 4786, custodian: 5786, mailpit: 6786, db: 7786 },
       },
     });
   });
@@ -30,7 +30,10 @@ describe("verifyResources", () => {
       ports: { head: 3100, ref: 3101 },
       databases: { head: "verify_main_head", ref: "verify_main_ref" },
       session: "verify",
-      compose: { project: "cw-compose-main", ports: { web: 4100, custodian: 5100, mailpit: 6100 } },
+      compose: {
+        project: "cw-compose-main",
+        ports: { web: 4100, custodian: 5100, mailpit: 6100, db: 7100 },
+      },
     });
   });
 

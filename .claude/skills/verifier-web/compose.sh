@@ -22,14 +22,34 @@ for s in $(sed -n 's|^ *file: \./\.secrets/||p' "$top/compose.yaml"); do
   [ -s "$top/.secrets/$s" ] || (openssl rand -hex 32 >"$top/.secrets/$s" && chmod 644 "$top/.secrets/$s")
 done
 
-compose=(docker compose -p "$VERIFY_COMPOSE_PROJECT" --project-directory "$top" -f "$top/compose.yaml")
+compose=(docker compose -p "$VERIFY_COMPOSE_PROJECT" --project-directory "$top"
+  -f "$top/compose.yaml" -f "$top/.claude/skills/verifier-web/compose.db.yaml")
 export WEB_PORT=$VERIFY_COMPOSE_WEB_PORT CUSTODIAN_PORT=$VERIFY_COMPOSE_CUSTODIAN_PORT \
-  MAILPIT_PORT=$VERIFY_COMPOSE_MAILPIT_PORT
+  MAILPIT_PORT=$VERIFY_COMPOSE_MAILPIT_PORT DB_PORT=$VERIFY_COMPOSE_DB_PORT
 
 case "${1:-}" in
   up)
     shift
     "${compose[@]}" up --build --detach --wait "$@"
+    # The same data as start-app.sh's servers: migrations (idempotent, in case `migrate` wasn't
+    # named), the seed (users, Firms, the world's CRM half; idempotent) and the example Deliveries,
+    # so `owner@` signs in to Larkspur. From the host, through compose.db.yaml's published port.
+    if "${compose[@]}" ps --status running --services | grep -qx db; then
+      url="postgres://%s@localhost:$DB_PORT/cognitive_wealth"
+      (cd "$top" &&
+        DATABASE_URL=$(printf "$url" migrator) DATABASE_PASSWORD_FILE="$top/.secrets/db_migrator_password" \
+          pnpm --silent --filter @repo/db db:migrate &&
+        DATABASE_URL=$(printf "$url" app) DATABASE_PASSWORD_FILE="$top/.secrets/db_app_password" \
+          pnpm --silent db:seed >/dev/null)
+      feed="$top/apps/custodian/fixtures/feed"
+      for delivery in "$feed"/*/; do
+        # A Delivery already ingested on an earlier `up` is reported and skipped, not an error.
+        (cd "$top" &&
+          DATABASE_URL=$(printf "$url" app) DATABASE_PASSWORD_FILE="$top/.secrets/db_app_password" \
+            pnpm --silent custodian:ingest "$(basename "$delivery")" --root "$feed" >/dev/null)
+      done
+      echo "Database: $(printf "$url" app) (password file $top/.secrets/db_app_password), seeded" >&2
+    fi
     echo "Project $VERIFY_COMPOSE_PROJECT: web http://localhost:$WEB_PORT, custodian http://127.0.0.1:$CUSTODIAN_PORT, Mailpit http://127.0.0.1:$MAILPIT_PORT" >&2
     ;;
   down) "${compose[@]}" down --volumes --remove-orphans ;;
