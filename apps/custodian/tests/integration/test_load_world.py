@@ -150,10 +150,20 @@ def test_a_ledger_naming_a_security_the_catalog_doesnt_have_is_refused(
     ledger = read_ledger_fixture(LEDGER_V0_PATH)
     # The catalog without the Bond Fund, which the ledger buys in row 2.
     no_bond_fund = catalog.model_copy(
-        update={"securities": [s for s in catalog.securities if s.identifier != "LKBF"]}
+        update={
+            "securities": [
+                security for security in catalog.securities if security.identifier != "LKBF"
+            ]
+        }
     )
 
     with pytest.raises(ValueError, match=r"prices\.LKBF: not a Security in the catalog"):
         load(session, world=world, catalog=no_bond_fund, ledger=ledger)
+    # Without its prices too, the first Transaction naming it is refused.
+    no_bond_prices = ledger.model_copy(
+        update={"prices": {key: by_day for key, by_day in ledger.prices.items() if key != "LKBF"}}
+    )
+    with pytest.raises(ValueError, match="Transaction 2: 'LKBF' isn't a Security in the catalog"):
+        load(session, world=world, catalog=no_bond_fund, ledger=no_bond_prices)
 
     assert all(rows == [] for rows in everything_in(database).values())
