@@ -1,6 +1,10 @@
 "use server";
 
-import { getViewer, switchOrganization } from "@repo/auth";
+import {
+  dismissRemovalNotice as dismissOnSession,
+  getViewer,
+  switchOrganization,
+} from "@repo/auth";
 import { refresh } from "next/cache";
 import { cookies, headers } from "next/headers";
 import * as z from "zod";
@@ -61,6 +65,20 @@ export async function dismissDeactivatedNotice(
       maxAge: DISMISSED_NOTICES_MAX_AGE,
     });
   }
+  refresh();
+  return { submitted: (state?.submitted ?? 0) + 1 };
+}
+
+/**
+ * Dismisses the Removal notice (ADR 0023): clears it from this session, so every page of this
+ * browser stops showing it, and other sessions keep their own.
+ */
+export async function dismissRemovalNotice(
+  state: DismissNoticeState,
+  _form: FormData,
+): Promise<DismissNoticeState> {
+  const result = await dismissOnSession(getAuth(), await headers());
+  if (!result.ok) return state;
   refresh();
   return { submitted: (state?.submitted ?? 0) + 1 };
 }

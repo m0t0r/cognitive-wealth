@@ -18,6 +18,7 @@ import { getDb } from "@repo/db/client";
 import { listHouseholds } from "@repo/households";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AppShellSync } from "@/components/app-shell/app-shell-sync";
 import { requireAppViewer } from "@/lib/auth/viewer";
 import { RELATIONSHIP_STATUS_LABELS, personName } from "@/lib/households";
 
@@ -32,6 +33,7 @@ export default async function HouseholdsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+      <AppShellSync />
       <header className="flex flex-col gap-1">
         <h1 id={HEADING_ID} className="font-heading text-2xl font-semibold tracking-tight">
           Households

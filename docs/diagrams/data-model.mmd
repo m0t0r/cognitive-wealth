@@ -6,6 +6,7 @@ erDiagram
   organization ||--o{ invitation : "sends"
   user ||--o{ invitation : "invites (inviter)"
   organization |o--o{ session : "is active in"
+  organization |o--o{ session : "removed from"
   user |o--o{ audit_event : "acts in"
   organization |o--o{ audit_event : "scopes"
   organization ||--o{ household : "serves (firm_id)"
@@ -39,6 +40,7 @@ erDiagram
     text token UK
     bigint user_id FK
     bigint active_organization_id FK "the tenant"
+    bigint removed_from_organization_id FK "Removal notice"
     timestamptz expires_at
   }
   account {

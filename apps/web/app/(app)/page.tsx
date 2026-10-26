@@ -12,6 +12,7 @@ import {
 } from "@repo/design-system/components/empty";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AppShellSync } from "@/components/app-shell/app-shell-sync";
 import { YOUR_ROLE } from "@/lib/roles";
 import { requireAppViewer } from "@/lib/auth/viewer";
 
@@ -22,6 +23,7 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-8">
+      <AppShellSync />
       <header className="flex flex-col gap-1">
         <h1 className="font-heading text-2xl font-semibold tracking-tight wrap-anywhere">
           Welcome, {user.name}

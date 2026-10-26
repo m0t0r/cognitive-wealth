@@ -182,6 +182,10 @@ export function createAuth(deps: AuthDeps) {
       freshAge: SESSION_FRESH_AGE,
       cookieCache: { enabled: false },
       storeSessionInDatabase: true,
+      // Only `getViewer` and the tenant API set it (ADR 0023), through `internalAdapter`.
+      additionalFields: {
+        removedFromOrganizationId: { type: "string", required: false, input: false },
+      },
     },
     emailAndPassword: { enabled: false },
     rateLimit: {

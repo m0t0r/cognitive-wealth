@@ -1,5 +1,5 @@
 import type { Database } from "@repo/db";
-import { organization } from "@repo/db/schema";
+import { member as memberTable, organization } from "@repo/db/schema";
 import { eq } from "drizzle-orm";
 import { expect, test } from "../fixtures";
 import { seedInvitation, seedOrganization, seedUser, uniqueEmail } from "../support/seed";
@@ -87,5 +87,57 @@ test("app page with the Deactivated Firm notice", async ({ page, db, signIn }, t
   await page.goto("/");
   await expect(page.getByRole("main")).toMatchAriaSnapshot({
     name: "deactivated-notice-main.aria.yml",
+  });
+});
+
+// Removed by hand, after sign-in, so the member's next page moves the session (ADR 0023);
+// removal.spec.ts removes them through the app.
+const removeMembership = (db: Database, memberId: number) =>
+  db.delete(memberTable).where(eq(memberTable.id, memberId));
+
+test("no-workspace page of a removed member", async ({ page, db, signIn }, testInfo) => {
+  const email = uniqueEmail(testInfo, "member");
+  const mia = await seedUser(db, { email, name: "Mia Member" });
+  const acme = await seedOrganization(db, {
+    name: "Acme",
+    members: [{ user: mia, role: "member" }],
+  });
+  await signIn(email);
+  await removeMembership(db, acme.members[0]!.id);
+
+  await page.goto("/no-workspace");
+  await expect(page.getByRole("main")).toMatchAriaSnapshot({
+    name: "no-workspace-removed-main.aria.yml",
+  });
+});
+
+test("app page with the Removal notice", async ({ page, db, signIn }, testInfo) => {
+  const email = uniqueEmail(testInfo, "member");
+  const mo = await seedUser(db, { email, name: "Mo Member" });
+  await seedOrganization(db, {
+    name: "Globex",
+    members: [{ user: mo, role: "member", joinedAt: new Date("2026-01-01T12:00:00Z") }],
+  });
+  const acme = await seedOrganization(db, {
+    name: "Acme",
+    members: [{ user: mo, role: "member", joinedAt: new Date("2026-02-01T12:00:00Z") }],
+  });
+  await signIn(email);
+  await removeMembership(db, acme.members[0]!.id);
+
+  await page.goto("/");
+  await expect(page.getByRole("main")).toMatchAriaSnapshot({
+    name: "removal-notice-main.aria.yml",
+  });
+});
+
+test("no-workspace page of a User with no workspace", async ({ page, db, signIn }, testInfo) => {
+  const email = uniqueEmail(testInfo, "invitee");
+  await seedUser(db, { email, name: "Ida Invitee" });
+  await signIn(email);
+
+  await page.goto("/no-workspace");
+  await expect(page.getByRole("main")).toMatchAriaSnapshot({
+    name: "no-workspace-main.aria.yml",
   });
 });

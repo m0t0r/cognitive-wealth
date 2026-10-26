@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { cache } from "react";
+import { AppShellSync } from "@/components/app-shell/app-shell-sync";
 import { AccountSection } from "@/components/households/account-section";
 import { NamedOnSection } from "@/components/households/named-on-section";
 import { requireAppViewer } from "@/lib/auth/viewer";
@@ -41,6 +42,7 @@ export default async function HouseholdPage({ params }: PageProps<"/households/[
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col">
+      <AppShellSync />
       <header className="flex flex-col gap-3 border-b pb-8">
         {/* Dark --primary is a fill colour (2.6:1 as text on the dark background); sky-400 is the
             preset's sky theme at a text contrast that passes AA. */}
