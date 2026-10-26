@@ -7,7 +7,7 @@ const run = promisify(execFile);
 // `pnpm org:deactivate` and `org:reactivate` both run this file with their command.
 const CLI = join(import.meta.dirname, "../../../packages/db/src/cli/org-status.ts");
 
-type OrgStatusArgs = {
+type RunOrgStatusArgs = {
   /** The worker's database, as `app` (`workerDatabase.appUrl`): the role the CLI uses in production. */
   databaseUrl: string;
   command: "deactivate" | "reactivate";
@@ -24,7 +24,7 @@ export async function runOrgStatus({
   command,
   slug,
   reason = "e2e",
-}: OrgStatusArgs): Promise<string> {
+}: RunOrgStatusArgs): Promise<string> {
   // The worker's database, and no password file from the runner's shell to override its password.
   const { DATABASE_PASSWORD_FILE: _, ...inherited } = process.env;
   const env = { ...inherited, DATABASE_URL: databaseUrl };

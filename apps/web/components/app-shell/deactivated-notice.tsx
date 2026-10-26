@@ -30,26 +30,37 @@ export function DeactivatedNotice({ firms, workspace }: DeactivatedNoticeProps) 
 
   if (firms.length === 0) return null;
   return (
-    <div className="flex flex-col gap-3 border-b bg-muted px-4 py-3 sm:flex-row sm:items-center md:px-8">
-      <p className="flex-1 text-sm wrap-anywhere">
-        {deactivatedCopy(firms).notice({ names: firmNames(firms), workspace })}
-      </p>
-      <form action={formAction}>
-        {firms.map((firm) => (
-          <input key={firm.publicId} type="hidden" name="firm" value={dismissalKey(firm)} />
-        ))}
-        <Button type="submit" variant="outline" size="sm" aria-label="Dismiss notice">
-          Dismiss
-        </Button>
-      </form>
+    // The band runs the inset's full width; its content sits in the pages' own column
+    // (`mx-auto max-w-4xl` inside the layout's `px-4 md:px-8`), so the text lines up with the h1.
+    <div className="border-b bg-muted px-4 py-3 md:px-8">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-3 sm:flex-row sm:items-center">
+        <p className="flex-1 text-sm wrap-anywhere">
+          {deactivatedCopy(firms.length).notice({ names: firmNames(firms), workspace })}
+        </p>
+        <form action={formAction}>
+          {firms.map((firm) => (
+            <input key={firm.publicId} type="hidden" name="firm" value={dismissalKey(firm)} />
+          ))}
+          <Button type="submit" variant="outline" size="sm" aria-label="Dismiss notice">
+            Dismiss
+          </Button>
+        </form>
+      </div>
     </div>
   );
 }
 
-/** Moves focus to the page's `h1`, so it isn't lost to `body` once the notice is gone. */
+/**
+ * Moves focus to the page's `h1`, so it isn't lost to `body` once the notice is gone. Like the
+ * app's other focus-target headings (`tabIndex={-1}` with `outline-none`), it draws no ring: a
+ * heading isn't a control, and the page reads on from it.
+ */
 function focusPageHeading() {
   const heading = document.querySelector<HTMLElement>("main h1");
   if (heading === null) return;
-  if (!heading.hasAttribute("tabindex")) heading.tabIndex = -1;
+  if (!heading.hasAttribute("tabindex")) {
+    heading.tabIndex = -1;
+    heading.classList.add("outline-none");
+  }
   heading.focus();
 }

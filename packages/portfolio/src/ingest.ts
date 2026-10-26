@@ -185,9 +185,11 @@ async function ingestOnce(
       },
     });
   } catch (error) {
-    if (error instanceof Refusal || error instanceof FirmDeactivatedError) {
-      const reason = error instanceof Refusal ? error.reason : "firm_deactivated";
-      return { status: "refused", asOf, reason, message: error.message };
+    if (error instanceof Refusal) {
+      return { status: "refused", asOf, reason: error.reason, message: error.message };
+    }
+    if (error instanceof FirmDeactivatedError) {
+      return { status: "refused", asOf, reason: "firm_deactivated", message: error.message };
     }
     throw error;
   }

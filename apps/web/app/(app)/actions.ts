@@ -27,8 +27,11 @@ export async function switchWorkspace(input: {
   return { ok: true };
 }
 
-/** `useActionState` state for the notice: how many times it was dismissed on this page. */
-export type DismissNoticeState = { dismissals: number } | null;
+/**
+ * `useActionState` state for the notice: how many times Dismiss was submitted on this page, so
+ * each submission is a new state and the notice moves focus once more.
+ */
+export type DismissNoticeState = { submitted: number } | null;
 
 /**
  * Dismisses the Deactivated Firm notice (ADR 0022, point 11): records each Firm it named (the
@@ -59,5 +62,5 @@ export async function dismissDeactivatedNotice(
     });
   }
   refresh();
-  return { dismissals: (state?.dismissals ?? 0) + 1 };
+  return { submitted: (state?.submitted ?? 0) + 1 };
 }

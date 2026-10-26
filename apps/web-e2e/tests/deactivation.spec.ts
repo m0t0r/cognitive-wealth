@@ -46,12 +46,12 @@ test("a member whose only Firm is deactivated is told on their next click, witho
 }, testInfo) => {
   const email = uniqueEmail(testInfo, "member");
   const owner = await seedUser(db, { email: uniqueEmail(testInfo, "owner"), name: "Olivia" });
-  const m = await seedUser(db, { email, name: "Mia Member" });
+  const mia = await seedUser(db, { email, name: "Mia Member" });
   const acme = await seedOrganization(db, {
     name: "Acme",
     members: [
       { user: owner, role: "owner" },
-      { user: m, role: "member" },
+      { user: mia, role: "member" },
     ],
   });
   // Pending when Acme is deactivated, so it's canceled and never listed.
@@ -106,15 +106,15 @@ test("a member of two Firms is moved to the other, told why until they dismiss i
   makeAxeBuilder,
 }, testInfo) => {
   const email = uniqueEmail(testInfo, "owner");
-  const o = await seedUser(db, { email, name: "Olivia Owner" });
+  const olivia = await seedUser(db, { email, name: "Olivia Owner" });
   await seedOrganization(db, {
     name: "Globex",
-    members: [{ user: o, role: "owner", joinedAt: new Date("2026-01-01") }],
+    members: [{ user: olivia, role: "owner", joinedAt: new Date("2026-01-01") }],
   });
   // Joined last, so the session starts in Acme.
   await seedOrganization(db, {
     name: "Acme",
-    members: [{ user: o, role: "owner", joinedAt: new Date("2026-02-01") }],
+    members: [{ user: olivia, role: "owner", joinedAt: new Date("2026-02-01") }],
   });
   const other = await openBrowser();
   await signIn(email);
@@ -187,14 +187,14 @@ test("a Firm deactivated again shows its notice again", async ({
   workerDatabase,
 }, testInfo) => {
   const email = uniqueEmail(testInfo, "owner");
-  const o = await seedUser(db, { email, name: "Olivia Owner" });
+  const olivia = await seedUser(db, { email, name: "Olivia Owner" });
   await seedOrganization(db, {
     name: "Globex",
-    members: [{ user: o, role: "owner", joinedAt: new Date("2026-01-01") }],
+    members: [{ user: olivia, role: "owner", joinedAt: new Date("2026-01-01") }],
   });
   await seedOrganization(db, {
     name: "Acme",
-    members: [{ user: o, role: "owner", joinedAt: new Date("2026-02-01") }],
+    members: [{ user: olivia, role: "owner", joinedAt: new Date("2026-02-01") }],
   });
   await signIn(email);
   const status = (command: "deactivate" | "reactivate") =>
