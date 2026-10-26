@@ -1,3 +1,6 @@
+import type { Database } from "@repo/db";
+import { organization } from "@repo/db/schema";
+import { eq } from "drizzle-orm";
 import { expect, test } from "../fixtures";
 import { seedInvitation, seedOrganization, seedUser, uniqueEmail } from "../support/seed";
 
@@ -42,4 +45,47 @@ test("members page accessibility tree", async ({ page, db, signIn }, testInfo) =
 
   await page.goto("/settings/members");
   await expect(page.getByRole("main")).toMatchAriaSnapshot({ name: "members-main.aria.yml" });
+});
+
+// Deactivated by hand, at a fixed time; deactivation.spec.ts runs the real CLI.
+const deactivate = (db: Database, organizationId: number) =>
+  db
+    .update(organization)
+    .set({ deactivatedAt: new Date("2026-10-01T12:00:00Z") })
+    .where(eq(organization.id, organizationId));
+
+test("no-workspace page of a Deactivated Firm's member", async ({ page, db, signIn }, testInfo) => {
+  const email = uniqueEmail(testInfo, "member");
+  const member = await seedUser(db, { email, name: "Mia Member" });
+  const acme = await seedOrganization(db, {
+    name: "Acme",
+    members: [{ user: member, role: "member" }],
+  });
+  await deactivate(db, acme.id);
+  await signIn(email);
+
+  await page.goto("/no-workspace");
+  await expect(page.getByRole("main")).toMatchAriaSnapshot({
+    name: "no-workspace-deactivated-main.aria.yml",
+  });
+});
+
+test("app page with the Deactivated Firm notice", async ({ page, db, signIn }, testInfo) => {
+  const email = uniqueEmail(testInfo, "owner");
+  const owner = await seedUser(db, { email, name: "Olivia Owner" });
+  await seedOrganization(db, {
+    name: "Globex",
+    members: [{ user: owner, role: "owner", joinedAt: new Date("2026-01-01T12:00:00Z") }],
+  });
+  const acme = await seedOrganization(db, {
+    name: "Acme",
+    members: [{ user: owner, role: "owner", joinedAt: new Date("2026-02-01T12:00:00Z") }],
+  });
+  await deactivate(db, acme.id);
+  await signIn(email);
+
+  await page.goto("/");
+  await expect(page.getByRole("main")).toMatchAriaSnapshot({
+    name: "deactivated-notice-main.aria.yml",
+  });
 });

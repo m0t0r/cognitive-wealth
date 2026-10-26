@@ -24,6 +24,10 @@ Without it: `delete from session where user_id = …` **plus** deleting that use
 
 Rotate `BETTER_AUTH_SECRET`. It invalidates every signed session and device cookie, whatever Postgres or Redis still hold. Everyone has to sign in again, and every browser loses its known-device status for sign-in limits.
 
+## A Firm that leaves
+
+Run `pnpm org:deactivate --slug <slug> --reason <text>` ([ADR 0022](adr/0022-a-firm-that-leaves-is-deactivated.md), `docs/auth.md`, "Deactivated Firms"). From their next request, no member can act in the Firm, and its records stay as they are. It signs nobody out: members of no other Firm land on `/no-workspace`, which says why. To sign someone out as well, use the procedures above. `pnpm org:reactivate` undoes it.
+
 ## Disabling an account
 
 Delete or deactivate users only through Better Auth (the internal adapter's `deleteUser`) and revoke their sessions in the same operation. A direct update to the user row isn't seen by cached sessions.

@@ -7,6 +7,7 @@
     ".": "./src/index.ts",
     "./better-auth-tables": "./src/better-auth-tables.ts",
     "./cli/env": "./src/cli/env.ts",
+    "./cli/organizations": "./src/cli/organizations.ts",
     "./cli/ts-resolution": "./src/cli/ts-resolution.ts",
     "./client": "./src/client.ts",
     "./config": "./src/config.ts",

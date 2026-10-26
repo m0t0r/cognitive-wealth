@@ -15,7 +15,7 @@
 import type { Database } from "@repo/db";
 import { invitation, member, organization, session, user } from "@repo/db/schema";
 import { getIP, isAPIError } from "better-auth/api";
-import { and, asc, desc, eq, gt, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import * as z from "zod";
 import { ROLES, can, type Role } from "./access";
@@ -28,6 +28,7 @@ import {
   toPublicOrganization,
   toPublicUser,
   toRole,
+  type DeactivatedFirm,
   type InvitationStatus,
   type PublicInvitation,
   type PublicMember,
@@ -65,7 +66,10 @@ export interface Viewer {
   user: PublicUser;
   session: { createdAt: Date; expiresAt: Date; isFresh: boolean };
   tenant: Tenant | null;
+  /** The viewer's active Firms only: a Deactivated Firm is in `deactivatedFirms` instead. */
   memberships: PublicMembership[];
+  /** Firms the viewer is a member of that are deactivated (ADR 0022), most recently joined first. */
+  deactivatedFirms: DeactivatedFirm[];
   /** Server only: never put these in props, responses or logs sent to the browser. */
   internal: { userId: number; organizationId: number | null; memberId: number | null };
 }
@@ -103,8 +107,11 @@ const organizationColumns = {
 
 /**
  * The signed-in viewer, or `null`. Checks on every call that the active organization's
- * membership still exists, so a removed member loses the tenant immediately: if it's gone the
- * session falls back to their most recent other membership (and is updated), or to no tenant.
+ * membership still exists and that the organization isn't deactivated, so a removed member, or
+ * every member of a Firm that was deactivated, loses the tenant immediately: the session falls
+ * back to their most recent other membership (and is updated), or to no tenant. Memberships in
+ * Deactivated Firms are left out of `memberships` and reported in `deactivatedFirms`, on every
+ * call, so pages can say why (ADR 0022).
  */
 export async function getViewer(auth: Auth, headers: Headers): Promise<Viewer | null> {
   const result = await auth.api.getSession({ headers });
@@ -112,17 +119,22 @@ export async function getViewer(auth: Auth, headers: Headers): Promise<Viewer | 
   const { db } = auth.$deps;
   const userId = Number(result.user.id);
 
-  const rows = await db
+  const all = await db
     .select({
       memberId: member.id,
       memberPublicId: member.publicId,
       role: member.role,
       organization: organizationColumns,
+      deactivatedAt: organization.deactivatedAt,
     })
     .from(member)
     .innerJoin(organization, eq(member.organizationId, organization.id))
     .where(eq(member.userId, userId))
     .orderBy(desc(member.createdAt), desc(member.id));
+  const rows = all.filter((row) => row.deactivatedAt === null);
+  const deactivatedFirms = all.flatMap(({ organization: org, deactivatedAt }) =>
+    deactivatedAt === null ? [] : [{ publicId: org.publicId, name: org.name, deactivatedAt }],
+  );
 
   // Added by the organization plugin, which Better Auth's session type doesn't pick up.
   const activeId =
@@ -165,6 +177,7 @@ export async function getViewer(auth: Auth, headers: Headers): Promise<Viewer | 
     memberships: rows.map((row) =>
       toPublicMembership({ ...row, isActive: row.memberId === active?.memberId }),
     ),
+    deactivatedFirms,
     internal: {
       userId,
       organizationId: active?.organization.id ?? null,
@@ -212,7 +225,7 @@ export async function switchOrganization(
   if (!publicIdSchema.safeParse(input.organizationPublicId).success) return fail("not_found");
 
   const { db } = auth.$deps;
-  // Only organizations the viewer belongs to; anything else reads as not found.
+  // Only active organizations the viewer belongs to; anything else reads as not found.
   const [target] = await db
     .select(organizationColumns)
     .from(member)
@@ -221,6 +234,7 @@ export async function switchOrganization(
       and(
         eq(member.userId, viewer.internal.userId),
         eq(organization.publicId, input.organizationPublicId),
+        isNull(organization.deactivatedAt),
       ),
     )
     .limit(1);

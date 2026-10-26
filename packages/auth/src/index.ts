@@ -23,6 +23,7 @@ export {
   SESSION_COOKIE_NAMES,
 } from "./constants";
 export type {
+  DeactivatedFirm,
   InvitationStatus,
   PublicInvitation,
   PublicMember,
