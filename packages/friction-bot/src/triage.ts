@@ -8,12 +8,27 @@ import { z } from "zod";
 
 export const TRIAGE_MODEL = "claude-haiku-5-5";
 
+// The agent brief from the triage skill (mattpocock-skills' `AGENT-BRIEF.md`): the contract the
+// fixer works from, or a person's spec for a ready-for-human report.
+export const Brief = z.object({
+  summary: z.string(),
+  current_behavior: z.string(),
+  desired_behavior: z.string(),
+  key_interfaces: z.array(z.string()),
+  acceptance_criteria: z.array(z.string()),
+  out_of_scope: z.array(z.string()),
+});
+export type Brief = z.infer<typeof Brief>;
+
 export const Triage = z.object({
   decision: z.enum(["ready-for-agent", "ready-for-human", "duplicate"]),
   // The open report this one duplicates; null unless `decision` is "duplicate". A plain number:
   // `.int()` adds bounds, which structured outputs don't accept. The workflow checks it.
   duplicate_of: z.number().nullable(),
   reason: z.string(),
+  // Null for a duplicate: the original's brief stands. Nullable, not optional: structured outputs
+  // take no optional fields.
+  brief: Brief.nullable(),
 });
 export type Triage = z.infer<typeof Triage>;
 
@@ -70,7 +85,23 @@ Decide one of:
   - the report is too vague to act on.
 
 Set duplicate_of to null unless the decision is "duplicate". In reason, say in one or two sentences why,
-and for ready-for-agent where the fix most likely lands.`;
+and for ready-for-agent where the fix most likely lands; for ready-for-human, why an agent can't do it
+(a guardrail file, a judgment call, the environment, a browser check).
+
+For a duplicate, set brief to null. Otherwise write brief, the specification whoever fixes it works from
+(an agent for ready-for-agent, a person for ready-for-human). The report's own text is context; the brief
+is the contract:
+- summary: one line on what needs to change.
+- current_behavior: what an agent finds or experiences now, from the report.
+- desired_behavior: what should be true once it's fixed, including the edge cases the report raises.
+- key_interfaces: what the fix changes or must look for: a doc and its section, a command and its
+  options, a function, type or config shape. Name a section or symbol, never a line number.
+- acceptance_criteria: concrete checks that each prove one part done, such as "CLAUDE.md's packages/cli
+  bullet says a CTA can only name a cw command" or "\`pnpm cw friction search\` with no keywords lists
+  open reports". Never "it works".
+- out_of_scope: what the fix must not change, such as an adjacent doc or a rule the report only mentions.
+Describe what should be true, not how to edit it. A report's "Suggested fix" is the reporter's
+hypothesis: when it conflicts with CLAUDE.md, the brief follows CLAUDE.md and out_of_scope says why.`;
 }
 
 type TriageArgs = TriagePromptArgs & {
