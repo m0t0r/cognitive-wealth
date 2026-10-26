@@ -1,7 +1,29 @@
 // Which tables hold a Firm's records, and which don't (#206): what `pnpm org:export` writes into a
 // Records export (GLOSSARY.md), and later what retention covers (#194). Kept as data, beside the
 // schema, so a new table has to be put in one list or the other: `records.test.ts` fails until it
-// is.
+// is. `pnpm org:export` loads this through Node, so its imports keep their `.ts` extension.
+import type { PgTable } from "drizzle-orm/pg-core";
+import {
+  account,
+  accountRole,
+  auditEvent,
+  custodialAccount,
+  custodialPosition,
+  custodialTransaction,
+  custodianDelivery,
+  household,
+  householdMember,
+  invitation,
+  member,
+  organization,
+  person,
+  security,
+  securityPrice,
+  session,
+  user,
+  verification,
+  worldSeed,
+} from "./schema/index.ts";
 
 /**
  * How a table's rows are found for one Firm:
@@ -19,36 +41,36 @@
 export type RecordScope = "organization" | "organization_id" | "firm_id" | "firm_users";
 
 export type RecordTable = {
-  table: string;
+  table: PgTable;
   scope: RecordScope;
   /** What the file holds, for the export's README. */
   description: string;
-  /** Only these columns, in this order; every column when omitted. */
+  /** Only these columns, by their Postgres names, in this order; every column when omitted. */
   columns?: readonly string[];
 };
 
-export type ExcludedTable = { table: string; reason: string };
+export type ExcludedTable = { table: PgTable; reason: string };
 
 /** The tables a Records export holds, in the order it writes them: the Firm first, then its rows. */
 export const RECORD_TABLES: readonly RecordTable[] = [
   {
-    table: "organization",
+    table: organization,
     scope: "organization",
     description:
       "The Firm itself: its name, slug, when it was created and when it was deactivated.",
   },
   {
-    table: "member",
+    table: member,
     scope: "organization_id",
     description: "The Firm's present members and their role.",
   },
   {
-    table: "invitation",
+    table: invitation,
     scope: "organization_id",
     description: "Invitations into the Firm, whatever became of them, and who sent each.",
   },
   {
-    table: "user",
+    table: user,
     scope: "firm_users",
     description:
       "The name and email address of every User the other files name: present members, and past " +
@@ -59,49 +81,49 @@ export const RECORD_TABLES: readonly RecordTable[] = [
     columns: ["id", "name", "email"],
   },
   {
-    table: "audit_event",
+    table: auditEvent,
     scope: "organization_id",
     description: "The Firm's audit trail: who did what, and when.",
   },
-  { table: "household", scope: "firm_id", description: "Households." },
-  { table: "person", scope: "firm_id", description: "People: the Firm's clients and prospects." },
+  { table: household, scope: "firm_id", description: "Households." },
+  { table: person, scope: "firm_id", description: "People: the Firm's clients and prospects." },
   {
-    table: "household_member",
+    table: householdMember,
     scope: "firm_id",
     description: "Which Person is in which Household, and in what role.",
   },
   {
-    table: "custodial_account",
+    table: custodialAccount,
     scope: "firm_id",
     description: "Accounts at the Custodian, by account number.",
   },
   {
-    table: "account_role",
+    table: accountRole,
     scope: "firm_id",
     description: "How each Person holds each Account (owner, beneficiary, …), and since when.",
   },
   {
-    table: "custodian_delivery",
+    table: custodianDelivery,
     scope: "firm_id",
     description: "Each Delivery of the Custodian feed that was loaded, by As-of date.",
   },
   {
-    table: "security",
+    table: security,
     scope: "firm_id",
     description: "The Security master: every Security the Custodian reported.",
   },
   {
-    table: "custodial_transaction",
+    table: custodialTransaction,
     scope: "firm_id",
     description: "Transactions, as the Custodian posted them.",
   },
   {
-    table: "custodial_position",
+    table: custodialPosition,
     scope: "firm_id",
     description: "Positions, as the Custodian reported them, per Account, Security and As-of date.",
   },
   {
-    table: "security_price",
+    table: securityPrice,
     scope: "firm_id",
     description: "Security prices, per As-of date.",
   },
@@ -109,17 +131,17 @@ export const RECORD_TABLES: readonly RecordTable[] = [
 
 /** The tables a Records export leaves out, each with why. */
 export const EXCLUDED_TABLES: readonly ExcludedTable[] = [
-  { table: "session", reason: "Sign-in plumbing: who is signed in on which device, not a record." },
+  { table: session, reason: "Sign-in plumbing: who is signed in on which device, not a record." },
   {
-    table: "verification",
+    table: verification,
     reason: "Sign-in plumbing: one-time sign-in tokens that expire within minutes.",
   },
   {
-    table: "account",
+    table: account,
     reason: "Sign-in plumbing: a User's sign-in methods with Cognitive Wealth, not a record.",
   },
   {
-    table: "world_seed",
+    table: worldSeed,
     reason: "Dev seed bookkeeping: which world file `pnpm db:seed` last loaded, not a record.",
   },
 ];

@@ -52,7 +52,7 @@ async function main() {
   const { passwordFile } = connection;
   const from = envFile ? ` (from ${envFile})` : "";
   console.log(`Database: ${describeDatabaseUrl(connection.url)} as ${connection.role}${from}`);
-  const { client, close } = connect(
+  const { db, close } = connect(
     {
       url: connection.url,
       password: passwordFile ? () => readFileSync(passwordFile, "utf8").trim() : undefined,
@@ -60,7 +60,7 @@ async function main() {
     { max: 1 },
   );
   try {
-    const result = await exportRecords(client, {
+    const result = await exportRecords(db, {
       slug: parsed.slug,
       out,
       reason: parsed.reason,
