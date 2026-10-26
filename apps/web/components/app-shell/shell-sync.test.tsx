@@ -9,7 +9,7 @@ describe("RefreshStaleShell", () => {
   it("refreshes the route when the layout shows another viewer state than the page", () => {
     setup(
       <ShellKeyProvider value="in Acme">
-        <RefreshStaleShell shell="in Globex, removed from Acme" />
+        <RefreshStaleShell shellKey="in Globex, removed from Acme" />
       </ShellKeyProvider>,
     );
     expect(refresh).toHaveBeenCalledOnce();
@@ -18,7 +18,7 @@ describe("RefreshStaleShell", () => {
   it("leaves an up-to-date layout alone", () => {
     setup(
       <ShellKeyProvider value="in Acme">
-        <RefreshStaleShell shell="in Acme" />
+        <RefreshStaleShell shellKey="in Acme" />
       </ShellKeyProvider>,
     );
     expect(refresh).not.toHaveBeenCalled();

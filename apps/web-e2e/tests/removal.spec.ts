@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
-import { expect, summarize, test, type OtherBrowser } from "../fixtures";
+import { expect, test, type OtherBrowser } from "../fixtures";
+import { expectNoViolationsInBothThemes } from "../support/axe";
 import { seedOrganization, seedUser, uniqueEmail } from "../support/seed";
 
 // When the notice is stored, what clears it and whose session it touches are owned by
@@ -17,24 +18,6 @@ async function removeThroughTheApp({ owner, name }: { owner: OtherBrowser; name:
     .getByRole("button", { name: "Remove member" })
     .click();
   await expect(owner.page.getByText(`${name} was removed from Acme.`)).toBeVisible();
-}
-
-/** Scans the page in light and dark. */
-async function expectNoViolationsInBothThemes({
-  page,
-  makeAxeBuilder,
-}: {
-  page: Page;
-  makeAxeBuilder: () => import("@axe-core/playwright").AxeBuilder;
-}) {
-  for (const colorScheme of ["light", "dark"] as const) {
-    // oxlint-disable-next-line no-await-in-loop -- one page, one theme at a time
-    await page.emulateMedia({ colorScheme });
-    // oxlint-disable-next-line no-await-in-loop
-    const results = await makeAxeBuilder().analyze();
-    expect(summarize(results.violations), colorScheme).toEqual([]);
-  }
-  await page.emulateMedia({ colorScheme: "light" });
 }
 
 const mainNavLink = (page: Page, name: string) =>

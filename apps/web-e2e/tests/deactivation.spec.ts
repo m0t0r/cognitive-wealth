@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
-import { expect, summarize, test } from "../fixtures";
+import { expect, test } from "../fixtures";
+import { expectNoViolationsInBothThemes } from "../support/axe";
 import { runOrgStatus } from "../support/org-status";
 import { seedInvitation, seedOrganization, seedUser, uniqueEmail } from "../support/seed";
 
@@ -17,23 +18,6 @@ function recordNavigations(page: Page): string[] {
     if (frame === page.mainFrame()) urls.push(new URL(frame.url()).pathname);
   });
   return urls;
-}
-
-/** Scans the page in light and dark. */
-async function expectNoViolationsInBothThemes({
-  page,
-  makeAxeBuilder,
-}: {
-  page: Page;
-  makeAxeBuilder: () => import("@axe-core/playwright").AxeBuilder;
-}) {
-  for (const colorScheme of ["light", "dark"] as const) {
-    // oxlint-disable-next-line no-await-in-loop -- one page, one theme at a time
-    await page.emulateMedia({ colorScheme });
-    // oxlint-disable-next-line no-await-in-loop
-    const results = await makeAxeBuilder().analyze();
-    expect(summarize(results.violations), colorScheme).toEqual([]);
-  }
 }
 
 test("a member whose only Firm is deactivated is told on their next click, without being signed out, and gets it back on reactivation", async ({
@@ -136,7 +120,6 @@ test("a member of two Firms is moved to the other, told why until they dismiss i
     await page.evaluate(() => document.activeElement === document.body || !document.activeElement),
   ).toBe(true);
   await expectNoViolationsInBothThemes({ page, makeAxeBuilder });
-  await page.emulateMedia({ colorScheme: "light" });
 
   await page.getByRole("button", { name: /^Switch workspace/ }).click();
   const workspaces = page.getByRole("menuitemradio");

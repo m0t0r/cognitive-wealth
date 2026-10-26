@@ -16,14 +16,14 @@ export function ShellKeyProvider({ value, children }: { value: string; children:
   return <ShellKeyContext value={value}>{children}</ShellKeyContext>;
 }
 
-/** Refreshes the route when the layout's `shellKey` isn't the page's `shell`. Renders nothing. */
-export function RefreshStaleShell({ shell }: { shell: string }) {
+/** Refreshes the route when the layout's `shellKey` isn't the page's. Renders nothing. */
+export function RefreshStaleShell({ shellKey }: { shellKey: string }) {
   const rendered = useContext(ShellKeyContext);
   const router = useRouter();
 
   useEffect(() => {
-    if (rendered !== null && rendered !== shell) router.refresh();
-  }, [rendered, shell, router]);
+    if (rendered !== null && rendered !== shellKey) router.refresh();
+  }, [rendered, shellKey, router]);
 
   return null;
 }

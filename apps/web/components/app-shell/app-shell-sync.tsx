@@ -7,5 +7,5 @@ import { shellKey } from "@/lib/shell-key";
  * (`shell-sync.tsx`). Every app page renders it once; the viewer lookup is the page's own (cached).
  */
 export async function AppShellSync() {
-  return <RefreshStaleShell shell={shellKey(await requireAppViewer())} />;
+  return <RefreshStaleShell shellKey={shellKey(await requireAppViewer())} />;
 }
