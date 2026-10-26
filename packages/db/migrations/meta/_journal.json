@@ -71,6 +71,13 @@
       "when": 1793041491570,
       "tag": "0009_restrict_record_deletion",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793045088120,
+      "tag": "0010_firm_deactivation",
+      "breakpoints": true
     }
   ]
 }

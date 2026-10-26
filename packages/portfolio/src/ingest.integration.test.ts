@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Database } from "@repo/db";
+import { deactivateOrganization, reactivateOrganization } from "@repo/db/cli/organizations";
 import { withFirm } from "@repo/db/firm";
 import { organization } from "@repo/db/schema";
 import { WORLD_FIRM_SLUG } from "@repo/db/seed-data";
@@ -172,6 +173,26 @@ describe("ingestDelivery", () => {
     });
     // Arrival times included: a rerun writes nothing, so nothing arrives again.
     expect(await feedRows(migratorOrm)).toEqual(once);
+  });
+
+  test("refuses a Deactivated Firm, writing nothing, until it's reactivated", async ({
+    orm,
+    migratorOrm,
+  }) => {
+    const firmId = await seededFirm(orm);
+    await deactivateOrganization(orm, { slug: WORLD_FIRM_SLUG, reason: "Left" });
+    const before = await feedRows(migratorOrm);
+
+    expect(await ingest(orm, { firmId, asOf: MONDAY })).toEqual({
+      status: "refused",
+      asOf: MONDAY,
+      reason: "firm_deactivated",
+      message: `Firm ${firmId} is deactivated: its records can't be read or written`,
+    });
+    expect(await feedRows(migratorOrm)).toEqual(before);
+
+    await reactivateOrganization(orm, { slug: WORLD_FIRM_SLUG, reason: "Back" });
+    expect(await ingest(orm, { firmId, asOf: MONDAY })).toMatchObject({ status: "ingested" });
   });
 
   test("loads a later day's Delivery beside an earlier one", async ({ orm, migratorOrm }) => {

@@ -1,0 +1,5 @@
+- main:
+    - paragraph: Cognitive Wealth
+    - heading "Acme no longer uses Cognitive Wealth" [level=1]
+    - text: Its workspace is no longer available. To join another one, ask a workspace owner or admin to invite member-3a7a05729e1609f94427-fd9d207c53906d1b8f4f-0@e2e.test.
+    - button "Sign out"

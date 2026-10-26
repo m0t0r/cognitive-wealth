@@ -21,6 +21,9 @@ export const organization = pgTable("organization", {
   // Better Auth stores it as a JSON string.
   metadata: text("metadata"),
   createdAt: createdAt(),
+  // Set while the Firm is deactivated (ADR 0022): no User can act in it. Who did it and why are in
+  // its `org.deactivated` audit event. Not one of Better Auth's fields, so it never sees it.
+  deactivatedAt: timestamptz("deactivated_at"),
 });
 
 export const member = pgTable(

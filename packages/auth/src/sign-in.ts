@@ -3,12 +3,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import type { Database } from "@repo/db";
-import { invitation, user, verification } from "@repo/db/schema";
+import { invitation, organization, user, verification } from "@repo/db/schema";
 import { renderSignInEmail, type Mailer } from "@repo/email";
 import type { GenericEndpointContext } from "better-auth";
 import { getIP } from "better-auth/api";
 import type { SecondaryStorage } from "./storage/types";
-import { and, eq, gt, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { writeAuditEvent } from "./audit";
 import { callbackPathOrDefault } from "./callback-path";
 import { readDeviceCookie, type DeviceCookie } from "./device";
@@ -88,16 +88,23 @@ async function findUser(db: Database, email: string): Promise<{ publicId: string
   return existing;
 }
 
+/**
+ * Whether `email` (normalized) has a pending, unexpired invitation into a Firm that isn't
+ * deactivated. `org:deactivate` cancels a Firm's invitations, but one created in a race with it
+ * would otherwise still let its address sign in (ADR 0022).
+ */
 export async function hasPendingInvitation(db: Database, email: string): Promise<boolean> {
   const [pending] = await db
     .select({ id: invitation.id })
     .from(invitation)
+    .innerJoin(organization, eq(invitation.organizationId, organization.id))
     .where(
       and(
         // Better Auth lowercases invitation emails; other writers might not.
         eq(sql`lower(${invitation.email})`, email),
         eq(invitation.status, "pending"),
         gt(invitation.expiresAt, sql`now()`),
+        isNull(organization.deactivatedAt),
       ),
     )
     .limit(1);

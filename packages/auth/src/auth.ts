@@ -9,7 +9,7 @@ import { APIError, createAuthMiddleware, getIP, getSessionFromCtx } from "better
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { magicLink } from "better-auth/plugins/magic-link";
 import { organization } from "better-auth/plugins/organization";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { ac, can, roles } from "./access";
 import { writeAuditEvent } from "./audit";
 import { AUTH_BASE_PATH, COOKIE_PREFIX } from "./constants";
@@ -292,8 +292,9 @@ export type Auth = ReturnType<typeof createAuth>;
 
 /**
  * Whether the inviter could still send `invitation` today: they are still a member, their role
- * still grants `invitation:create`, and an owner invitation still comes from an owner. Checked on
- * accept (and before showing an invitation), since Better Auth only checks when it's created.
+ * still grants `invitation:create`, an owner invitation still comes from an owner, and the Firm
+ * isn't deactivated (ADR 0022), where nobody can act, so nobody grants anything. Checked on accept
+ * (and before showing or listing an invitation), since Better Auth only checks when it's created.
  */
 export async function inviterMayGrant(
   db: Database,
@@ -302,10 +303,12 @@ export async function inviterMayGrant(
   const [row] = await db
     .select({ role: member.role })
     .from(member)
+    .innerJoin(schema.organization, eq(member.organizationId, schema.organization.id))
     .where(
       and(
         eq(member.userId, Number(invitation.inviterId)),
         eq(member.organizationId, Number(invitation.organizationId)),
+        isNull(schema.organization.deactivatedAt),
       ),
     )
     .limit(1);

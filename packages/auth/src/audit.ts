@@ -6,6 +6,9 @@ export type AuditAction =
   | "auth.sign_in_throttled"
   | "auth.sign_out"
   | "auth.sessions_revoked"
+  // Written by `pnpm org:deactivate` and `org:reactivate` (`@repo/db`), with no actor.
+  | "org.deactivated"
+  | "org.reactivated"
   | "org.invitation.created"
   | "org.invitation.accepted"
   | "org.invitation.declined"

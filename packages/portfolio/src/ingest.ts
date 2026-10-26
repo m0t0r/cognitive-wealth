@@ -9,7 +9,7 @@ import {
   TransactionRow,
 } from "@repo/custodian-client/schemas";
 import type { Database } from "@repo/db";
-import { withFirm } from "@repo/db/firm";
+import { FirmDeactivatedError, withFirm } from "@repo/db/firm";
 import {
   custodialAccount,
   custodialPosition,
@@ -42,7 +42,9 @@ export type RefusalReason =
   /** An account number the Firm has no Account for. */
   | "unknown_accounts"
   /** A Transaction ID an earlier Delivery already carried: the Custodian sends each once. */
-  | "transactions_already_ingested";
+  | "transactions_already_ingested"
+  /** The Firm is deactivated (ADR 0022): `withFirm` refuses it, so nothing is read or written. */
+  | "firm_deactivated";
 
 export type IngestionResult =
   | {
@@ -183,8 +185,9 @@ async function ingestOnce(
       },
     });
   } catch (error) {
-    if (error instanceof Refusal) {
-      return { status: "refused", asOf, reason: error.reason, message: error.message };
+    if (error instanceof Refusal || error instanceof FirmDeactivatedError) {
+      const reason = error instanceof Refusal ? error.reason : "firm_deactivated";
+      return { status: "refused", asOf, reason, message: error.message };
     }
     throw error;
   }

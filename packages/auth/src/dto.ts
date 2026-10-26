@@ -42,6 +42,17 @@ export interface PublicMembership {
   isActive: boolean;
 }
 
+/**
+ * A Firm the viewer is a member of that no longer uses Cognitive Wealth (ADR 0022), for
+ * `/no-workspace` and the notice on app pages. `deactivatedAt` tells one deactivation from a later
+ * one, so a dismissed notice comes back when the Firm is deactivated again.
+ */
+export interface DeactivatedFirm {
+  publicId: string;
+  name: string;
+  deactivatedAt: Date;
+}
+
 /** The viewer's active organization and their place in it. */
 export interface Tenant {
   organization: PublicOrganization;
