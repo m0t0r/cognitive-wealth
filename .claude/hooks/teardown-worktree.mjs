@@ -133,18 +133,17 @@ function sweep({ main, record }) {
     rmSync(failureFile(main), { force: true });
     return null;
   } catch (error) {
-    // `cw` reports a failure as JSON on stdout (`{ code, message }`); one that can't start, such
-    // as a missing dependency of its own, leaves only Node's error on stderr.
+    // `cw` reports a failure as JSON on stdout (`{ code, message }`), one it hit while loading too
+    // (`startupFailure`); anything else (a timeout, a crash) leaves only what it printed.
     const reported = parsed(error.stdout ?? "");
     const report =
       reported?.message ??
       ([error.stderr, error.stdout].filter(Boolean).join("").trim() || error.message);
     // The main checkout pulled a dependency it never installed (a fast-forward doesn't install).
-    const missing =
-      reported?.code === "ERR_MODULE_NOT_FOUND" || /ERR_MODULE_NOT_FOUND/.test(error.stderr ?? "");
-    const failure = missing
-      ? `${report} ${installFix(main)}`
-      : `${report} Fix the cause, then run \`pnpm dev:prune\` from the main checkout until it succeeds.`;
+    const failure =
+      reported?.code === "ERR_MODULE_NOT_FOUND"
+        ? `${report} ${installFix(main)}`
+        : `${report} Fix the cause, then run \`pnpm dev:prune\` from the main checkout until it succeeds.`;
     if (record) {
       mkdirSync(dirname(failureFile(main)), { recursive: true });
       writeFileSync(failureFile(main), `${failure}\n`);

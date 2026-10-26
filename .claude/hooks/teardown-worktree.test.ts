@@ -33,9 +33,15 @@ const answer = (output, code = 0) => {
   console.log(JSON.stringify(output));
   process.exitCode = code;
 };
-// A checkout that pulled a new dependency but never ran pnpm install: cw itself can't load.
-if (process.env.PRUNE_UNINSTALLED) await import("incur");
-else if (process.env.PRUNE_FAIL) {
+// A checkout that pulled a new dependency but never ran pnpm install: cw itself can't load, and
+// its entry reports the import's error as the envelope (packages/cli/src/startup.ts).
+if (process.env.PRUNE_UNINSTALLED) {
+  try {
+    await import("incur");
+  } catch (error) {
+    answer({ code: error.code, message: error.message, retryable: false }, 1);
+  }
+} else if (process.env.PRUNE_FAIL) {
   answer({ code: "prune_failed", message: "Tore down 0, and failed on:\\nTeardown of wt_task failed to drop the database: permission denied", retryable: true }, 1);
 } else if (process.env.PRUNE_MISSING_MODULE) {
   // cw loaded, but a module a command imports when it runs didn't.

@@ -87,7 +87,8 @@ export function custodianCommands({ openDatabase }: Pick<Dependencies, "openData
       "Ingest one As-of date's Delivery from the local Custodian feed into a Firm: its " +
       "Transactions, Positions and prices, and the Securities and Accounts they name",
     hint:
-      "A refused Delivery writes nothing, and its reason is the error code. Write a Delivery " +
+      "A refused Delivery writes nothing, and its reason is the error code: not_delivered and " +
+      "incomplete may be a Delivery still being written, so try again later. Write a Delivery " +
       "first with pnpm --filter custodian feed:write --date <date>.",
     args: z.object({
       asOf: z
