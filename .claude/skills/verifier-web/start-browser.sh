@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Starts one headless Chrome on 127.0.0.1:9222 that both agent-browser and the chrome-devtools MCP
-# drive (the MCP is configured with --browserUrl http://127.0.0.1:9222), signed in as <email>.
+# drive (the MCP is configured with --browserUrl http://127.0.0.1:9222), signed in as <email>
+# through `cw dev sign-in`, from <client-ip>.
 #
-#   start-browser.sh <email> <app-url> <client-ip> [session]
+#   [MAILPIT_URL=<url>] start-browser.sh <email> <app-url> <client-ip> [session]
 #
 # The session defaults to this checkout's own (`verify` in the main checkout, `verify-<token>` in a
 # worktree), and the script prints it. Launching agent-browser with --args
@@ -23,13 +24,19 @@ app=${2:?app url, e.g. http://localhost:3100}
 ip=${3:?client ip, e.g. 10.77.0.1}
 session=${4:-$VERIFY_SESSION}
 main=$VERIFY_MAIN
-# dev:sign-in saves to the checkout it runs from, so a worktree's own session comes first: one in
-# the main checkout may belong to another task's server and database.
-state="$VERIFY_TOP/.dev/auth/$email.json"
-[ -f "$state" ] || state="$main/.dev/auth/$email.json"
+mailpit=${MAILPIT_URL:-http://127.0.0.1:8026}
 mkdir -p "$VERIFY_DIR"
 
-[ -f "$state" ] || { echo "No session file $state; run: pnpm dev:sign-in $email --app $app --ip $ip" >&2; exit 1; }
+# A fresh sign-in to this very server: each start-app.sh run has a new database, so a saved session
+# from an earlier one no longer works. The session file is the `statePath` cw returns, never a
+# guess. Mailpit is the verification one (compose.sh's own: MAILPIT_URL=<its Mailpit>).
+if ! signed_in=$(pnpm --silent -C "$VERIFY_TOP" cw dev sign-in "$email" --app "$app" --ip "$ip" \
+  --mailpit "$mailpit" --json); then
+  jq -r '"Sign-in failed, cw \(.code): \(.message)"' <<<"$signed_in" >&2 2>/dev/null ||
+    printf '%s\n' "$signed_in" >&2
+  exit 1
+fi
+state=$(jq -r .statePath <<<"$signed_in")
 
 # Checking the owner and starting Chrome is one step: two worktrees starting at once would both find
 # 9222 free. mkdir is atomic, so it serves as the mutex; the trap frees it however the script ends.

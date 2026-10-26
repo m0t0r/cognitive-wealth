@@ -27,6 +27,17 @@ compose=(docker compose -p "$VERIFY_COMPOSE_PROJECT" --project-directory "$top"
 export WEB_PORT=$VERIFY_COMPOSE_WEB_PORT CUSTODIAN_PORT=$VERIFY_COMPOSE_CUSTODIAN_PORT \
   MAILPIT_PORT=$VERIFY_COMPOSE_MAILPIT_PORT DB_PORT=$VERIFY_COMPOSE_DB_PORT
 
+# `pnpm cw <command> --json` from the checkout, printing its JSON. cw puts a failure on stdout too,
+# as `{ code, message }`, so that goes to stderr as `code: message` before the script stops.
+cw_json() {
+  local out
+  if ! out=$(cd "$top" && pnpm --silent cw "$@" --json); then
+    jq -r '"cw \(.code): \(.message)"' <<<"$out" >&2 2>/dev/null || printf '%s\n' "$out" >&2
+    return 1
+  fi
+  printf '%s\n' "$out"
+}
+
 case "${1:-}" in
   up)
     shift
@@ -38,16 +49,16 @@ case "${1:-}" in
       url="postgres://%s@localhost:$DB_PORT/cognitive_wealth"
       (cd "$top" &&
         DATABASE_URL=$(printf "$url" migrator) DATABASE_PASSWORD_FILE="$top/.secrets/db_migrator_password" \
-          pnpm --silent --filter @repo/db db:migrate &&
-        DATABASE_URL=$(printf "$url" app) DATABASE_PASSWORD_FILE="$top/.secrets/db_app_password" \
-          pnpm --silent db:seed >/dev/null)
+          pnpm --silent --filter @repo/db db:migrate)
+      export DATABASE_URL=$(printf "$url" app) DATABASE_PASSWORD_FILE="$top/.secrets/db_app_password"
+      cw_json db seed | jq -r '"Seed: added \(.added.users) users, \(.added.households) Households"' >&2
       feed="$top/apps/custodian/fixtures/feed"
       for delivery in "$feed"/*/; do
-        # A Delivery already ingested on an earlier `up` is reported and skipped, not an error.
-        (cd "$top" &&
-          DATABASE_URL=$(printf "$url" app) DATABASE_PASSWORD_FILE="$top/.secrets/db_app_password" \
-            pnpm --silent custodian:ingest "$(basename "$delivery")" --root "$feed" >/dev/null)
+        # A Delivery already ingested on an earlier `up` succeeds with `status: already_ingested`.
+        cw_json custodian ingest "$(basename "$delivery")" --root "$feed" |
+          jq -r '"Delivery \(.asOf): \(.status)"' >&2
       done
+      unset DATABASE_URL DATABASE_PASSWORD_FILE
       echo "Database: $(printf "$url" app) (password file $top/.secrets/db_app_password), seeded" >&2
     fi
     echo "Project $VERIFY_COMPOSE_PROJECT: web http://localhost:$WEB_PORT, custodian http://127.0.0.1:$CUSTODIAN_PORT, Mailpit http://127.0.0.1:$MAILPIT_PORT" >&2
