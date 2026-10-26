@@ -109,55 +109,15 @@ describe("app's privileges", () => {
 
 const INSUFFICIENT_PRIVILEGE = { cause: { code: "42501" } };
 
-/**
- * The tables whose rows `app` may add but never change or remove, from `APP_PRIVILEGES`.
- * `audit_event` has its own tests and no `firm_id`, which the update below sets.
- */
-const APPEND_ONLY_FIRM_TABLES = Object.entries(APP_PRIVILEGES)
-  .filter(
-    ([table, { onTable, columns }]) =>
-      table !== "audit_event" &&
-      !columns &&
-      !onTable.includes("update") &&
-      !onTable.includes("delete"),
-  )
-  .map(([table]) => table);
-
-// Inside `withFirm`, so it's the privileges that refuse, not row-level security. Postgres checks
-// privileges before it looks for rows, so the tables can be empty.
+// What `app` may never do (a fact changed, a Custodian row removed, an identifier rewritten) is
+// `app-never-rules.integration.test.ts`'s, from names it writes out itself.
 describe("app's writes", () => {
-  test.for(APPEND_ONLY_FIRM_TABLES)("can't update %s", async (table, { orm }) => {
-    await expect(
-      withFirm(orm, {
-        firmId: 1,
-        query: (tx) => tx.execute(sql`update ${sql.identifier(table)} set firm_id = firm_id`),
-      }),
-    ).rejects.toMatchObject(INSUFFICIENT_PRIVILEGE);
-  });
-
-  test.for([...APPEND_ONLY_FIRM_TABLES, "custodial_account", "security", "world_seed"])(
-    "can't delete from %s",
-    async (table, { orm }) => {
-      await expect(
-        withFirm(orm, {
-          firmId: 1,
-          query: (tx) => tx.execute(sql`delete from ${sql.identifier(table)}`),
-        }),
-      ).rejects.toMatchObject(INSUFFICIENT_PRIVILEGE);
-    },
-  );
-
-  test.for([
-    { table: "custodial_account", column: "account_number" },
-    { table: "security", column: "identifier" },
-  ])("can't change $table.$column", async ({ table, column }, { orm }) => {
-    await expect(
-      withFirm(orm, {
-        firmId: 1,
-        query: (tx) =>
-          tx.execute(sql`update ${sql.identifier(table)} set ${sql.identifier(column)} = 'X'`),
-      }),
-    ).rejects.toMatchObject(INSUFFICIENT_PRIVILEGE);
+  // The seed replaces its record of the world file it loaded, never removes it. Postgres checks
+  // privileges before it looks for rows, so the table can be empty.
+  test("can't delete from world_seed", async ({ orm }) => {
+    await expect(orm.execute(sql`delete from world_seed`)).rejects.toMatchObject(
+      INSUFFICIENT_PRIVILEGE,
+    );
   });
 
   test("can bring an Account's and a Security's details up to date", async ({
