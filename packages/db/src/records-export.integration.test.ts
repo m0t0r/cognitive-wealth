@@ -1,0 +1,432 @@
+// `pnpm org:export` (#206): a Records export of one Firm, read as `migrator` in one snapshot, on two
+// Firms with data, so a row of the other Firm in any file shows.
+import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import { parse } from "csv-parse/sync";
+import { eq, sql } from "drizzle-orm";
+import { CliError, deactivateOrganization } from "./cli/organizations";
+import { type Manifest, exportRecords } from "./cli/records-export";
+import { seedFirm } from "./firm-test-data";
+import type { Database } from "./index";
+import { RECORD_TABLES } from "./records";
+import { auditEvent, household, invitation, member, organization, user } from "./schema";
+import { test as base } from "./testing";
+
+const execFileAsync = promisify(execFile);
+const byNumber = (a: number, b: number) => a - b;
+
+const TRICKY = 'Reyes, "the elder"\nsecond line';
+const METADATA = { note: "a, b", nested: { quote: '"q"', list: [1, 2] } };
+
+/** A temporary parent folder per test, removed after it; `out` is a path inside it, not created. */
+// oxlint-disable-next-line no-empty-pattern -- Vitest reads a fixture's dependencies from this pattern, and it has none
+const test = base.extend("parent", async ({}, { onCleanup }) => {
+  const dir = await mkdtemp(join(tmpdir(), "org-export-test-"));
+  onCleanup(() => rm(dir, { recursive: true, force: true }));
+  return dir;
+});
+
+type Seeded = { firmId: number; publicId: string; userIds: number[] };
+
+/**
+ * `seedFirm`'s rows for `slug`, plus a member, two past members (removal deletes a `member` row),
+ * a User in no Firm, a Household named `TRICKY` and an audit event with `METADATA`.
+ */
+async function seedExportFirm(owner: Database, slug: string): Promise<Seeded> {
+  const firmId = await seedFirm(owner, slug);
+  const [current, joined, inviter] = await owner
+    .insert(user)
+    .values([
+      { email: `current@${slug}.test`, name: `Current ${slug}`, emailVerified: true },
+      // Joined by invitation, then was removed: found through their acceptance.
+      { email: `joined@${slug}.test`, name: `Joined ${slug}`, emailVerified: true },
+      // Was removed after inviting someone, never having acted otherwise: found through it.
+      { email: `inviter@${slug}.test`, name: `Inviter ${slug}`, emailVerified: true },
+      // In no Firm, so no export may name them.
+      { email: `stranger@${slug}.test`, name: "Not in any Firm", emailVerified: true },
+    ])
+    .returning({ id: user.id });
+  await owner.insert(member).values({ organizationId: firmId, userId: current!.id, role: "owner" });
+  const expiresAt = new Date(Date.now() + 60_000);
+  await owner.insert(invitation).values([
+    {
+      organizationId: firmId,
+      email: `joined@${slug}.test`,
+      role: "member",
+      status: "accepted",
+      inviterId: current!.id,
+      expiresAt,
+    },
+    {
+      organizationId: firmId,
+      email: `invitee@${slug}.test`,
+      role: "member",
+      inviterId: inviter!.id,
+      expiresAt,
+    },
+  ]);
+  await owner.insert(auditEvent).values([
+    { action: "org.invitation.accepted", actorUserId: joined!.id, organizationId: firmId },
+    {
+      action: "org.member.role_changed",
+      actorUserId: current!.id,
+      organizationId: firmId,
+      metadata: METADATA,
+    },
+  ]);
+  await owner.insert(household).values({ firmId, name: TRICKY, relationshipStatus: "prospect" });
+  const [org] = await owner
+    .select({ publicId: organization.publicId })
+    .from(organization)
+    .where(eq(organization.id, firmId));
+  return { firmId, publicId: org!.publicId, userIds: [current!.id, joined!.id, inviter!.id] };
+}
+
+const readCsv = async (out: string, file: string): Promise<Record<string, string>[]> =>
+  parse(await readFile(join(out, file)), { columns: true });
+
+const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+
+const exportEvents = (owner: Database) =>
+  owner
+    .select({
+      actorUserId: auditEvent.actorUserId,
+      organizationId: auditEvent.organizationId,
+      targetType: auditEvent.targetType,
+      targetId: auditEvent.targetId,
+      metadata: auditEvent.metadata,
+    })
+    .from(auditEvent)
+    .where(eq(auditEvent.action, "org.records_exported"));
+
+describe("exportRecords", () => {
+  test("writes one CSV per record table, manifest.json and README.md", async ({
+    migratorOrm,
+    parent,
+  }) => {
+    const acme = await seedExportFirm(migratorOrm, "acme");
+    await seedExportFirm(migratorOrm, "globex");
+    const out = join(parent, "acme-export");
+
+    const result = await exportRecords(migratorOrm.$client, {
+      slug: "acme",
+      out,
+      reason: "SEC exam request of 2026-10-26",
+    });
+
+    expect((await readdir(out)).toSorted()).toEqual(
+      [
+        ...RECORD_TABLES.map(({ table }) => `${table}.csv`),
+        "README.md",
+        "manifest.json",
+      ].toSorted(),
+    );
+    const manifest: Manifest = JSON.parse(await readFile(join(out, "manifest.json"), "utf8"));
+    expect(manifest).toMatchObject({
+      version: 1,
+      firm: { slug: "acme", publicId: acme.publicId, state: "active" },
+    });
+    expect(result).toMatchObject({ out, firmState: "active" });
+    expect(manifest.files.map(({ table }) => table)).toEqual(
+      RECORD_TABLES.map(({ table }) => table),
+    );
+  });
+
+  test("puts no row of another Firm in any file", async ({ migratorOrm, parent }) => {
+    const acme = await seedExportFirm(migratorOrm, "acme");
+    await seedExportFirm(migratorOrm, "globex");
+    const out = join(parent, "out");
+
+    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+
+    const files = await Promise.all(
+      RECORD_TABLES.map(async ({ table }) => ({ table, rows: await readCsv(out, `${table}.csv`) })),
+    );
+    for (const { table, rows } of files) {
+      for (const row of rows) {
+        for (const column of ["firm_id", "organization_id"]) {
+          if (column in row) expect(row[column], `${table}.${column}`).toBe(String(acme.firmId));
+        }
+      }
+    }
+    const csv = Object.fromEntries(files.map(({ table, rows }) => [table, rows]));
+    expect(csv.organization?.map((row) => row.id)).toEqual([String(acme.firmId)]);
+    expect(csv.user?.map((row) => Number(row.id)).toSorted(byNumber)).toEqual(
+      acme.userIds.toSorted(byNumber),
+    );
+    expect(Object.keys(csv.user![0]!)).toEqual(["id", "name", "email"]);
+  });
+
+  test("matches each file's row count and SHA-256 to the manifest", async ({
+    migratorOrm,
+    parent,
+  }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    await seedExportFirm(migratorOrm, "globex");
+    const out = join(parent, "out");
+
+    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+
+    const manifest: Manifest = JSON.parse(await readFile(join(out, "manifest.json"), "utf8"));
+    const contents = await Promise.all(manifest.files.map(({ file }) => readFile(join(out, file))));
+    for (const [index, entry] of manifest.files.entries()) {
+      const bytes = contents[index]!;
+      expect(sha256(bytes), entry.file).toBe(entry.sha256);
+      const rows: string[][] = parse(bytes);
+      expect(rows[0], entry.file).toEqual(entry.columns.map(({ name }) => name));
+      expect(rows.length - 1, entry.file).toBe(entry.rows);
+    }
+    const counts = Object.fromEntries(manifest.files.map(({ table, rows }) => [table, rows]));
+    expect(counts).toMatchObject({ organization: 1, member: 1, invitation: 2, user: 3 });
+    expect(counts.household).toBe(2);
+  });
+
+  test("keeps a jsonb value and text with a comma, a quote and a newline through CSV", async ({
+    migratorOrm,
+    parent,
+  }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    const out = join(parent, "out");
+
+    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+
+    const households = await readCsv(out, "household.csv");
+    expect(households.map((row) => row.name)).toContain(TRICKY);
+    const events = await readCsv(out, "audit_event.csv");
+    const roleChange = events.find((row) => row.action === "org.member.role_changed");
+    expect(JSON.parse(roleChange!.metadata!)).toEqual(METADATA);
+  });
+
+  test("audits org.records_exported with no actor, the counts and the manifest's hash", async ({
+    migratorOrm,
+    parent,
+  }) => {
+    const acme = await seedExportFirm(migratorOrm, "acme");
+    const out = join(parent, "out");
+
+    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+
+    const manifestBytes = await readFile(join(out, "manifest.json"));
+    const manifest: Manifest = JSON.parse(manifestBytes.toString("utf8"));
+    expect(await exportEvents(migratorOrm)).toEqual([
+      {
+        actorUserId: null,
+        organizationId: acme.firmId,
+        targetType: "organization",
+        targetId: acme.publicId,
+        metadata: {
+          via: "cli",
+          reason: "Firm's own request",
+          firmState: "active",
+          tables: Object.fromEntries(manifest.files.map(({ table, rows }) => [table, rows])),
+          manifestHash: sha256(manifestBytes),
+        },
+      },
+    ]);
+  });
+
+  test("exports a deactivated Firm and says so", async ({ migratorOrm, parent }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    await deactivateOrganization(migratorOrm, { slug: "acme", reason: "Closed" });
+    const out = join(parent, "out");
+
+    const result = await exportRecords(migratorOrm.$client, {
+      slug: "acme",
+      out,
+      reason: "Firm's own request",
+    });
+
+    expect(result.firmState).toBe("deactivated");
+    const manifest: Manifest = JSON.parse(await readFile(join(out, "manifest.json"), "utf8"));
+    expect(manifest.firm.state).toBe("deactivated");
+    const [event] = await exportEvents(migratorOrm);
+    expect(event?.metadata).toMatchObject({ firmState: "deactivated" });
+  });
+
+  test("makes the folder 0700 and every file 0600", async ({ migratorOrm, parent }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    const out = join(parent, "out");
+
+    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+
+    expect((await stat(out)).mode & 0o777).toBe(0o700);
+    const files = await readdir(out);
+    const modes = await Promise.all(files.map(async (file) => (await stat(join(out, file))).mode));
+    expect(new Set(modes.map((mode) => mode & 0o777))).toEqual(new Set([0o600]));
+  });
+
+  test("writes into an --out that exists and is empty", async ({ migratorOrm, parent }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    const out = join(parent, "out");
+    await mkdir(out);
+
+    await exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" });
+
+    expect(await readdir(out)).toContain("manifest.json");
+  });
+
+  test("refuses an --out that isn't empty and writes nothing", async ({ migratorOrm, parent }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    const out = join(parent, "out");
+    await mkdir(out);
+    await writeFile(join(out, "keep.txt"), "mine");
+
+    await expect(
+      exportRecords(migratorOrm.$client, { slug: "acme", out, reason: "Firm's own request" }),
+    ).rejects.toThrow(CliError);
+    expect(await readdir(out)).toEqual(["keep.txt"]);
+    expect(await readdir(parent)).toEqual(["out"]);
+    expect(await exportEvents(migratorOrm)).toEqual([]);
+  });
+
+  test("refuses an unknown slug and leaves nothing", async ({ migratorOrm, parent }) => {
+    await seedExportFirm(migratorOrm, "acme");
+
+    await expect(
+      exportRecords(migratorOrm.$client, {
+        slug: "nope",
+        out: join(parent, "out"),
+        reason: "Firm's own request",
+      }),
+    ).rejects.toThrow(CliError);
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("refuses to run as a role other than migrator", async ({ orm, migratorOrm, parent }) => {
+    await seedExportFirm(migratorOrm, "acme");
+
+    await expect(
+      exportRecords(orm.$client, {
+        slug: "acme",
+        out: join(parent, "out"),
+        reason: "Firm's own request",
+      }),
+    ).rejects.toThrow(/migrator/);
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("leaves nothing, at --out or beside it, when the audit write fails", async ({
+    migratorOrm,
+    parent,
+  }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    await migratorOrm.execute(sql`
+      create function refuse_export() returns trigger language plpgsql as $$
+      begin raise exception 'audit write refused'; end $$;
+      create trigger refuse_export before insert on audit_event
+        for each row when (new.action = 'org.records_exported') execute function refuse_export();
+    `);
+
+    await expect(
+      exportRecords(migratorOrm.$client, {
+        slug: "acme",
+        out: join(parent, "out"),
+        reason: "Firm's own request",
+      }),
+    ).rejects.toThrow(
+      /Couldn't record the export in the audit trail, so nothing was written: audit write refused/,
+    );
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("reads in one repeatable read, read only transaction", async ({ migratorOrm, parent }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    const client = migratorOrm.$client;
+    // A spy still calls through, so this only records the options the transaction opens with.
+    const begin = vi.spyOn(client, "begin");
+
+    await exportRecords(client, { slug: "acme", out: join(parent, "out"), reason: "Firm's own" });
+
+    expect(begin.mock.calls.map(([options]) => options)).toEqual([
+      "isolation level repeatable read read only",
+    ]);
+  });
+});
+
+const CLI = join(import.meta.dirname, "cli/org-export.ts");
+
+type RunCliArgs = { databaseUrl: string; args: string[] };
+
+/** Runs `pnpm org:export`'s entry as Node does, on the test's database; never throws. */
+async function runCli({ databaseUrl, args }: RunCliArgs) {
+  try {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [CLI, ...args], {
+      env: { ...process.env, DATABASE_URL: databaseUrl, DATABASE_PASSWORD_FILE: "" },
+    });
+    return { code: 0, stdout, stderr };
+  } catch (error) {
+    // execFile's error for a non-zero exit carries the exit code and both outputs.
+    if (!(error instanceof Error && "code" in error && "stdout" in error && "stderr" in error)) {
+      throw error;
+    }
+    return { code: error.code, stdout: String(error.stdout), stderr: String(error.stderr) };
+  }
+}
+
+describe("pnpm org:export", () => {
+  test("exits 0 with a summary of what it wrote", async ({ database, migratorOrm, parent }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    const out = join(parent, "out");
+
+    const result = await runCli({
+      databaseUrl: database.url("migrator"),
+      args: ["--slug", "acme", "--out", out, "--reason", "Firm's own request"],
+    });
+
+    expect(result).toMatchObject({ code: 0, stderr: "" });
+    expect(result.stdout).toContain(`to:       ${out}`);
+    expect(result.stdout).toMatch(/household\.csv\s+2 row\(s\)/);
+  });
+
+  test("exits 1 without --reason, writing nothing", async ({ database, migratorOrm, parent }) => {
+    await seedExportFirm(migratorOrm, "acme");
+
+    const result = await runCli({
+      databaseUrl: database.url("migrator"),
+      args: ["--slug", "acme", "--out", join(parent, "out")],
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/^Missing --reason\.\n\nUsage: pnpm org:export/);
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("exits 1 when the audit write fails, leaving nothing", async ({
+    database,
+    migratorOrm,
+    parent,
+  }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    // The owner can give up its own privilege, so only the export's insert fails.
+    await migratorOrm.execute(sql`revoke insert on audit_event from migrator`);
+
+    const result = await runCli({
+      databaseUrl: database.url("migrator"),
+      args: ["--slug", "acme", "--out", join(parent, "out"), "--reason", "Firm's own request"],
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/permission denied/);
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("warns when --out is inside the repository", async ({ database, migratorOrm }) => {
+    await seedExportFirm(migratorOrm, "acme");
+    const dir = await mkdtemp(join(import.meta.dirname, "../.org-export-test-"));
+    try {
+      const result = await runCli({
+        databaseUrl: database.url("migrator"),
+        args: ["--slug", "acme", "--out", join(dir, "out"), "--reason", "Firm's own request"],
+      });
+
+      expect(result.code).toBe(0);
+      expect(result.stderr).toMatch(/inside the repository/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

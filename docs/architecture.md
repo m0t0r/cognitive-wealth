@@ -8,7 +8,7 @@ Today the platform is the foundation for the product: passwordless, invite-only 
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/system-context.dark.svg">
-  <img alt="A person's browser talks HTTPS to the web app. Inside one Next.js process, proxy.ts routes pages to Server Components and Server Actions, and fetches to a four-route /api/auth allowlist. Both call @repo/auth, which uses Postgres as the app role, Redis for the session cache and rate limits, and an SMTP or Resend mailer after the response. A migrate job applies migrations as the migrator role, and an operator creates organizations with pnpm org:create." src="diagrams/system-context.light.svg">
+  <img alt="A person's browser talks HTTPS to the web app. Inside one Next.js process, proxy.ts routes pages to Server Components and Server Actions, and fetches to a four-route /api/auth allowlist. Both call @repo/auth, which uses Postgres as the app role, Redis for the session cache and rate limits, and an SMTP or Resend mailer after the response. A migrate job applies migrations as the migrator role, an operator creates organizations with pnpm org:create, and writes a Firm's Records export with pnpm org:export, reading as the migrator role, read only." src="diagrams/system-context.light.svg">
 </picture>
 
 - **One deployable**: `web`, a Next.js standalone server. It must be a host that keeps `after()` work alive, or sign-in emails never send ([ADR 0006](adr/0006-sign-in-email-sent-after-the-response.md)).
