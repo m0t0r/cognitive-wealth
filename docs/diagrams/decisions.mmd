@@ -17,6 +17,7 @@ flowchart LR
   a16["0016 Settled cash and<br/>Market value rules"]
   a17["0017 Custodian feed format,<br/>Transaction IDs"]
   a18["0018 Integration tests<br/>on real Postgres"]
+  a19["0019 Market data pinned<br/>or committed"]
 
   ir["incident-response.md"]
   host["Hosting must keep<br/>after() work alive"]
@@ -46,3 +47,5 @@ flowchart LR
   a16 -->|"line values, no total"| a17
   a11 -->|"Testcontainers, like<br/>the custodian's tests"| a18
   a18 -->|"real app logins"| rls
+  a13 -->|"exact Rates,<br/>no floats"| a19
+  a17 -->|"same inputs,<br/>same Deliveries"| a19
