@@ -237,13 +237,15 @@ So in Cognitive Wealth:
 - **`migrator`** owns the tables, and they don't use `FORCE`, so it isn't held. Migrations change tables, not Firm data. Tests use it on purpose: they set up and check rows as `migrator`, and run the code under test as `app`.
 - **No role has `BYPASSRLS`.** It would be tempting to give the command-line tools one, so they needn't set a Firm. Instead they log in as `app` and go through the same functions, with the Firm they were given (`--firm <slug>`). A login that sees every Firm's rows would be one more thing that could leak.
 
-### Does deleting a Firm still delete its rows?
+### Can a Firm with rows be deleted?
 
-**Short answer:** yes: the foreign keys' `on delete cascade` still removes them, even though the deletion runs as `app` with no Firm set.
+**Short answer:** no: every `firm_id` foreign key refuses the delete while the Firm has rows, and row-level security doesn't hide those rows from the check.
 
-Every `firm_id` column points at the Firm's `organization` row with `on delete cascade`: delete the Firm, and Postgres deletes the rows that point at it. The sign-in library, Better Auth, owns the `organization` table and does that delete as `app`, with no Firm set.
+Every `firm_id` column points at the Firm's `organization` row with `on delete restrict`: while any row points at a Firm, Postgres refuses to delete that Firm's row, with the error `restrict_violation`. An adviser must keep its records for years ([ADR 0021](../adr/0021-firm-and-delivery-records-cant-be-deleted.md) gives the rule), so a Firm that leaves will be switched off, not deleted. The sign-in library, Better Auth, owns the `organization` table, and it's set up to refuse deleting one before it reaches the database.
 
-Postgres carries out a foreign key's cascade as the table's owner, with row-level security switched off for it: `ri_PerformCheck` in Postgres's source (`src/backend/utils/adt/ri_triggers.c`) switches to the owner with `SECURITY_NOFORCE_RLS`. So the policies never apply to the cascade, even on a table that used `FORCE`. That comes from the source, not from a sentence in the manual, so two integration tests check it: one deletes a Firm through Better Auth and checks its Households are gone, and one deletes a Firm as `app` and checks every Firm table.
+You might expect row-level security to get in the way. Say code deletes a Firm as `app` with no Firm set: shouldn't the check that looks for the Firm's rows fail with `Firm not set`, or find nothing? It doesn't. Postgres runs a foreign key's check as the table's owner, with row-level security switched off for it: `ri_PerformCheck` in Postgres's source (`src/backend/utils/adt/ri_triggers.c`) switches to the owner with `SECURITY_NOFORCE_RLS`. So the check sees every row, even on a table that used `FORCE`, and the delete fails with `restrict_violation`. That comes from the source, not from a sentence in the manual, so an integration test checks it: it deletes a Firm as `app` with no Firm set and checks the delete fails and every Firm table keeps its rows.
+
+The same holds the other way. Before this rule, `firm_id` was `on delete cascade` (delete the Firm, and Postgres deletes the rows that point at it), and the cascade ran the same way, as the owner, so the policies never stopped it.
 
 ### Does a query that finds nothing still say "Firm not set"?
 
@@ -283,7 +285,7 @@ So row-level security guards against a mistake (a query that forgets its Firm), 
 
 **Short answer:** because they're read before any Firm is known, or outlive the Firm, so a Firm rule can't apply to them.
 
-Signing in reads `user` and `session` before anyone has picked a Firm. `audit_event` records sign-in attempts that belong to no Firm yet, and keeps its rows after a Firm is deleted. These tables stay under the older rule from [ADR 0002](../adr/0002-tenant-is-the-sessions-active-organization.md): the code scopes every query to the session's Firm by hand.
+Signing in reads `user` and `session` before anyone has picked a Firm. `audit_event` records sign-in attempts that belong to no Firm yet. These tables stay under the older rule from [ADR 0002](../adr/0002-tenant-is-the-sessions-active-organization.md): the code scopes every query to the session's Firm by hand.
 
 ## Part 7: What this means for the code (Level 3)
 
@@ -305,7 +307,7 @@ Signing in reads `user` and `session` before anyone has picked a Firm. `audit_ev
 5. The Firm is the setting `app.firm_id`, set with `set_config(…, true)` so it ends with the transaction and never carries over on a pooled connection.
 6. No Firm set is an error, `Firm not set`, so a forgotten Firm fails instead of looking like an empty Firm. It's guaranteed for a query that reads a row and a write that writes one; a query that can match no row may return nothing instead.
 7. `withFirm` opens the transaction, sets the Firm and runs the query; every function that touches Firm rows goes through it, and keeps its filters.
-8. Table owners, superusers and `BYPASSRLS` roles aren't held; Cognitive Wealth gives no role `BYPASSRLS`. A foreign key's cascade isn't held either, so deleting a Firm deletes its rows.
+8. Table owners, superusers and `BYPASSRLS` roles aren't held; Cognitive Wealth gives no role `BYPASSRLS`. A foreign key's check isn't held either, so it sees a Firm's rows and refuses to delete a Firm that has any.
 9. RLS catches a forgotten Firm, never a wrong one, so the Firm must come from the session or a command's own input.
 10. RLS doesn't stop SQL injection: SQL running as `app` can set any Firm. Parameterized queries are the defence.
 
@@ -359,10 +361,10 @@ Signing in reads `user` and `session` before anyone has picked a Firm. `audit_ev
 
    </details>
 
-7. Better Auth deletes the Larkspur organization while no Firm is set. Are Larkspur's Households deleted?
+7. Code running as `app`, with no Firm set, deletes the Larkspur organization in SQL. Larkspur has Households. What happens?
 
    <details><summary>Answer</summary>
 
-   Yes. Postgres runs the cascade from `organization` to `household` as the table's owner with row-level security switched off for it, so the policy never applies. Two integration tests check this.
+   The delete fails with `restrict_violation`, not `Firm not set`, and the Households stay. Postgres runs the foreign key's check on `household` as the table's owner with row-level security switched off for it, so the check sees Larkspur's Households even though `app` couldn't. An integration test checks this.
 
    </details>

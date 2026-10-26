@@ -1,6 +1,6 @@
 # ADR 0020: Postgres row-level security isolates each Firm's rows
 
-- Status: accepted
+- Status: accepted; point 8 superseded by [ADR 0021](0021-firm-and-delivery-records-cant-be-deleted.md)
 - Date: 2026-10-26
 - Supersedes: [ADR 0002](0002-tenant-is-the-sessions-active-organization.md)'s "Tenant isolation is enforced in application code, not by Postgres row-level security" paragraph and its last consequence
 
@@ -13,7 +13,7 @@ Application code alone kept one Firm from reading another's rows (ADR 0002): a q
 5. **No role bypasses the policies.** The CLIs, and later the pg-boss job (#56), connect as `app` and go through the same functions. There's no `bypassrls` role and no new login. `migrator` owns the tables and runs migrations; as the owner it isn't held by their policies, since the tables don't use `force row level security`.
 6. **The explicit filters stay.** Every query keeps its `where firm_id = …`. RLS is a second check that doesn't depend on the first, and the filters keep the queries readable and on their indexes.
 7. **Some tables are out of RLS on purpose.** Better Auth's tables (`user`, `session`, `organization`, `member`, `invitation`, …) and `audit_event`, whose `organization_id` is nullable: auth flows write it before a Firm is known, and it outlives the organization. They stay under ADR 0002's rules: application code scopes them to the tenant from `getViewer`/`requireTenant`.
-8. **Deleting a Firm still cascades.** Better Auth deletes an organization as `app`, with no Firm set. The `on delete cascade` foreign keys still remove its Firm-scoped rows: Postgres runs a foreign key's actions as the table's owner and with row-level security not forced (`ri_PerformCheck` in `src/backend/utils/adt/ri_triggers.c` switches to the owner with `SECURITY_NOFORCE_RLS`), so the policies never apply to them, `force row level security` or not. `tenant.integration.test.ts` deletes an organization through Better Auth and checks its Households go; `firm-isolation.integration.test.ts` deletes one as `app` and checks every Firm-scoped table.
+8. **Deleting a Firm still cascades.** _Superseded by [ADR 0021](0021-firm-and-delivery-records-cant-be-deleted.md): a Firm with records can't be deleted, and Better Auth refuses to try. The same mechanism means the refusal sees rows the policies would hide._ Better Auth deletes an organization as `app`, with no Firm set. The `on delete cascade` foreign keys still remove its Firm-scoped rows: Postgres runs a foreign key's actions as the table's owner and with row-level security not forced (`ri_PerformCheck` in `src/backend/utils/adt/ri_triggers.c` switches to the owner with `SECURITY_NOFORCE_RLS`), so the policies never apply to them, `force row level security` or not. `tenant.integration.test.ts` deletes an organization through Better Auth and checks its Households go; `firm-isolation.integration.test.ts` deletes one as `app` and checks every Firm-scoped table.
 
 ## What RLS catches, and what it doesn't
 

@@ -64,6 +64,13 @@
       "when": 1793036480230,
       "tag": "0008_app_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793041491570,
+      "tag": "0009_restrict_record_deletion",
+      "breakpoints": true
     }
   ]
 }

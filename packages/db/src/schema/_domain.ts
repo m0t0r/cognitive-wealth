@@ -15,11 +15,14 @@ export function nonEmpty<T>(values: readonly T[]): readonly [T, ...T[]] {
   return [first, ...rest];
 }
 
-/** The Firm a row belongs to (GLOSSARY.md), so `firm_id` on every domain table. */
+/**
+ * The Firm a row belongs to (GLOSSARY.md), so `firm_id` on every domain table. Records are kept
+ * (ADR 0021), so a Firm can't be deleted while it has any.
+ */
 export const firmId = () =>
   bigint("firm_id", { mode: "number" })
     .notNull()
-    .references(() => organization.id, { onDelete: "cascade" });
+    .references(() => organization.id, { onDelete: "restrict" });
 
 /**
  * Row-level security for a table with `firmId()` (ADR 0020): `app` sees and writes only the rows of
