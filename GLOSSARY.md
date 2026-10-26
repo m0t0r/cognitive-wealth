@@ -295,6 +295,10 @@ _Avoid_: Beta (fine for the market alone), loading, weight
 The simulated Custodian's own list of the Securities in the world, with what drives each one's price, such as its Factor exposures. The Security master is the feed file that sends Securities to Cognitive Wealth.
 _Avoid_: Security master (for the catalog), universe
 
+**Own volatility**:
+How much a Security moves on its own, beyond its Factor exposures (or, for a bond fund, beyond its Treasury yield), so two Securities with the same exposures don't move identically.
+_Avoid_: idiosyncratic risk, specific risk
+
 **Duration**:
 How much a bond's or bond fund's price moves when yields change: with a duration of 10, a rise of 1 percentage point lowers the price by about 10%.
 _Avoid_: Maturity (the date a bond repays)
