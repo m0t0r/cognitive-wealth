@@ -4,8 +4,9 @@ import { user } from "./auth";
 import { organization } from "./organization";
 
 /**
- * Who did what, where. Append-only for the `app` role (a migration revokes `update` and `delete`);
- * the references are nulled, not cascaded, so events outlive the user or organization.
+ * Who did what, where. Append-only for the `app` role (a migration revokes `update` and `delete`).
+ * Events outlive their user, whose reference is nulled (#110), and an organization with any can't be
+ * deleted, so they keep saying whose they are (ADR 0021).
  */
 export const auditEvent = pgTable(
   "audit_event",
@@ -19,7 +20,7 @@ export const auditEvent = pgTable(
     }),
     organizationId: bigint("organization_id", { mode: "number" }).references(
       () => organization.id,
-      { onDelete: "set null" },
+      { onDelete: "restrict" },
     ),
     targetType: text("target_type"),
     // The target's publicId, so events never hold an internal ID of what they describe.

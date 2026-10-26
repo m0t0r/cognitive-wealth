@@ -118,6 +118,8 @@ export function createAuth(deps: AuthDeps) {
       ac,
       roles,
       allowUserToCreateOrganization: false,
+      // Records are kept (ADR 0021): a Firm is never deleted, and its rows would refuse it anyway.
+      disableOrganizationDeletion: true,
       creatorRole: "owner",
       teams: { enabled: false },
       invitationExpiresIn: INVITATION_EXPIRES_IN,

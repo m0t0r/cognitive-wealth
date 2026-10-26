@@ -24,6 +24,7 @@ import { test } from "./testing";
 // Postgres SQLSTATEs, checked on the driver error Drizzle wraps as `cause`.
 const GENERATED_ALWAYS = { cause: { code: "428C9" } };
 const FOREIGN_KEY_VIOLATION = { cause: { code: "23503" } };
+const RESTRICT_VIOLATION = { cause: { code: "23001" } };
 const UNIQUE_VIOLATION = { cause: { code: "23505" } };
 const CHECK_VIOLATION = { cause: { code: "23514" } };
 
@@ -207,21 +208,30 @@ describe("deleting a user", () => {
 });
 
 describe("deleting an organization", () => {
-  test("removes its members and invitations, and keeps users and audit events", async ({ orm }) => {
+  test("removes its members and invitations, and keeps users", async ({ orm }) => {
     const u = await createUser(orm);
     const org = await createOrganization(orm);
     await orm.insert(member).values({ organizationId: org.id, userId: u.id, role: "owner" });
     await createInvitation(orm, { organizationId: org.id, inviterId: u.id });
-    await orm.insert(auditEvent).values({ action: "org.switched", organizationId: org.id });
 
     await orm.delete(organization).where(eq(organization.id, org.id));
 
     expect(await orm.$count(member)).toBe(0);
     expect(await orm.$count(invitation)).toBe(0);
     expect(await orm.$count(user)).toBe(1);
+  });
+
+  // Records are kept (ADR 0021), and an event must keep saying whose it was.
+  test("fails while it has audit events", async ({ orm }) => {
+    const org = await createOrganization(orm);
+    await orm.insert(auditEvent).values({ action: "org.switched", organizationId: org.id });
+
+    await expect(orm.delete(organization).where(eq(organization.id, org.id))).rejects.toMatchObject(
+      RESTRICT_VIOLATION,
+    );
     expect(
       await orm.select({ organizationId: auditEvent.organizationId }).from(auditEvent),
-    ).toEqual([{ organizationId: null }]);
+    ).toEqual([{ organizationId: org.id }]);
   });
 });
 
@@ -328,22 +338,6 @@ describe("households", () => {
       ),
     );
   });
-
-  // Deleted as `app`, as Better Auth does, with no Firm set: the cascade isn't held by the policies.
-  test("go when their Firm is deleted", async ({ orm: app, migratorOrm: orm }) => {
-    const firm = await createOrganization(orm);
-    const home = await createHousehold(orm, firm.id);
-    const { id: personId } = await createPerson(orm, firm.id);
-    await orm
-      .insert(householdMember)
-      .values({ firmId: firm.id, householdId: home.id, personId, role: "primary" });
-
-    await app.delete(organization).where(eq(organization.id, firm.id));
-
-    expect(await orm.$count(household)).toBe(0);
-    expect(await orm.$count(person)).toBe(0);
-    expect(await orm.$count(householdMember)).toBe(0);
-  });
 });
 
 /** A Firm with an Account, a Security and an ingested Delivery to hang feed rows on. */
@@ -369,7 +363,9 @@ async function createFeedFirm(db: Database, slug: string) {
   };
 }
 
-const buy = (feed: Awaited<ReturnType<typeof createFeedFirm>>) => ({
+type Feed = Awaited<ReturnType<typeof createFeedFirm>>;
+
+const buy = (feed: Feed) => ({
   ...feed,
   transactionId: "TX-000000004",
   kind: "buy" as const,
@@ -478,16 +474,42 @@ describe("custodian feed", () => {
     },
   );
 
-  test("go when their Firm is deleted", async ({ orm: app, migratorOrm: orm }) => {
-    const feed = await createFeedFirm(orm, "larkspur");
-    await orm.insert(custodialTransaction).values(buy(feed));
-    await orm.insert(securityPrice).values({ ...feed, asOfDate: "2026-03-02", price: "150.25" });
+  // Records are kept (ADR 0021): a Delivery can't take what it carried with it.
+  test.for([
+    {
+      table: "custodial_transaction",
+      insert: (db: Database, feed: Feed) => db.insert(custodialTransaction).values(buy(feed)),
+    },
+    {
+      table: "custodial_position",
+      insert: (db: Database, feed: Feed) =>
+        db
+          .insert(custodialPosition)
+          .values({ ...feed, asOfDate: "2026-03-02", shares: "40.000000" }),
+    },
+    {
+      table: "security_price",
+      insert: (db: Database, feed: Feed) =>
+        db.insert(securityPrice).values({ ...feed, asOfDate: "2026-03-02", price: "150.25" }),
+    },
+  ])(
+    "a Delivery with rows in $table can't be deleted",
+    async ({ insert }, { migratorOrm: orm }) => {
+      const feed = await createFeedFirm(orm, "larkspur");
+      await insert(orm, feed);
 
-    await app.delete(organization).where(eq(organization.id, feed.firmId));
+      await expect(
+        orm.delete(custodianDelivery).where(eq(custodianDelivery.id, feed.deliveryId)),
+      ).rejects.toMatchObject(RESTRICT_VIOLATION);
+      expect(await orm.$count(custodianDelivery)).toBe(1);
+    },
+  );
+
+  test("a Delivery that carried no rows can be deleted", async ({ migratorOrm: orm }) => {
+    const feed = await createFeedFirm(orm, "larkspur");
+
+    await orm.delete(custodianDelivery).where(eq(custodianDelivery.id, feed.deliveryId));
 
     expect(await orm.$count(custodianDelivery)).toBe(0);
-    expect(await orm.$count(security)).toBe(0);
-    expect(await orm.$count(custodialTransaction)).toBe(0);
-    expect(await orm.$count(securityPrice)).toBe(0);
   });
 });

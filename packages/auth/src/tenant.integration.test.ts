@@ -1,4 +1,4 @@
-import { auditEvent, household, invitation, member } from "@repo/db/schema";
+import { auditEvent, household, invitation, member, organization } from "@repo/db/schema";
 import { parseInvitationEmail } from "@repo/testing/mailpit";
 import { and, asc, eq } from "drizzle-orm";
 import {
@@ -1345,21 +1345,27 @@ describe("audit", () => {
   });
 });
 
-// Better Auth deletes the organization as `app`, with no Firm set (ADR 0020): the cascade to the
-// Firm's own rows runs as the tables' owner, so their row-level security doesn't stop it.
+// Records are kept (ADR 0021): Better Auth refuses the delete before it reaches the database, where
+// the Firm's rows would refuse it too.
 describe("deleting a workspace through Better Auth", () => {
-  test("removes its Firm-scoped rows too", async ({ t, world, migratorOrm }) => {
-    await migratorOrm.insert(household).values([
-      { firmId: world.acme.id, name: "Acme Household", relationshipStatus: "client" },
-      { firmId: world.globex.id, name: "Globex Household", relationshipStatus: "client" },
-    ]);
+  test("is refused, even for its owner", async ({ t, world, migratorOrm }) => {
+    await migratorOrm
+      .insert(household)
+      .values({ firmId: world.acme.id, name: "Acme Household", relationshipStatus: "client" });
 
-    await t.auth.api.deleteOrganization({
-      headers: world.as.ada,
-      body: { organizationId: String(world.acme.id) },
-    });
+    await expect(
+      t.auth.api.deleteOrganization({
+        headers: world.as.ada,
+        body: { organizationId: String(world.acme.id) },
+      }),
+    ).rejects.toMatchObject({ statusCode: 404 });
 
+    const firm = await migratorOrm
+      .select({ id: organization.id })
+      .from(organization)
+      .where(eq(organization.id, world.acme.id));
+    expect(firm).toEqual([{ id: world.acme.id }]);
     const left = await migratorOrm.select({ firmId: household.firmId }).from(household);
-    expect(left).toEqual([{ firmId: world.globex.id }]);
+    expect(left).toEqual([{ firmId: world.acme.id }]);
   });
 });

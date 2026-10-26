@@ -37,6 +37,7 @@ const FIRM_SCOPED_TABLES = [
 ];
 
 const FIRM_NOT_SET = { cause: { code: "42501", message: expect.stringMatching(/^Firm not set/) } };
+const RESTRICT_VIOLATION = { cause: { code: "23001" } };
 const RLS_VIOLATION = {
   cause: { code: "42501", message: expect.stringMatching(/row-level security policy/) },
 };
@@ -261,18 +262,38 @@ describe("Firm isolation", () => {
     expect(tables.filter((t) => !t.rls || !t.policy)).toEqual([]);
   });
 
+  // Records are kept (ADR 0021): a Firm with rows can't be deleted, by `app` or by the tables' owner.
   isolated(
-    "still cascades an organization's deletion, with no Firm set",
+    "refuses to delete an organization that has records",
     async ({ orm, migratorOrm, firms }) => {
-      await orm.delete(organization).where(sql`${organization.id} = ${firms.a}`);
+      for (const db of [orm, migratorOrm]) {
+        // oxlint-disable-next-line no-await-in-loop -- one role after the other
+        await expect(
+          db.delete(organization).where(sql`${organization.id} = ${firms.a}`),
+        ).rejects.toMatchObject(RESTRICT_VIOLATION);
+      }
 
       for (const table of FIRM_SCOPED_TABLES) {
         // oxlint-disable-next-line no-await-in-loop -- reads, in order for a readable failure
-        expect({ table, firms: await firmsIn(migratorOrm, table) }).toEqual({
+        const remaining = await firmsIn(migratorOrm, table);
+        expect({ table, firms: remaining.toSorted((x, y) => x - y) }).toEqual({
           table,
-          firms: [firms.b],
+          firms: [firms.a, firms.b],
         });
       }
     },
   );
+
+  // The test above stops at the first foreign key that refuses; this checks each one.
+  test("restricts the deletion of every Firm-scoped table's Firm", async ({ orm }) => {
+    const actions = await orm.execute<{ table: string; action: string }>(sql`
+      select c.conrelid::regclass::text as table, c.confdeltype as action
+      from pg_constraint c
+      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+      where c.contype = 'f' and c.confrelid = 'organization'::regclass and a.attname = 'firm_id'
+      order by 1
+    `);
+    expect(actions.map((a) => a.table)).toEqual(FIRM_SCOPED_TABLES);
+    expect(actions.filter((a) => a.action !== "r")).toEqual([]);
+  });
 });
