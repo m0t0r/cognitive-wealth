@@ -62,7 +62,9 @@ const CLI = join(import.meta.dirname, "org-status.ts");
 const run = (args: string[]) =>
   spawnSync(process.execPath, [CLI, ...args], { encoding: "utf8", env: {} });
 
-describe("org-status.ts under plain Node", () => {
+// Each case starts Node on the CLI, which loads its imports through type stripping: 1-2s each, and
+// over 5s for the first on a busy CI runner (turbo runs every package's tests at once).
+describe("org-status.ts under plain Node", { timeout: 30_000 }, () => {
   it.for(["deactivate", "reactivate"])("%s --help prints its usage", (command) => {
     const result = run([command, "--help"]);
     expect(result.stderr).toBe("");
