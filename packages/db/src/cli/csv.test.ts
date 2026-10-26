@@ -15,6 +15,10 @@ describe("csvRow", () => {
     expect(csvRow([null, "", "x"])).toBe(',"",x\r\n');
   });
 
+  it("keeps a value that a spreadsheet would read as a formula exactly as stored", () => {
+    expect(csvRow(["=1+1", "-100.00", "@x"])).toBe("=1+1,-100.00,@x\r\n");
+  });
+
   it("quotes a value with leading or trailing spaces, so a reader can't trim them", () => {
     expect(csvRow([" padded ", "inner space"])).toBe('" padded ",inner space\r\n');
   });

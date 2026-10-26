@@ -385,6 +385,11 @@ UTF-8, RFC 4180: a header row of column names, commas between fields, CRLF line 
 field with a comma, a double quote or a line break in double quotes (a quote inside one is doubled).
 An empty field is a null; an empty piece of text is \`""\`. A \`jsonb\` column holds JSON text.
 
+Every value is exactly as stored, including text people typed into Cognitive Wealth, so a cell may
+begin with \`=\`, \`+\`, \`-\` or \`@\`. A spreadsheet opened by double-clicking a file can read such
+a cell as a formula and run it. Import the files instead, with every column set to Text (in Excel,
+Data › From Text/CSV), or read them with a database or a CSV library.
+
 ## Checking the hashes
 
 Each file's SHA-256 must match \`manifest.json\`'s \`sha256\` for it, for example:
