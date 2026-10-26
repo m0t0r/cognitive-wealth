@@ -3,35 +3,53 @@
 // these rules name their tables and natural keys here, or cover every table from the catalog, so
 // breaking one means changing this file too, which a reviewer reads as a rule change, not a grant.
 // Records are kept safe from alteration and destruction (Rule 204-2(g)(3)(i), #189).
-import { sql } from "drizzle-orm";
+//
+// The names are the schema's Drizzle tables and columns, not strings: dropping or renaming one in
+// `src/schema/` fails type checking here, and a changed SQL name follows the schema.
+import { getTableName, sql } from "drizzle-orm";
+import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { BETTER_AUTH_TABLES } from "./better-auth-tables";
 import type { connect } from "./connect";
+import {
+  auditEvent,
+  custodialAccount,
+  custodialPosition,
+  custodialTransaction,
+  custodianDelivery,
+  security,
+  securityPrice,
+} from "./schema";
 import { test } from "./testing";
 
 // postgres.js's Drizzle type, so `execute` takes the rows' type.
 type PostgresDatabase = ReturnType<typeof connect>["db"];
 
 /** Rows are added and read, never changed or removed. */
-const FACTS = [
-  "audit_event",
-  "custodian_delivery",
-  "custodial_position",
-  "custodial_transaction",
-  "security_price",
+const FACTS: PgTable[] = [
+  auditEvent,
+  custodianDelivery,
+  custodialPosition,
+  custodialTransaction,
+  securityPrice,
 ];
 
 /**
  * The Custodian's Accounts and Securities: Ingestion brings their details up to date, but the
  * facts above refer to them, so a row is never removed.
  */
-const NEVER_DELETED = [...FACTS, "custodial_account", "security"];
+const NEVER_DELETED: PgTable[] = [...FACTS, custodialAccount, security];
 
 /** The columns that identify a row by the Custodian's or the world's key, besides `id`s. */
-const NATURAL_KEYS = [
-  { table: "custodial_account", column: "account_number" },
-  { table: "custodial_transaction", column: "transaction_id" },
-  { table: "security", column: "identifier" },
+const NATURAL_KEYS: PgColumn[] = [
+  custodialAccount.accountNumber,
+  custodialTransaction.transactionId,
+  security.identifier,
 ];
+
+/** Their names in Postgres. */
+function tableNames(tables: PgTable[]) {
+  return tables.map((table) => getTableName(table));
+}
 
 /** A `text[]` literal; Drizzle would spread a plain array into a list of parameters. */
 function textArray(values: readonly string[]) {
@@ -46,12 +64,12 @@ async function neverRuleBreaches(db: PostgresDatabase): Promise<string[]> {
   // has_any_column_privilege, since has_table_privilege sees only a table-wide `update`.
   const updates = await db.execute<{ breach: string }>(sql`
     select format('app may update %s', t.name) as breach
-    from unnest(${textArray(FACTS)}) as t(name)
+    from unnest(${textArray(tableNames(FACTS))}) as t(name)
     where has_any_column_privilege('app', format('public.%I', t.name), 'UPDATE')
   `);
   const deletes = await db.execute<{ breach: string }>(sql`
     select format('app may delete %s', t.name) as breach
-    from unnest(${textArray(NEVER_DELETED)}) as t(name)
+    from unnest(${textArray(tableNames(NEVER_DELETED))}) as t(name)
     where has_table_privilege('app', format('public.%I', t.name), 'DELETE')
   `);
   // Every table, so one a later migration creates is covered too.
@@ -77,12 +95,12 @@ async function neverRuleBreaches(db: PostgresDatabase): Promise<string[]> {
           and c.relname <> all(${textArray(BETTER_AUTH_TABLES)})))
       and has_column_privilege('app', c.oid, a.attnum, 'UPDATE')
   `);
-  // By name, so a renamed column fails here rather than dropping out of the rule.
+  // A column the schema has but the database doesn't makes has_column_privilege throw.
   const naturalKeys = await db.execute<{ breach: string }>(sql`
     select format('app may update %s.%s', k.table_name, k.column_name) as breach
     from unnest(
-      ${textArray(NATURAL_KEYS.map(({ table }) => table))},
-      ${textArray(NATURAL_KEYS.map(({ column }) => column))}
+      ${textArray(tableNames(NATURAL_KEYS.map(({ table }) => table)))},
+      ${textArray(NATURAL_KEYS.map(({ name }) => name))}
     ) as k(table_name, column_name)
     where has_column_privilege('app', format('public.%I', k.table_name), k.column_name, 'UPDATE')
   `);
