@@ -20,8 +20,10 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from custodian.build_record import BuildMismatch, market_inputs, record_build
 from custodian.cli import script_args
 from custodian.database import engine_from_env
+from custodian.factor_file import FactorFileError
 from custodian.ledger_fixture import (
     LEDGER_V0_PATH,
     FixtureSecurity,
@@ -235,11 +237,20 @@ def main(argv: Sequence[str] | None = None) -> None:
         # The message names each bad field, such as custodian.accounts.1.registration_type.
         raise SystemExit(f"{error.title} is malformed:\n{error}") from None
 
+    # Market data first, with nothing written yet: the verified Factor file (downloaded into the
+    # cache on a first run) and the inputs it and the Treasury yields make.
+    try:
+        inputs = market_inputs()
+    except FactorFileError as error:
+        raise SystemExit(f"Nothing was loaded: {error}") from None
+
     engine = engine_from_env()
     try:
         with Session(engine) as session:
+            # Before any row: an empty database records the inputs, any other must match them.
+            record_build(session, inputs)
             load(session, world, ledger)
-    except LoadConflict as error:
+    except (BuildMismatch, LoadConflict) as error:
         raise SystemExit(f"Nothing was loaded: {error}") from None
     finally:
         engine.dispose()

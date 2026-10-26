@@ -26,6 +26,7 @@ from sqlalchemy import (
     Numeric,
     UniqueConstraint,
     func,
+    true,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import DateTime, TypeDecorator
@@ -35,6 +36,7 @@ from custodian.money import Money, Price, Shares
 __all__ = [
     "Account",
     "Base",
+    "BuildRecord",
     "RegistrationType",
     "Security",
     "SecurityKind",
@@ -242,3 +244,23 @@ class SecurityPrice(Base):
     price: Mapped[Price]
 
     security: Mapped[Security] = relationship()
+
+
+class BuildRecord(Base):
+    """The market inputs this database was built from: one row, written by the first load.
+
+    Prices built from one Pin must never be mixed with prices from another in one history, so the
+    custodian refuses to start when the committed inputs no longer match it (ADR 0019).
+    """
+
+    __tablename__ = "build_record"
+    __table_args__ = (CheckConstraint("singleton", name="one_row"),)
+
+    singleton: Mapped[bool] = mapped_column(primary_key=True, server_default=true())
+    """Always true, and the primary key, so the table can hold one row at most."""
+    factor_file_sha256: Mapped[str]
+    factor_file_crsp_month: Mapped[str]
+    """The CRSP month the Factor file was built from, such as `202608`: shown in a refusal, never
+    compared, since the file's SHA-256 already decides it."""
+    treasury_yields_sha256: Mapped[str]
+    recorded_at: Mapped[datetime] = mapped_column(server_default=func.clock_timestamp())

@@ -48,6 +48,7 @@ def test_the_package_script_migrates_an_empty_database_to_head(
             "security",
             "transaction",
             "price",
+            "build_record",
         }
     finally:
         engine.dispose()

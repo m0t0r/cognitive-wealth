@@ -1,0 +1,5 @@
+{
+  "url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/{year}/all?type=daily_treasury_yield_curve&field_tdr_date_value={year}&page&_format=csv",
+  "retrieved_on": "2026-10-26",
+  "sha256": "3985529986beb9538ec03cc37fa0e5591660aa24f80a37c19dedabe6eee48c35"
+}
