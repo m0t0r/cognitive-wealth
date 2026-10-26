@@ -45,12 +45,16 @@ _Avoid_: Alert, notification, signal
 An independent wealth-management business, registered as an investment adviser, that uses Cognitive Wealth. Each Firm's data is isolated from every other Firm's. A solo independent advisor is a Firm with one Advisor.
 _Avoid_: Organization, workspace, tenant, company
 
+**Deactivated Firm**:
+A Firm that no longer uses Cognitive Wealth, because it stopped doing business or moved elsewhere. Its records are kept for their retention period, but no User can sign in to it or act in it. It can be reactivated.
+_Avoid_: Deleted, archived, closed, suspended
+
 **Advisor**:
 A person at a Firm who gives investment advice to Households and is responsible for them.
 _Avoid_: Planner, rep, agent, broker
 
 **User**:
-Someone who signs in to Cognitive Wealth. Always a member of a Firm's staff; Households never sign in.
+Someone who signs in to Cognitive Wealth. Always a member of a Firm's staff, past or present; Households never sign in.
 _Avoid_: Account, login
 
 ## Households
