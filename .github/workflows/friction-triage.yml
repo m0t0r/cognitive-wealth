@@ -67,7 +67,7 @@ jobs:
             --max-budget-usd 0.5
             --allowedTools Read,Glob,Grep
             --disallowedTools Bash,Edit,Write,WebFetch,WebSearch
-            --json-schema '{"type":"object","additionalProperties":false,"required":["decision","reason"],"properties":{"decision":{"enum":["ready-for-agent","ready-for-human","duplicate"]},"duplicate_of":{"type":"integer"},"reason":{"type":"string","maxLength":600}}}'
+            --json-schema '{"type":"object","additionalProperties":false,"required":["decision","reason"],"properties":{"decision":{"type":"string","enum":["ready-for-agent","ready-for-human","duplicate"]},"duplicate_of":{"type":"integer"},"reason":{"type":"string"}}}'
           prompt: |
             You triage one friction report in this repository. You only read and answer; you change nothing.
 
@@ -93,6 +93,16 @@ jobs:
               - the report is too vague to act on.
 
             In reason, say in one or two sentences why, and for ready-for-agent where the fix most likely lands.
+
+      # The action logs only "no structured_output"; the session's last message says why (an API
+      # error, the budget, the turn limit). Just that message, not the transcript.
+      - name: Show why Claude failed
+        if: failure() && steps.claude.outcome == 'failure'
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          jq '(if type == "array" then .[-1] else . end) | {subtype, is_error, num_turns, result}' \
+            "${EXECUTION_FILE:-$RUNNER_TEMP/claude-execution-output.json}" || true
 
       - name: Apply the decision
         if: steps.gather.outputs.skip != 'true'
