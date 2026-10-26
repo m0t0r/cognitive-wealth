@@ -8,7 +8,7 @@ import { CliError } from "@repo/db/cli/cli-error";
 import type { Dependencies } from "../dependencies.ts";
 import { REPO_ROOT, fromInvocation } from "../paths.ts";
 import { refusal } from "../refusal.ts";
-import { shellQuoted } from "./org.ts";
+import { shellQuoted } from "../shell-quoted.ts";
 
 // Where `pnpm --filter custodian feed:write` writes, in the same checkout (ADR 0017).
 const DEFAULT_ROOT = join(REPO_ROOT, ".dev/custodian-feed");
@@ -33,19 +33,23 @@ const output = z.object({
     .describe("already_ingested: this very Delivery was ingested before, and nothing was written"),
   delivery: z.string().describe("The Delivery's folder"),
   manifestSha256: z.string(),
-  written: written.optional().describe("Rows written, by what they are; only when ingested"),
+  written: written
+    .optional()
+    .describe("Rows written (with --dry-run, that would be), by what they are; only when ingested"),
+  dryRun: z.boolean().describe("true when nothing was written: the Ingestion ran and rolled back"),
 });
 
 type IngestArgs = {
   asOf: string;
   firm: string;
   root: string;
+  dryRun: boolean;
   openDatabase: Dependencies["openDatabase"];
 };
 
-async function ingest({ asOf, firm: slug, root, openDatabase }: IngestArgs) {
+async function ingest({ asOf, firm: slug, root, dryRun, openDatabase }: IngestArgs) {
   const { organization } = await import("@repo/db/schema");
-  const { eq } = await import("drizzle-orm");
+  const { TransactionRollbackError, eq } = await import("drizzle-orm");
   const { ingestDelivery, localFeedSource } = await import("@repo/portfolio");
   const { db, close, target } = await openDatabase();
   try {
@@ -59,11 +63,18 @@ async function ingest({ asOf, firm: slug, root, openDatabase }: IngestArgs) {
         message: `No Firm has the slug "${slug}".`,
       });
     }
-    const result = await ingestDelivery(db, {
-      firmId: firm.id,
-      asOf,
-      source: localFeedSource(root),
-    });
+    const source = localFeedSource(root);
+    let result: Awaited<ReturnType<typeof ingestDelivery>> | undefined;
+    try {
+      // Ingestion is one transaction; a dry run wraps it in another and rolls that back.
+      await db.transaction(async (tx) => {
+        result = await ingestDelivery(tx, { firmId: firm.id, asOf, source });
+        if (dryRun) tx.rollback();
+      });
+    } catch (error) {
+      if (!(dryRun && error instanceof TransactionRollbackError)) throw error;
+    }
+    if (result === undefined) throw new Error("The transaction ended without a result");
     return { database: target, firm: { slug, name: firm.name }, result };
   } finally {
     await close();
@@ -96,6 +107,10 @@ export function custodianCommands({ openDatabase }: Pick<Dependencies, "openData
         .describe(
           "The feed's folder, with one folder per As-of date; .dev/custodian-feed by default",
         ),
+      dryRun: z
+        .boolean()
+        .default(false)
+        .describe("Make every check and write, then roll back: nothing is written"),
     }),
     output,
     mcp: false,
@@ -107,6 +122,7 @@ export function custodianCommands({ openDatabase }: Pick<Dependencies, "openData
           asOf,
           firm: c.options.firm,
           root,
+          dryRun: c.options.dryRun,
           openDatabase,
         });
         const delivery = join(root, asOf);
@@ -144,6 +160,7 @@ export function custodianCommands({ openDatabase }: Pick<Dependencies, "openData
           delivery,
           manifestSha256,
           ...(result.status === "ingested" && { written: result.written }),
+          dryRun: c.options.dryRun,
         };
       } catch (error) {
         return c.error(refusal(error));

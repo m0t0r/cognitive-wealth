@@ -12,7 +12,7 @@ import { CliError } from "@repo/db/cli/cli-error";
 import type { Dependencies } from "../dependencies.ts";
 import { fromInvocation } from "../paths.ts";
 import { refusal } from "../refusal.ts";
-import { shellQuoted } from "./org.ts";
+import { shellQuoted } from "../shell-quoted.ts";
 
 const EMAIL = /^[^\s@/\\]+@[^\s@/\\]+$/;
 

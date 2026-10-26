@@ -82,7 +82,10 @@ export function cveCommands({ cveScan }: Pick<Dependencies, "cveScan">) {
             const { stepSummary } = await import("@repo/cve-scan/publish");
             await appendFile(stepSummaryFile, `${stepSummary(result)}\n`);
           }
-          const issues = createIssues && github ? await fileIssues(github, result.findings) : [];
+          const issues =
+            createIssues && github
+              ? await fileIssues({ gh: github, findings: result.findings })
+              : [];
           return {
             packages: result.packages,
             findings: result.findings.map(({ entry, affects, fixedIn }) => ({
