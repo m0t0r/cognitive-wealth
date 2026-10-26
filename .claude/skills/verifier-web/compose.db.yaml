@@ -1,0 +1,12 @@
+# compose.sh's override: publishes its project's own `db` on the checkout's own loopback port
+# (VERIFY_COMPOSE_DB_PORT), so compose.sh can migrate, seed and ingest it from the host as
+# start-app.sh does, and `owner@` can sign in. The same trade-off as compose.dev.yaml's `db`: a
+# published port needs a network with a route to the host.
+services:
+  db:
+    ports:
+      - "127.0.0.1:${DB_PORT:?compose.sh sets DB_PORT}:5432"
+    networks: [data, host-access]
+
+networks:
+  host-access: {}

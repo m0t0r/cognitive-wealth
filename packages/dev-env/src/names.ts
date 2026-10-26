@@ -55,7 +55,10 @@ export type VerifyResources = {
    * `compose.sh`'s own Compose project, for changes only `compose.yaml`'s images exercise, and the
    * host ports its services publish: offset from `ports.head`, so two checkouts never share them.
    */
-  compose: { project: string; ports: { web: number; custodian: number; mailpit: number } };
+  compose: {
+    project: string;
+    ports: { web: number; custodian: number; mailpit: number; db: number };
+  };
 };
 
 /** Port pairs from 3100 up; the first is the main checkout's. Pair n is 3100 + 2n and the next. */
@@ -91,7 +94,7 @@ export function verifyResources(id: string | undefined): VerifyResources {
     session: id === undefined ? "verify" : verifySessionOf(token),
     compose: {
       project: composeProjectOf(token),
-      ports: { web: head + 1000, custodian: head + 2000, mailpit: head + 3000 },
+      ports: { web: head + 1000, custodian: head + 2000, mailpit: head + 3000, db: head + 4000 },
     },
   };
 }

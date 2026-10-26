@@ -23,6 +23,7 @@ const values: Record<string, string | number> = {
   VERIFY_COMPOSE_WEB_PORT: compose.ports.web,
   VERIFY_COMPOSE_CUSTODIAN_PORT: compose.ports.custodian,
   VERIFY_COMPOSE_MAILPIT_PORT: compose.ports.mailpit,
+  VERIFY_COMPOSE_DB_PORT: compose.ports.db,
   VERIFY_DIR: verifyDir(mainCheckout),
   VERIFY_STATE: stateDirOf({ mainCheckout, token }),
   VERIFY_REF_CHECKOUTS: refCheckoutsDir(mainCheckout),
