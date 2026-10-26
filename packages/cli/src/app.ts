@@ -4,6 +4,7 @@
 // `--schema` come from the same schemas, so they can't drift from the code.
 import { Cli } from "incur";
 import { custodianCommands } from "./commands/custodian.ts";
+import { dbCommands } from "./commands/db.ts";
 import { devCommands } from "./commands/dev.ts";
 import { frictionCommands } from "./commands/friction.ts";
 import { orgCommands } from "./commands/org.ts";
@@ -16,6 +17,7 @@ export function commandGroups(dependencies: Dependencies) {
     devCommands(dependencies),
     frictionCommands(dependencies),
     custodianCommands(dependencies),
+    dbCommands(dependencies),
   ];
 }
 

@@ -7,6 +7,7 @@ describe("cw", () => {
     const { output } = await run({ cli: createCli(dependencies()), argv: ["--llms"] });
     expect(output.commands).toMatchObject([
       { name: "custodian ingest" },
+      { name: "db seed" },
       { name: "dev prune" },
       { name: "friction fix" },
       { name: "friction report" },
