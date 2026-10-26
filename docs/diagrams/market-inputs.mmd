@@ -1,8 +1,8 @@
 flowchart LR
   subgraph fixed["Fixed inputs, changed only on purpose"]
-    ff["Factor file<br/>checked against its Pin"]
-    ty["Treasury yields"]
-    cat["Security catalog<br/>Factor exposures (#45)"]
+    ff["Factor file<br/>checked against its Pin (#45)"]
+    ty["Treasury yields<br/>committed (#45)"]
+    cat["Security catalog<br/>what drives each price (#183)"]
     sched["Dividend schedule<br/>four dates, amount per share (#47)"]
   end
   subgraph daily["Worked out each day"]

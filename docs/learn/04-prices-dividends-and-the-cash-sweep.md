@@ -11,9 +11,9 @@ By the end you'll know:
 - the four dates of a dividend, and why the price drops on one of them
 - how a Cash sweep works out its interest, day by day, and pays it once a month
 - how real markets and real sweeps differ from the simulated ones
-- what the slices that build the simulated market (#45, #46 and #47) need from all this
+- what the slices that build the simulated market (#45, #183, #46 and #47) need from all this
 
-Read it before the Security catalog (#45) is built. Each section answers one question. It starts with the short answer, then explains it, then shows it with numbers. Words with a capital letter, such as Return or Ex-dividend date, are defined in [GLOSSARY.md](../../GLOSSARY.md).
+Read it before the Factor file (#45) and the Security catalog (#183) are built. Each section answers one question. It starts with the short answer, then explains it, then shows it with numbers. Words with a capital letter, such as Return or Ex-dividend date, are defined in [GLOSSARY.md](../../GLOSSARY.md).
 
 ## How to read this
 
@@ -130,7 +130,7 @@ That's how the simulated market can have invented funds with realistic prices. T
 - **Real history**, so real events happen in the world too: "2020 and 2022 still happen".
 - **Fictional Securities**, so the world decides everything about them, such as when they pay dividends. Real security numbers (CUSIPs and ISINs) and many price feeds come with licences, which invented ones don't ([research](../research/synthetic-data-and-infra.md), "Securities: real tickers or fictional securities?").
 
-The data library is what joins the two: it's free, and it publishes real Factor returns for every Business day back to 1926. Each Larkspur fund gets its own exposures, chosen once. Each day's Factor returns are real ones, so each fund rises and falls when real markets did. Real funds also have their own day-to-day surprises on top, which the examples leave out to keep the sums short. Which factors the world uses, and the exact recipe, are for #45 and #46 to decide. This primer uses the three above.
+The data library is what joins the two: it's free, and it publishes real Factor returns for every Business day back to 1926. Each Larkspur fund gets its own exposures, chosen once. Each day's Factor returns are real ones, so each fund rises and falls when real markets did. Real funds also have their own day-to-day surprises on top, which the examples leave out to keep the sums short. The world uses the three above, from the daily file (#45 decided). The exact recipe is #46's to decide.
 
 ### What is a Treasury yield?
 
@@ -494,9 +494,13 @@ CRSP is the research database of US share prices that the library works its Retu
 
 The library says: "We reconstruct the full history of returns each month when we update the portfolios", and "Historical returns can change, for example, if CRSP revises its database". In one update, "many of the returns we report for 1925-1946 change" ([Kenneth French's data library](https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html)).
 
-That's a problem for a world that must give the same day every time (the ledger primer, Part 7: "A day is a recipe, not luck"). If the Custodian downloaded the file again next month, the Stock Fund's price for 10 March could quietly change. So the world uses a **Factor file**: one downloaded copy, saved in a local cache and never committed, with a **Pin** committed instead. The Pin is the file's address and its Content hash ([the Custodian feed primer](03-custodian-feed-and-ingestion.md), Part 4, explains Content hashes). If the cached copy's hash doesn't match the Pin, the Custodian refuses to start ([docs/product.md](../product.md), "The synthetic world"). Moving the Pin to a newer file is a deliberate rebuild of the world.
+That's a problem for a world that must give the same day every time (the ledger primer, Part 7: "A day is a recipe, not luck"). If the Custodian downloaded the file again next month, the Stock Fund's price for 10 March could quietly change. So the world uses a **Factor file**: one downloaded copy, saved in a local cache and never committed, with a **Pin** committed instead. The Pin is an address and a Content hash ([the Custodian feed primer](03-custodian-feed-and-ingestion.md), Part 4, explains Content hashes). If the cached copy's hash doesn't match the Pin, the Custodian refuses to start ([docs/product.md](../product.md), "The synthetic world"). Moving the Pin to a newer file is a deliberate rebuild of the world.
 
-The file ends on some date. For later days, [docs/product.md](../product.md) says the world uses "returns resampled from history, seeded by date": it picks past Factor returns at random, using the date as the seed for the random choice, so the same date always gives the same Returns. Those days are realistic, but not real. #45 builds the Pin; #46 decides exactly how the picking works.
+The address can't be the library's own. The library replaces the file at the same address with each update, so after the next update a download there has a different Content hash, and a fresh copy of the repo could never get a file that matches. The Internet Archive's Wayback Machine has saved copies of that address on several dates, and the copies from March, June and October 2026 all have different Content hashes (the digest column of [the archive's list of copies](https://web.archive.org/cdx/search/cdx?url=mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_Factors_daily_CSV.zip&from=2025)): they were built from the library's January, April and August 2026 data. A saved copy is kept as it was captured, and downloading one twice gives the same Content hash, so the Pin names one of them. The file itself stays out of the repo: it ends with "Copyright 2026 Eugene F. Fama and Kenneth R. French".
+
+Treasury yields are different. The US Treasury works them out and publishes them itself ([Treasury: Interest Rate Statistics](https://home.treasury.gov/policy-issues/financing-the-government/interest-rate-statistics)), so they're a work of the US government, and "Copyright protection under this title is not available for any work of the United States Government" ([17 U.S.C. § 105](https://www.law.cornell.edu/uscode/text/17/105)). So the world commits the yields it uses, and they need no Pin. Changing them is still a rebuild of the world.
+
+The file ends on some date. For later days, [docs/product.md](../product.md) says the world uses "returns resampled from history, seeded by date": it picks past Factor returns at random, using the date as the seed for the random choice, so the same date always gives the same Returns. Those days are realistic, but not real. #45 builds the Pin; #46 decides exactly how the picking works. The committed yields end on the same day, so a bond fund's yield (#46) and the Sweep rate (#47) need the same kind of rule after it.
 
 ### Do Factor returns already include dividends?
 
@@ -562,21 +566,22 @@ Two more things the world leaves out: tiers (a higher rate for a bigger balance)
 
 ## Part 7: What this means for the code (Level 3)
 
-### What do #45, #46 and #47 store, and what do they work out?
+### What do #45, #183, #46 and #47 store, and what do they work out?
 
 **Short answer:** they store a few fixed inputs, and every price, dividend and interest payment is worked out from them, the same way every time.
 
-What follows is what this primer's examples assume. The exact recipes are for #45, #46 and #47 to decide, and their issues list what's still open.
+What follows is what this primer's examples assume. The exact recipes are for #45, #183, #46 and #47 to decide, and their issues list what's still open.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/market-inputs.dark.svg">
-  <img alt="Fixed inputs on the left: the Factor file, checked against its Pin; Treasury yields; the Security catalog with each Security's Factor exposures; and the dividend schedule. Each Business day, the Factor file, the Treasury yields and the exposures give each Security's Return, and the previous price times one plus the Return, minus any dividend on its Ex-dividend date, gives that day's price. The dividend schedule and the Positions at the Close before the Ex-dividend date give a dividend Transaction on the Pay date. Treasury yields give the Sweep rate, which gives Accrued interest every calendar day, paid as one interest Transaction a month, rounded once to cents." src="../diagrams/market-inputs.light.svg">
+  <img alt="Fixed inputs on the left: the Factor file, checked against its Pin (#45); Treasury yields, committed (#45); the Security catalog, with what drives each Security's price (#183); and the dividend schedule. Each Business day, the Factor file, the Treasury yields and the catalog give each Security's Return, and the previous price times one plus the Return, minus any dividend on its Ex-dividend date, gives that day's price. The dividend schedule and the Positions at the Close before the Ex-dividend date give a dividend Transaction on the Pay date. Treasury yields give the Sweep rate, which gives Accrued interest every calendar day, paid as one interest Transaction a month, rounded once to cents." src="../diagrams/market-inputs.light.svg">
 </picture>
 
 **Fixed inputs**, decided once and changed only on purpose:
 
-- **#45, the Security catalog:** the simulated Custodian's own list of about 20 invented Securities plus the Cash sweep, each with its Factor exposures (or, for a bond fund, what its price follows), and the Pin of the Factor file.
-- **Treasury yields:** the Factor file already carries one, RF, the one-month Treasury bill rate. Any other yield the world uses, such as a 5-year yield for a bond fund, comes from another source, which needs a Pin of its own for the same reason. #45 decides where yields come from.
+- **#45, the Factor file and its Pin:** the daily three-factor file, saved in a local cache and checked against the Pin, which names a permanent copy.
+- **#45, Treasury yields:** the Factor file already carries one, RF, the one-month Treasury bill rate. Every other yield comes from the US Treasury's daily yield curve, committed to the repo from 2020 to the Factor file's last day, so real history ends on one date for every input.
+- **#183, the Security catalog:** the simulated Custodian's own list of about 20 invented US Securities plus the Cash sweep, each with what drives its price (its Factor exposures; for a bond fund, the Treasury yield it follows and its duration; for a balanced fund, a blend of the two) and how much it moves on its own. Every number comes from research into a real kind of fund or company.
 - **#47, the dividend schedule:** for each paying Security, its Declaration date, Record date and Pay date and the amount per share. For the dividends the world has (ordinary cash dividends under 25% of the price), the Ex-dividend date follows from the Record date by FINRA's rule, so it can be worked out rather than stored.
 
 **Worked out**, for each Business day:
@@ -608,7 +613,7 @@ Two rules come with it:
 8. On the Ex-dividend date the price drops by the dividend. A dividend moves value into cash; it doesn't create it. That's why the **Total return** counts dividends and the price return doesn't.
 9. The Ledger gets one dividend row, on the Pay date, for Accounts holding the Security at the Close before the Ex-dividend date. Real custodians can also show the amount owed from the Ex-dividend date; the world doesn't, a labelled simplification.
 10. The **Cash sweep** earns **Accrued interest** every calendar day, at the **Sweep rate** ÷ 365, compounded, and paid once a month, rounded once to cents.
-11. Real Factor returns are revised, so the world uses a **Factor file** with a **Pin**, and resamples past Returns, seeded by the date, after the file ends.
+11. Real Factor returns are revised, so the world uses a **Factor file** with a **Pin** that names a permanent copy, and resamples past Returns, seeded by the date, after the file ends. Treasury yields are a US government work, so they're committed instead.
 12. Factor returns count dividends, so the world takes each dividend off the price on its Ex-dividend date, or would pay it twice.
 13. Real bank sweeps often pay less than money market funds (FINRA: they "can pay far less"). The world's sweep takes its rate from Treasury yields: a labelled simplification.
 

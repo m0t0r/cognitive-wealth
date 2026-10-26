@@ -304,7 +304,7 @@ The one copy of the Fama-French Factor returns the simulated Custodian prices fr
 _Avoid_: Market data, price history
 
 **Pin**:
-The address and Content hash of the Factor file, which fix exactly which copy the world is built from. Moving the Pin is a deliberate rebuild of the world.
+The address of a permanent copy of the Factor file and its Content hash, which fix exactly which copy the world is built from. Moving the Pin is a deliberate rebuild of the world.
 _Avoid_: Lock, version
 
 **Treasury yield**:
