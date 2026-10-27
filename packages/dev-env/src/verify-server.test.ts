@@ -10,7 +10,7 @@ const { token: TOKEN, ports, databases } = verifyResources(ID);
 
 /** `cw`'s own seed and Ingestion, which only the working tree's database gets. */
 const DOMAIN = {
-  seed: async () => ({ users: 3, households: 2 }),
+  seed: async () => {},
   ingest: async () => "ingested" as const,
 };
 
@@ -52,7 +52,6 @@ function fakeSystem({ listeners = [], commands = {}, healthy = true }: FakeArgs 
     populate: vi.fn(async ({ checkout }) => {
       calls.push(`populate ${checkout}`);
       return {
-        seeded: { users: 3, households: 2 },
         ingested: [{ asOf: "2026-03-02", status: "ingested" as const }],
         notes: [],
       };

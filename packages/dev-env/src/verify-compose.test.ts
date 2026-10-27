@@ -28,7 +28,7 @@ function checkout() {
 function fakeSystem({ running = ["db", "web"] }: { running?: string[] } = {}) {
   const calls: string[][] = [];
   const system: ComposeSystem = {
-    docker: vi.fn(({ args }) => {
+    docker: vi.fn(({ argv: args }) => {
       calls.push(args.slice(args.indexOf("-f", args.indexOf("-f") + 1) + 2));
       return {
         status: 0,
@@ -37,7 +37,6 @@ function fakeSystem({ running = ["db", "web"] }: { running?: string[] } = {}) {
       };
     }),
     populate: vi.fn(async () => ({
-      seeded: { users: 3, households: 2 },
       ingested: [{ asOf: "2026-03-02", status: "already_ingested" as const }],
       notes: [],
     })),
@@ -82,7 +81,7 @@ describe("composeUp", () => {
       ["up", "--build", "--detach", "--wait"],
       ["ps", "--status", "running", "--services"],
     ]);
-    const [{ args, env }] = vi.mocked(system.docker).mock.calls[0]!;
+    const [{ argv: args, env }] = vi.mocked(system.docker).mock.calls[0]!;
     expect(args.slice(0, 7)).toEqual([
       "compose",
       "-p",

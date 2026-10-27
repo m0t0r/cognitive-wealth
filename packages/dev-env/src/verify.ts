@@ -2,8 +2,8 @@
 // `cw verify browser stop` and teardown remove it: the production servers `cw verify start`
 // runs (pidfiles under the main checkout's `.dev/verify/<token>/`, which outlive the worktree),
 // the `--ref` checkouts it builds (`.dev/worktrees/<token>-<sha>`) and the shared headless Chrome
-// while this checkout holds it (`.dev/verify/chrome.*`), and the Compose project `cw verify compose up`
-// runs. Its databases are dropped with the worktree's own (`teardown.ts`).
+// while this checkout holds it (`.dev/verify/chrome.*`), and the Compose project
+// `cw verify compose up` runs. Its databases are dropped with the worktree's own (`teardown.ts`).
 // Node runs the CLIs that import this directly (type stripping), so relative imports keep their
 // `.ts` extension.
 import { execFileSync } from "node:child_process";
@@ -13,6 +13,9 @@ import { basename, join } from "node:path";
 import { commandOf, stop } from "./processes.ts";
 
 export const verifyDir = (mainCheckout: string) => join(mainCheckout, ".dev/verify");
+/** A verification server's role: `head` serves the working tree, `ref` a `--ref` build. */
+export type ServerRole = "head" | "ref";
+
 export const refCheckoutsDir = (mainCheckout: string) => join(mainCheckout, ".dev/worktrees");
 
 /** Where `cw verify start` keeps a checkout's server pidfiles and logs. */
@@ -24,7 +27,7 @@ export function namesIn(dir: string): string[] {
   return existsSync(dir) ? readdirSync(dir) : [];
 }
 
-/** The pidfile and log of `token`'s server for `role` (`head`, the working tree, or `ref`). */
+/** The pidfile and log of `token`'s server for `role`. */
 export function serverFilesOf({
   mainCheckout,
   token,
@@ -32,7 +35,7 @@ export function serverFilesOf({
 }: {
   mainCheckout: string;
   token: string;
-  role: "head" | "ref";
+  role: ServerRole;
 }) {
   const dir = stateDirOf({ mainCheckout, token });
   return { pid: join(dir, `server-${role}.pid`), log: join(dir, `server-${role}.log`) };
@@ -48,8 +51,8 @@ export function isWebServer(command: string | undefined) {
 }
 
 /**
- * The servers `cw verify start` recorded for `token` that still run: a recorded pid whose process is
- * now something else (the system reused it) isn't one.
+ * The servers `cw verify start` recorded for `token` that still run: a recorded pid whose process
+ * is now something else (the system reused it) isn't one.
  */
 export function verifyServersOf({
   mainCheckout,
@@ -65,7 +68,7 @@ export function verifyServersOf({
     .filter((pid) => Number.isInteger(pid) && pid > 0 && isWebServer(commandOf(pid)));
 }
 
-/** Stops the servers `cw verify start` recorded for `token`, then removes their pidfiles and logs. */
+/** Stops the servers `cw verify start` recorded for `token`, then removes their pidfiles, logs. */
 export async function stopVerifyServers({
   mainCheckout,
   token,
@@ -147,8 +150,8 @@ export function composeProjectNames(): string[] {
 }
 
 /**
- * Removes `cw verify compose up`'s Compose project for `token`, volumes included: they hold only that
- * checkout's throwaway data. Compose finds the containers by the project's label, so no file is
+ * Removes `cw verify compose up`'s Compose project for `token`, volumes included: they hold only
+ * that checkout's throwaway data. Compose finds the containers by the project's label, so no file is
  * needed, and a worktree that's gone still has its project removed.
  */
 export function removeComposeProject(project: string): string {

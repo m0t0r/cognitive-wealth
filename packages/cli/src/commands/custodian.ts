@@ -13,6 +13,11 @@ import { shellQuoted } from "../shell-quoted.ts";
 // Where `pnpm --filter custodian feed:write` writes, in the same checkout (ADR 0017).
 const DEFAULT_ROOT = join(REPO_ROOT, ".dev/custodian-feed");
 
+/**
+ * WORLD_FIRM_SLUG, written out: `@repo/db/seed-data` loads the schema, which waits for `run`.
+ */
+export const WORLD_FIRM = "larkspur";
+
 /** Refusals that may clear on their own: the custodian may still be writing the Delivery. */
 const RETRYABLE = new Set(["not_delivered", "incomplete"]);
 
@@ -98,11 +103,7 @@ export function custodianCommands({ openDatabase }: Pick<Dependencies, "openData
         .describe("The As-of date, YYYY-MM-DD"),
     }),
     options: z.object({
-      firm: z
-        .string()
-        // WORLD_FIRM_SLUG, written out: `@repo/db/seed-data` loads the schema, which waits for `run`.
-        .default("larkspur")
-        .describe("The Firm's slug; the world file's by default"),
+      firm: z.string().default(WORLD_FIRM).describe("The Firm's slug; the world file's by default"),
       root: z
         .string()
         .default(DEFAULT_ROOT)

@@ -32,16 +32,23 @@ function recordChrome({ main, owner }: { main: string; owner?: [string, string] 
   if (owner) writeFileSync(files.owner, `${owner.join("\n")}\n`);
 }
 
-type FakeArgs = { listener?: number; live?: string[] };
+type FakeArgs = {
+  listener?: number;
+  live?: string[];
+  /** Whether `stopChrome` frees 9222; false when the pid is no longer the recorded Chrome. */
+  stopsChrome?: boolean;
+};
 
-function fakeSystem({ listener, live = [] }: FakeArgs = {}) {
+function fakeSystem({ listener, live = [], stopsChrome = true }: FakeArgs = {}) {
   const calls: string[] = [];
+  let listening = listener;
   const system: BrowserSystem = {
-    listenerOn: () => listener,
+    listenerOn: () => listening,
     commandOf: (pid) => `/Applications/Thing --pid ${pid}`,
     liveCheckouts: () => live,
     stopChrome: vi.fn(async () => {
       calls.push("stop chrome");
+      if (stopsChrome) listening = undefined;
       return "stopped the shared Chrome (pid 9000)";
     }),
     launchChrome: vi.fn(async () => {
@@ -187,6 +194,23 @@ describe("startBrowser", () => {
 
     expect(calls.slice(0, 2)).toEqual(["stop chrome", "launch chrome"]);
     expect(started.chrome).toEqual({ pid: 9100, started: true, tookOverFrom: gone });
+  });
+
+  it("refuses as port_9222_taken when a gone holder's Chrome won't stop", async () => {
+    const checkout = checkouts();
+    const gone = join(checkout.mainCheckout, ".claude/worktrees/gone");
+    recordChrome({ main: checkout.mainCheckout, owner: ["gone_12345678", gone] });
+    // Still listening after stopChrome: the pid was reused by something it rightly left alone.
+    const { system } = fakeSystem({
+      listener: 9000,
+      live: [checkout.mainCheckout],
+      stopsChrome: false,
+    });
+
+    await expect(
+      startBrowser({ checkout, email: EMAIL, app: APP, ip: "10.77.0.1", system }),
+    ).rejects.toMatchObject({ code: "port_9222_taken", message: expect.stringContaining(gone) });
+    expect(system.launchChrome).not.toHaveBeenCalled();
   });
 
   it("waits for another start to finish, then refuses as chrome_starting", async () => {
