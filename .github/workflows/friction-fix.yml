@@ -1,8 +1,11 @@
 # Fixes the friction reports friction-triage.yml marked `ready-for-agent`, in batches, with Sonnet.
 #
-# - Every 3 hours it looks; a run with nothing to do stops before Claude starts, and one with too
-#   little (fewer than MIN_READY reports, none older than MAX_WAIT_HOURS) waits for the next look.
-#   A manual run (Actions → Friction fix → Run workflow) skips that wait.
+# - It looks when friction-triage.yml labels a report `ready-for-agent` (a dispatch with
+#   force=false), and every hour; a run with nothing to do stops before Claude starts, and one with
+#   too little (fewer than MIN_READY reports, none older than MAX_WAIT_HOURS) waits for the next
+#   look. A manual run (Actions → Friction fix → Run workflow) skips that wait. GitHub runs a
+#   schedule best-effort and drops runs under load, so the schedule is the fallback (and what
+#   applies MAX_WAIT_HOURS), not the trigger.
 # - Claude runs in `fix` with a read-only token and returns a commit; `publish` checks which paths it
 #   touched, pushes it and opens the PR, so nothing in an issue can make the model push.
 # - While the bot's PR is open, each run adds a commit to it instead of opening another.
@@ -12,7 +15,7 @@ name: Friction fix
 
 on:
   schedule:
-    - cron: "23 */3 * * *"
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       force:

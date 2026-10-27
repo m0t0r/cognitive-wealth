@@ -1,8 +1,8 @@
 # Sorts each new friction report (docs/agents/friction.md) as soon as it's filed, with
 # `pnpm cw friction triage` (packages/cli/src/commands/friction.ts): Haiku reads the report beside
 # the open ones and CLAUDE.md, and only answers; the command then labels, comments or closes.
-# `ready-for-agent` reports are picked up by friction-fix.yml. To see what it would decide for a
-# report, run `pnpm cw friction triage <number> --dry-run` (with ANTHROPIC_API_KEY set).
+# `ready-for-agent` reports are picked up by friction-fix.yml, which a `ready-for-agent` decision
+# dispatches. To see what it would decide for a report, run `pnpm cw friction triage <number> --dry-run` (with ANTHROPIC_API_KEY set).
 name: Friction triage
 
 on:
@@ -21,6 +21,8 @@ on:
 permissions:
   contents: read
   issues: write
+  # To dispatch friction-fix.yml once a report is ready-for-agent.
+  actions: write
 
 concurrency:
   group: friction-triage-${{ github.event.issue.number || inputs.issue }}
@@ -58,6 +60,23 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
           RETRIAGE: ${{ github.event_name == 'workflow_dispatch' && '--retriage' || '' }}
+        id: triage
         # $RETRIAGE is empty or one flag, split on purpose.
         # shellcheck disable=SC2086
-        run: node packages/cli/src/cli.ts friction triage "$ISSUE" $RETRIAGE --json
+        run: |
+          node packages/cli/src/cli.ts friction triage "$ISSUE" $RETRIAGE --json \
+            > "$RUNNER_TEMP/triage.json" || { cat "$RUNNER_TEMP/triage.json"; exit 1; }
+          cat "$RUNNER_TEMP/triage.json"
+          echo "decision=$(jq -r '.decision // empty' "$RUNNER_TEMP/triage.json")" >> "$GITHUB_OUTPUT"
+
+      # A report just labelled `ready-for-agent` asks friction-fix.yml to look now, rather than
+      # leaving it to the schedule, which GitHub runs best-effort and may skip. `force=false` keeps
+      # the fix job's batching rule (MIN_READY, MAX_WAIT_HOURS). A dispatch is the one event this
+      # job's token can start a workflow with.
+      - name: Ask friction-fix.yml to look
+        if: steps.triage.outputs.decision == 'ready-for-agent'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REF: ${{ github.event.repository.default_branch }}
+        run: gh workflow run friction-fix.yml --ref "$REF" -f force=false
