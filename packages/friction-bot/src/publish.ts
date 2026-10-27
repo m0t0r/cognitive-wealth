@@ -147,8 +147,12 @@ function uncommitted(commit: CommitOutcome | null): string | null {
       return `The fix failed \`pnpm ${commit.check}\`, so it wasn't committed.`;
     case "duplicated":
       return `The fix repeated text already in \`${commit.path}\` ("${commit.line}"), so it wasn't committed.`;
-    default:
+    case "would_commit":
       return "The fix wasn't committed: the commit step was a dry run.";
+    default: {
+      const outcome: never = commit;
+      throw new Error(`Unknown commit outcome ${JSON.stringify(outcome)}`);
+    }
   }
 }
 
