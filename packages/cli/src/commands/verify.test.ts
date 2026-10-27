@@ -15,6 +15,7 @@ type FakeVerifyArgs = {
   stopVerifyServers?: Verify["stopVerifyServers"];
   startVerifyServer?: Verify["startVerifyServer"];
   startBrowser?: Verify["startBrowser"];
+  traceSession?: Verify["traceSession"];
   /** Whether `dev sign-in` left a session file. */
   signedIn?: boolean;
 };
@@ -32,6 +33,23 @@ const STARTED = {
   log: `/repo/.dev/verify/${TOKEN}/server-head.log`,
 };
 
+const TRACED = {
+  session: SESSION,
+  url: "http://localhost:3500/households",
+  mode: "load" as const,
+  throttled: false,
+  viewport: { width: 1280, height: 800 },
+  file: `${WORKTREE}/.dev/perf/households.trace.json.gz`,
+  summary: {
+    url: "http://localhost:3500/households",
+    lcp: { ms: 412.5, subparts: { ttfb: 30.1, renderDelay: 382.4 } },
+    cls: 0.01,
+    insights: [
+      { name: "RenderBlocking", title: "Render blocking requests", state: "pass" as const },
+    ],
+  },
+};
+
 /** This checkout's verifier state: one server and one --ref checkout. */
 function fakeVerify({
   inMainCheckout = false,
@@ -41,8 +59,9 @@ function fakeVerify({
   startBrowser = async () => ({
     session: SESSION,
     statePath: `${WORKTREE}/.dev/auth/owner@cognitive-wealth.test.json`,
-    chrome: { pid: 9100, started: true },
+    viewport: { width: 1280, height: 800 },
   }),
+  traceSession = async () => TRACED,
   signedIn = true,
 }: FakeVerifyArgs = {}) {
   const env = {
@@ -69,6 +88,7 @@ function fakeVerify({
       signedIn ? `${WORKTREE}/.dev/auth/owner@cognitive-wealth.test.json` : undefined,
     ),
     startBrowser: vi.fn(startBrowser),
+    traceSession: vi.fn(traceSession),
     composeUp: vi.fn(async () => ({
       project: `cw-compose-${TOKEN}`,
       urls: { web: "http://localhost:4500", custodian: "x", mailpit: "y" },
@@ -145,7 +165,7 @@ describe("cw verify stop", () => {
 });
 
 describe("cw verify browser stop", () => {
-  it("closes this checkout's session and frees the Chrome it holds", async () => {
+  it("closes this checkout's session, and stops a shared Chrome from before #144 it holds", async () => {
     const { env, cli } = fakeVerify({ holder: TOKEN });
 
     const { output, exitCode } = await run({ cli, argv: ["verify", "browser", "stop"] });
@@ -153,7 +173,7 @@ describe("cw verify browser stop", () => {
     expect(exitCode).toBe(0);
     expect(output).toEqual({
       session: SESSION,
-      holdsChrome: true,
+      holdsSharedChrome: true,
       steps: [`closed the session ${SESSION}`, "stopped the shared Chrome (pid 42)"],
       dryRun: false,
     });
@@ -172,7 +192,12 @@ describe("cw verify browser stop", () => {
       argv: ["verify", "browser", "stop", "--session", "persona-2", "--dry-run"],
     });
 
-    expect(output).toEqual({ session: "persona-2", holdsChrome: false, steps: [], dryRun: true });
+    expect(output).toEqual({
+      session: "persona-2",
+      holdsSharedChrome: false,
+      steps: [],
+      dryRun: true,
+    });
     expect(env.releaseChrome).not.toHaveBeenCalled();
   });
 });
@@ -261,13 +286,31 @@ describe("cw verify browser start", () => {
     "10.77.0.1",
   ];
 
-  it("starts the browser for this checkout, and points at stopping it", async () => {
+  it("opens the app in this checkout's own browser", async () => {
     const { env, cli } = fakeVerify();
 
     const { output, exitCode } = await run({ cli, argv });
 
     expect(exitCode).toBe(0);
-    expect(output).toMatchObject({ session: SESSION, chrome: { pid: 9100 }, dryRun: false });
+    expect(output).toEqual({
+      session: SESSION,
+      statePath: `${WORKTREE}/.dev/auth/owner@cognitive-wealth.test.json`,
+      viewport: { width: 1280, height: 800 },
+      dryRun: false,
+      cta: {
+        description: "Suggested commands:",
+        commands: [
+          {
+            command: "pnpm cw verify trace <route>",
+            description: "Trace a page once agent-browser has opened it",
+          },
+          {
+            command: "pnpm cw verify browser stop",
+            description: "Close the session once the browser work is done",
+          },
+        ],
+      },
+    });
     expect(env.startBrowser).toHaveBeenCalledWith({
       checkout: { mainCheckout: "/repo", top: WORKTREE, worktreeId: "feat-x" },
       email: "owner@cognitive-wealth.test",
@@ -298,31 +341,104 @@ describe("cw verify browser start", () => {
     expect(env.startBrowser).not.toHaveBeenCalled();
   });
 
-  it("fails as chrome_held, retryable, while another checkout holds the Chrome", async () => {
-    const { CliError } = await import("@repo/db/cli/cli-error");
-    const { cli } = fakeVerify({
-      startBrowser: async () => {
-        throw new CliError({ code: "chrome_held", message: "in use by /repo/.claude/worktrees/b" });
-      },
-    });
-
-    const { output } = await run({ cli, argv });
-
-    expect(output).toMatchObject({ code: "chrome_held", retryable: true });
-  });
-
-  it("with --dry-run, names the session file and the Chrome's holder", async () => {
-    const { env, cli } = fakeVerify({ holder: "other_12345678" });
+  it("with --dry-run, names the session and its file", async () => {
+    const { env, cli } = fakeVerify();
 
     const { output } = await run({ cli, argv: [...argv, "--dry-run"] });
 
     expect(output).toEqual({
       session: SESSION,
       statePath: `${WORKTREE}/.dev/auth/owner@cognitive-wealth.test.json`,
-      holder: "other_12345678",
       dryRun: true,
     });
     expect(env.startBrowser).not.toHaveBeenCalled();
+  });
+});
+
+describe("cw verify trace", () => {
+  it("traces a page load of this checkout's session and returns what it measured", async () => {
+    const { env, cli } = fakeVerify();
+
+    const { output, exitCode } = await run({ cli, argv: ["verify", "trace", "households"] });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual({ ...TRACED, dryRun: false });
+    expect(env.traceSession).toHaveBeenCalledWith({
+      checkout: { mainCheckout: "/repo", top: WORKTREE, worktreeId: "feat-x" },
+      name: "households",
+      steps: [],
+      throttle: false,
+      session: undefined,
+    });
+  });
+
+  it("passes each --step in order, --throttle and --session", async () => {
+    const { env, cli } = fakeVerify();
+
+    await run({
+      cli,
+      argv: [
+        "verify",
+        "trace",
+        "add-person",
+        "--step",
+        "click @e3",
+        "--step",
+        "fill @e4 Grace",
+        "--throttle",
+        "--session",
+        "persona-2",
+      ],
+    });
+
+    expect(env.traceSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        steps: ["click @e3", "fill @e4 Grace"],
+        throttle: true,
+        session: "persona-2",
+      }),
+    );
+  });
+
+  it("refuses a name that isn't a plain file name", async () => {
+    const { env, cli } = fakeVerify();
+
+    const { exitCode } = await run({ cli, argv: ["verify", "trace", "../escape"] });
+
+    expect(exitCode).toBe(1);
+    expect(env.traceSession).not.toHaveBeenCalled();
+  });
+
+  it("passes a refusal's code through, never a number", async () => {
+    const { CliError } = await import("@repo/db/cli/cli-error");
+    const { cli } = fakeVerify({
+      traceSession: async () => {
+        throw new CliError({ code: "incomplete_trace", message: "no loading events" });
+      },
+    });
+
+    const { output, exitCode } = await run({ cli, argv: ["verify", "trace", "x"] });
+
+    expect(exitCode).toBe(1);
+    expect(output).toMatchObject({ code: "incomplete_trace" });
+  });
+
+  it("with --dry-run, names the session, the file and the mode, and records nothing", async () => {
+    const { env, cli } = fakeVerify();
+
+    const { output } = await run({
+      cli,
+      argv: ["verify", "trace", "add-person", "--step", "click @e3", "--dry-run"],
+    });
+
+    expect(output).toEqual({
+      session: SESSION,
+      mode: "interaction",
+      throttled: false,
+      file: `${WORKTREE}/.dev/perf/add-person.trace.json.gz`,
+      dryRun: true,
+    });
+    expect(env.traceSession).not.toHaveBeenCalled();
   });
 });
 

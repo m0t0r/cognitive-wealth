@@ -33,6 +33,7 @@ describe("cw", () => {
       { name: "verify compose up" },
       { name: "verify start" },
       { name: "verify stop" },
+      { name: "verify trace" },
     ]);
   });
 

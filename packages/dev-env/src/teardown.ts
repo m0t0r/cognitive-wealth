@@ -165,7 +165,7 @@ export async function tearDown({
     ],
     ["stop the verification servers", () => stopVerifyServers({ mainCheckout, token })],
     [
-      "release the shared Chrome",
+      "close the agent-browser session",
       () => releaseChrome({ mainCheckout, token, session: verifySessionOf(token) }),
     ],
     ["drop the database", () => removeDatabase({ mainCheckout, database: target.database })],

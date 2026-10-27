@@ -14,7 +14,8 @@
     "./verify": "./src/verify.ts",
     "./verify-browser": "./src/verify-browser.ts",
     "./verify-compose": "./src/verify-compose.ts",
-    "./verify-server": "./src/verify-server.ts"
+    "./verify-server": "./src/verify-server.ts",
+    "./verify-trace": "./src/verify-trace.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",
@@ -23,6 +24,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@paulirish/trace_engine": "0.0.67",
     "@repo/db": "workspace:*",
     "@repo/testing": "workspace:*"
   },
