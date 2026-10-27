@@ -48,6 +48,32 @@ export type DomainCalls = {
   }) => Promise<"ingested" | "already_ingested">;
 };
 
+/** What `cw db seed --json` says it added, or a refusal when it printed something else. */
+function addedBy(output: Record<string, unknown>) {
+  const { added } = output;
+  if (
+    typeof added === "object" &&
+    added !== null &&
+    "users" in added &&
+    "households" in added &&
+    typeof added.users === "number" &&
+    typeof added.households === "number"
+  ) {
+    return { users: added.users, households: added.households };
+  }
+  throw new CliError({ code: "populate_failed", message: "cw db seed printed no counts." });
+}
+
+/** The status `cw custodian ingest --json` reports, or a refusal when it printed another. */
+function statusOf(output: Record<string, unknown>) {
+  const { status } = output;
+  if (status === "ingested" || status === "already_ingested") return status;
+  throw new CliError({
+    code: "populate_failed",
+    message: `cw custodian ingest printed the status ${String(status)}.`,
+  });
+}
+
 type SubprocessCallsArgs = {
   checkout: string;
   run: (args: RunArgs) => RunResult;
@@ -82,18 +108,10 @@ function subprocessCalls({ checkout, run, env }: SubprocessCallsArgs): Partial<D
   const commands = join(checkout, "packages/cli/src/commands");
   return {
     ...(existsSync(join(commands, "db.ts")) && {
-      seed: async () => {
-        const { added } = cw(["db", "seed"]) as { added: { users: number; households: number } };
-        return { users: added.users, households: added.households };
-      },
+      seed: async () => addedBy(cw(["db", "seed"])),
     }),
     ...(existsSync(join(commands, "custodian.ts")) && {
-      ingest: async ({ asOf, root }) => {
-        const { status } = cw(["custodian", "ingest", asOf, "--root", root]) as {
-          status: "ingested" | "already_ingested";
-        };
-        return status;
-      },
+      ingest: async ({ asOf, root }) => statusOf(cw(["custodian", "ingest", asOf, "--root", root])),
     }),
   };
 }
