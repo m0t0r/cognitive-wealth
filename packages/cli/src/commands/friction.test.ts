@@ -1,6 +1,9 @@
 // `cw friction …`'s wiring: options, output, codes and exit status, on issues in memory and a canned
 // Claude. The triage and gathering rules are `@repo/friction-bot`'s, tested there.
-import { memoryGitHub, report } from "@repo/friction-bot/testing/memory-github";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { git, type TempRepo, tempRepo } from "@repo/friction-bot/testing/git-repo";
+import { memoryGitHub, pullRequest, report } from "@repo/friction-bot/testing/memory-github";
 import { CliError } from "@repo/db/cli/cli-error";
 import type { Claude } from "../dependencies";
 import { createCli } from "../app";
@@ -226,5 +229,172 @@ describe("cw friction fix", () => {
     expect(fake.fix).toHaveBeenCalledWith(
       expect.objectContaining({ numbers: [12], maxSteps: 20, maxCostUsd: 1, root: "/work" }),
     );
+  });
+});
+
+describe("cw friction triage-backlog", () => {
+  it("triages the untriaged reports and lists what it decided", async () => {
+    const { cli, writes } = setup({
+      issues: [report({ number: 228, createdAt: "2026-10-20T10:00:00Z" })],
+      claude: claude(),
+    });
+    const { output, exitCode } = await run({ cli, argv: ["friction", "triage-backlog"] });
+    expect(exitCode).toBe(0);
+    expect(output).toMatchObject({
+      triaged: [{ issue: 228, decision: "ready-for-agent" }],
+      failed: [],
+      dryRun: false,
+    });
+    expect(writes).toHaveLength(2);
+  });
+});
+
+describe("cw friction hand-back", () => {
+  it("hands back the reports still ready-for-agent", async () => {
+    const { cli, writes } = setup({
+      issues: [
+        report({ number: 12, labels: ["friction", "ready-for-agent"] }),
+        report({ number: 13, labels: ["friction", "ready-for-human"] }),
+      ],
+    });
+    const { output, exitCode } = await run({
+      cli,
+      argv: ["friction", "hand-back", "12", "13", "--run-url", "https://github.test/runs/1"],
+    });
+    expect(exitCode).toBe(0);
+    expect(output).toMatchObject({ handedBack: [12], left: [13], dryRun: false });
+    expect(writes).toMatchObject([
+      { kind: "label", number: 12, add: ["ready-for-human"] },
+      { kind: "comment", number: 12 },
+    ]);
+  });
+});
+
+describe("cw friction start, commit and publish", () => {
+  const BRANCH = "chore/friction-autofix";
+  const runUrl = ["--run-url", "https://github.test/runs/1"];
+  let repo: TempRepo;
+  let dir: string;
+  let publisher: string;
+
+  beforeEach(async () => {
+    repo = await tempRepo();
+    dir = join(repo.dir, "out");
+    publisher = join(repo.dir, "publisher");
+    await mkdir(dir);
+    await git({ cwd: repo.dir, args: ["clone", "-q", repo.origin, publisher] });
+  });
+
+  afterEach(async () => {
+    await repo.remove();
+  });
+
+  type CheckoutCliArgs = { checks?: () => Promise<{ exitCode: number; output: string }> };
+
+  function checkoutCli({
+    checks = async () => ({ exitCode: 0, output: "" }),
+  }: CheckoutCliArgs = {}) {
+    const gh = memoryGitHub([
+      report({ number: 12, labels: ["friction", "ready-for-agent"] }),
+      report({ number: 13, labels: ["friction", "ready-for-agent"] }),
+    ]);
+    const cli = createCli(
+      dependencies({ github: async () => gh.github, checks: async () => checks }),
+    );
+    return { cli, ...gh };
+  }
+
+  const fixAnswer = {
+    fixed: [{ number: 12, summary: "Fixed README.md." }],
+    skipped: [{ number: 13, reason: "Needs .github/." }],
+    friction: [],
+  };
+
+  it("starts the fix on dev, commits it, pushes it and opens the PR", async () => {
+    const { cli, writes, issue } = checkoutCli();
+
+    const started = await run({
+      cli,
+      argv: ["friction", "start", "--checkout", repo.clone],
+    });
+    expect(started.output).toMatchObject({ from: "base", branch: BRANCH });
+
+    await repo.write({ "README.md": "fixed\n" });
+    await writeFile(join(dir, "result.json"), JSON.stringify(fixAnswer));
+    const committed = await run({
+      cli,
+      argv: ["friction", "commit", "12", "13", "--checkout", repo.clone, "--dir", dir],
+    });
+    expect(committed).toMatchObject({
+      exitCode: 0,
+      output: { status: "committed", files: ["README.md"] },
+    });
+
+    const published = await run({
+      cli,
+      argv: ["friction", "publish", "12", "13", "--dir", dir, "--checkout", publisher, ...runUrl],
+    });
+    expect(published).toMatchObject({
+      exitCode: 0,
+      output: {
+        pushed: { stacked: false },
+        pullRequest: { number: 14, created: true },
+        errors: [],
+        dryRun: false,
+      },
+    });
+    expect(await git({ cwd: repo.origin, args: ["log", "-1", "--format=%s", BRANCH] })).toBe(
+      "chore: address friction reports (#12)",
+    );
+    expect(writes.filter(({ kind }) => kind === "create-pr")).toHaveLength(1);
+    expect(issue(12).labels).toEqual(["friction"]);
+    expect(issue(13).labels).toEqual(["friction", "ready-for-human"]);
+  });
+
+  it("refuses a failed check with its code, and still records the outcome for publish", async () => {
+    const { cli } = checkoutCli({ checks: async () => ({ exitCode: 1, output: "lint failed" }) });
+    await repo.write({ "README.md": "fixed\n" });
+    await writeFile(join(dir, "result.json"), JSON.stringify(fixAnswer));
+
+    const { output, exitCode } = await run({
+      cli,
+      argv: ["friction", "commit", "12", "13", "--checkout", repo.clone, "--dir", dir],
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toMatchObject({ code: "checks_failed", message: /pnpm lint/ });
+    expect(JSON.parse(await readFile(join(dir, "commit.json"), "utf8"))).toMatchObject({
+      status: "checks_failed",
+      check: "lint",
+    });
+  });
+
+  it("stacks on the bot's open PR", async () => {
+    await repo.git(["checkout", "-q", "-B", BRANCH, "origin/dev"]);
+    await repo.commit({ files: { "earlier.md": "earlier\n" } });
+    await repo.git(["push", "-q", "origin", BRANCH]);
+    const gh = memoryGitHub([], { pullRequests: [pullRequest({ number: 261 })] });
+    const cli = createCli(dependencies({ github: async () => gh.github }));
+
+    const { output } = await run({
+      cli,
+      argv: ["friction", "start", "--checkout", repo.clone, "--dry-run"],
+    });
+
+    expect(output).toMatchObject({ from: "branch", commit: await repo.git(["rev-parse", "HEAD"]) });
+  });
+
+  it("refuses an answer of the wrong shape before writing anything", async () => {
+    const { cli, writes } = checkoutCli();
+    await writeFile(join(dir, "result.json"), JSON.stringify({ fixed: "everything" }));
+
+    const { output, exitCode } = await run({
+      cli,
+      argv: ["friction", "publish", "12", "--dir", dir, "--checkout", publisher, ...runUrl],
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toMatchObject({ code: "invalid_answer" });
+    expect(writes).toEqual([]);
   });
 });

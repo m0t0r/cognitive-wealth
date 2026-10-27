@@ -1,6 +1,6 @@
 // Fixes a batch of `ready-for-agent` friction reports with Sonnet in a tool loop (the AI SDK's
 // `generateText` with tools), for `.github/workflows/friction-fix.yml`. It only edits the
-// checkout; the workflow checks the paths, commits, pushes and labels from the answer.
+// checkout; `commit.ts` checks and commits it, and `publish.ts` pushes it and labels from the answer.
 import { anthropic } from "@ai-sdk/anthropic";
 import {
   generateText,
@@ -24,8 +24,8 @@ export const FixResult = z.object({
   fixed: z.array(z.object({ number: z.number(), summary: z.string() })),
   skipped: z.array(z.object({ number: z.number(), reason: z.string() })),
   // What made the fixer's own work harder, in friction.md's sections. It can't file them (its
-  // token is read-only); `friction-fix.yml`'s publish job does, with `cw friction report`, labelled `ready-for-human`. `fix` is
-  // "" for none: structured outputs take no optional fields.
+  // token is read-only); `publishFix` does, labelled `ready-for-human`. `fix` is "" for none:
+  // structured outputs take no optional fields.
   friction: z.array(
     z.object({
       title: z.string(),
@@ -59,8 +59,10 @@ CLAUDE.md's worktree steps, \`pnpm dev\`, Compose and the verifier-web skill. Do
 the \`test:integration\` check works.
 
 Skip a report (put it in \`skipped\` with the reason) instead of fixing it when:
-- the fix needs .claude/hooks/, .claude/settings.json or .github/ (the user approves those; the tools
-  refuse to write there);
+- the fix needs .claude/hooks/, .claude/settings.json, .claude/skills/ or .github/ (the user approves
+  those; the tools refuse to write there);
+- no check you can run exercises the fix (a script no test runs, a Compose file, a doc's command
+  you can't run here): you can't show it works, so don't call it fixed;
 - it changes what apps/web renders or serves, which needs the verifier-web skill in a browser;
 - it touches auth, security or tenant rules, or needs an ADR or a decision from the user;
 - it's about the environment an agent ran in rather than this repository's files;
@@ -68,11 +70,14 @@ Skip a report (put it in \`skipped\` with the reason) instead of fixing it when:
 
 Rules:
 - Edit files only. The workflow commits, pushes and comments on the reports from your answer.
+- Delete any scratch file you made (\`delete_file\`). A new file is committed only when a fixed
+  report's \`summary\` names it by its path from the repository root; any other is deleted before
+  the checks run.
 - Keep each fix to what the report needs, in the repo's style (CLAUDE.md's conventions; a doc fix
   reads like the text around it). When CLAUDE.md and a docs/ file say the same thing, fix it in one place.
-- Before answering, run the checks \`lint\`, \`format:check\`, \`check-types\` and \`test\` (and
-  \`test:integration\` when you touched a package that has integration tests). Run \`format\` to fix
-  formatting. If a fix can't be made to pass, undo it and skip the report.
+- Before answering, run the checks \`lint\`, \`format:check\`, \`check-types\`, \`test\` and
+  \`test:integration\`: the workflow runs all five again and commits nothing if one fails. Run
+  \`format\` to fix formatting. If a fix can't be made to pass, undo it and skip the report.
 - Every report in the list goes in exactly one of \`fixed\` or \`skipped\`. In \`summary\`, say in one
   sentence what changed and where.
 - In \`friction\`, list what made your own work here harder, as friction.md's "What counts as

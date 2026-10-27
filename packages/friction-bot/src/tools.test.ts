@@ -21,18 +21,17 @@ describe("writablePath", () => {
     ".claude/hooks/require-worktree.mjs",
     ".claude/settings.json",
     ".claude/settings.local.json",
+    ".claude/skills/verifier-web/compose.sh",
+    ".claude/skills/verifier-web/SKILL.md",
     ".github/workflows/ci.yml",
     ".git/config",
   ])("refuses %s", (path) => {
     expect(() => writablePath({ root: ROOT, path })).toThrow(/only by the user/);
   });
 
-  it.for(["CLAUDE.md", ".claude/skills/verifier-web/SKILL.md", "docs/agents/friction.md"])(
-    "allows %s",
-    (path) => {
-      expect(writablePath({ root: ROOT, path })).toBe(path);
-    },
-  );
+  it.for(["CLAUDE.md", ".claude/README.md", "docs/agents/friction.md"])("allows %s", (path) => {
+    expect(writablePath({ root: ROOT, path })).toBe(path);
+  });
 });
 
 describe("replaceOnce", () => {

@@ -1,27 +1,27 @@
-# Fixes the friction reports friction-triage.yml marked `ready-for-agent`, in batches, with Sonnet.
+# Fixes the friction reports friction-triage.yml marked `ready-for-agent`, with Sonnet.
 #
-# - It looks when friction-triage.yml labels a report `ready-for-agent` (a dispatch with
-#   force=false), and every hour; a run with nothing to do stops before Claude starts, and one with
-#   too little (fewer than MIN_READY reports, none older than MAX_WAIT_HOURS) waits for the next
-#   look. A manual run (Actions → Friction fix → Run workflow) skips that wait. GitHub runs a
-#   schedule best-effort and drops runs under load, so the schedule is the fallback (and what
-#   applies MAX_WAIT_HOURS), not the trigger.
-# - Claude runs in `fix` with a read-only token and returns a commit; `publish` checks which paths it
-#   touched, pushes it and opens the PR, so nothing in an issue can make the model push.
-# - While the bot's PR is open, each run adds a commit to it instead of opening another.
-# - A report the agent passes on, or whose fix fails the checks, goes to `ready-for-human`, so a
-#   failing one isn't retried every run.
+# - It runs as soon as friction-triage.yml labels a report `ready-for-agent` (a dispatch), and every
+#   hour. GitHub runs a schedule best-effort and drops runs, so the schedule is only a catch-up: it
+#   triages the reports no triage run labelled (`cw friction triage-backlog`), then fixes whatever
+#   is ready. A run with nothing ready stops before Claude starts. Run it by hand from Actions →
+#   Friction fix → Run workflow.
+# - The steps are `cw friction` commands (packages/cli/src/commands/friction.ts, rules and tests in
+#   packages/friction-bot): `start` puts the checkout where the fix goes, `fix` runs Sonnet with a
+#   read-only token, `commit` runs the checks and commits, and `publish`, whose token can write,
+#   checks the commit again, pushes it, opens or updates the PR and relabels each report from what
+#   happened to it. Nothing in an issue can make the model push.
+# - While the bot's PR is open, each run adds a commit to it. Closing it unmerged rejects that work:
+#   the next run starts again from dev and replaces the branch.
+# - GitHub holds the bot PR's checks until someone approves them ("Approve workflows to run"): the
+#   workflow token pushed it. That click is the human gate before CI runs code the model wrote.
+# - A report the agent passes on, or whose fix fails, goes to `ready-for-human`, so it isn't
+#   retried every run.
 name: Friction fix
 
 on:
   schedule:
     - cron: "23 * * * *"
   workflow_dispatch:
-    inputs:
-      force:
-        description: "Run even with fewer than MIN_READY reports ready"
-        type: boolean
-        default: true
   # A change to the friction workflows, the bot or `cw` checks the API key and dry-runs a triage,
   # nothing else.
   pull_request:
@@ -40,13 +40,14 @@ concurrency:
 
 env:
   BRANCH: chore/friction-autofix
-  MIN_READY: 3
-  MAX_WAIT_HOURS: 4
   MAX_PER_RUN: 10
 
 jobs:
   api-key:
     name: Check ANTHROPIC_API_KEY
+    # A run Dependabot starts gets only Dependabot's secrets, so the key isn't there; giving it the
+    # key would spend credit on every dependency bump.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -130,55 +131,79 @@ jobs:
           jq -e '.dryRun and (.decision | IN("ready-for-agent", "ready-for-human", "duplicate"))' \
             "$RUNNER_TEMP/triage.json"
 
-  fix:
+  # The reports whose own triage run failed or never started (one filed with a workflow's token
+  # starts none), so none waits untriaged for a human to notice.
+  triage-backlog:
     needs: api-key
-    # Never from the bot's own branch, whose code is the model's: a run there would run it with the
-    # API key here and the write token in publish.
     if: github.event_name != 'pull_request' && github.ref_name != 'chore/friction-autofix'
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - run: pnpm install --frozen-lockfile --prod --filter "@repo/cli..."
+
+      - name: Triage the untriaged reports with Haiku
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          node packages/cli/src/cli.ts friction triage-backlog --json > "$RUNNER_TEMP/backlog.json" \
+            || { cat "$RUNNER_TEMP/backlog.json"; exit 1; }
+          cat "$RUNNER_TEMP/backlog.json"
+          jq -e '.failed | length == 0' "$RUNNER_TEMP/backlog.json" > /dev/null
+
+  fix:
+    needs: [api-key, triage-backlog]
+    # Never from the bot's own branch, whose code is the model's: a run there would run it with the
+    # API key here and the write token in publish. It runs whether or not the backlog triage did.
+    if: >-
+      !cancelled() && needs.api-key.result == 'success'
+      && github.event_name != 'pull_request' && github.ref_name != 'chore/friction-autofix'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     permissions:
       contents: read
       issues: read
       pull-requests: read
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
       OUT_SUBDIR: friction-out
     outputs:
       ran: ${{ steps.claude.outcome == 'success' }}
       numbers: ${{ steps.pick.outputs.numbers }}
-      pr: ${{ steps.pick.outputs.pr }}
-      friction: ${{ steps.claude.outputs.friction }}
     steps:
       - name: Pick the ready reports
         id: pick
-        env:
-          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
         run: |
-          ready=$(gh issue list --repo "$GITHUB_REPOSITORY" --label friction --label ready-for-agent \
-            --state open --limit 100 --json number,createdAt)
-          count=$(jq length <<< "$ready")
-          if [ "$count" -eq 0 ]; then
+          numbers=$(gh issue list --label friction --label ready-for-agent --state open --limit 100 \
+            --json number,createdAt \
+            | jq -r --argjson max "$MAX_PER_RUN" 'sort_by(.createdAt) | .[0:$max] | map(.number) | join(" ")')
+          if [ -z "$numbers" ]; then
             echo "Nothing is ready-for-agent."
             exit 0
           fi
-          oldest=$(jq '[.[].createdAt | fromdateiso8601] | min' <<< "$ready")
-          age_hours=$(( ($(date +%s) - oldest) / 3600 ))
-          if [ "$FORCE" != true ] && [ "$count" -lt "$MIN_READY" ] && [ "$age_hours" -lt "$MAX_WAIT_HOURS" ]; then
-            echo "$count ready, the oldest ${age_hours}h old: waiting for $MIN_READY or ${MAX_WAIT_HOURS}h."
-            exit 0
-          fi
-          numbers=$(jq -r --argjson max "$MAX_PER_RUN" \
-            'sort_by(.createdAt) | .[0:$max] | map(.number) | join(" ")' <<< "$ready")
           echo "Fixing: $numbers"
           echo "numbers=$numbers" >> "$GITHUB_OUTPUT"
-          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base dev --state open \
-            --json number --jq '.[0].number // empty')
-          echo "pr=$pr" >> "$GITHUB_OUTPUT"
 
       # Two checkouts: `work`, which the fixer edits and the commit comes from, and `harness`, dev,
-      # whose `cw` runs the loop. On the bot's branch `work` holds code the model wrote in earlier
-      # runs; running the fixer from it would let the model loosen its own tools and prompt.
+      # whose `cw` runs the loop and the commit gate. On the bot's branch `work` holds code the
+      # model wrote in earlier runs; running the fixer from it would let the model loosen its own
+      # tools and prompt.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.pick.outputs.numbers != ''
         with:
@@ -192,20 +217,6 @@ jobs:
           path: harness
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
-
-      # On the open PR's branch, so the new commit stacks on it. Bringing dev in is left to the PR's
-      # "Update branch": a merge carrying dev's workflow changes can't be pushed with this token.
-      - name: Start from the open PR or dev
-        if: steps.pick.outputs.numbers != ''
-        working-directory: work
-        env:
-          PR: ${{ steps.pick.outputs.pr }}
-        run: |
-          if [ -n "$PR" ]; then
-            git checkout -B "$BRANCH" "origin/$BRANCH"
-          else
-            git checkout -B "$BRANCH" origin/dev
-          fi
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         if: steps.pick.outputs.numbers != ''
@@ -228,12 +239,19 @@ jobs:
           pnpm -C work install --frozen-lockfile
           pnpm -C harness install --frozen-lockfile --prod --filter "@repo/cli..."
 
+      # On the bot's branch while its PR is open (or its PR never opened), so the new commit
+      # stacks on it; else on dev. Bringing dev into an open PR is left to its "Update branch": a
+      # merge carrying dev's workflow changes can't be pushed with this token.
+      - name: Start where the fix goes
+        if: steps.pick.outputs.numbers != ''
+        run: node harness/packages/cli/src/cli.ts friction start --checkout work --branch "$BRANCH"
+
       # `pnpm cw friction fix`: Sonnet in a tool loop through the AI SDK (packages/friction-bot/src/fix.ts,
       # which holds the prompt and the tools), on the reports with only their trusted comments. Plain
       # API calls, which the promotional credit covers, where Claude Code's weren't. The tools can't
-      # write hooks, settings or .github/, and the checks they run get neither the API key nor the
-      # GitHub token in their environment. It stops at 150 steps or about $5. A failure prints
-      # `{ code, message }`.
+      # write hooks, settings, skills or .github/, and the checks they run get neither the API key
+      # nor the GitHub token in their environment. It stops at 150 steps or about $5. A failure
+      # prints `{ code, message }`.
       #
       # The key reaches it as a file, which it reads and deletes before the loop starts: in its
       # environment, a check could read it from /proc/<pid>/environ (packages/friction-bot/src/api-key.ts).
@@ -251,7 +269,6 @@ jobs:
         id: claude
         if: steps.pick.outputs.numbers != ''
         env:
-          GH_REPO: ${{ github.repository }}
           ANTHROPIC_API_KEY_FILE: ${{ runner.temp }}/anthropic-key
           NUMBERS: ${{ steps.pick.outputs.numbers }}
         run: |
@@ -262,68 +279,46 @@ jobs:
             --max-steps 150 --max-cost-usd 5 --json \
             > "$RUNNER_TEMP/$OUT_SUBDIR/result.json" || { cat "$RUNNER_TEMP/$OUT_SUBDIR/result.json"; exit 1; }
           cat "$RUNNER_TEMP/$OUT_SUBDIR/result.json"
-          echo "friction=$(jq '.friction | length > 0' "$RUNNER_TEMP/$OUT_SUBDIR/result.json")" >> "$GITHUB_OUTPUT"
 
+      # Lint, format:check, check-types, test and test:integration (the runner has Docker), then
+      # one commit, bundled for publish. It writes commit.json whatever happens, so publish can say
+      # why a fix didn't land; a failed check fails this step and the run.
       - name: Check and commit
-        id: commit
         if: steps.claude.outcome == 'success'
-        working-directory: work
         env:
           NUMBERS: ${{ steps.pick.outputs.numbers }}
         run: |
-          jq -e '.fixed and .skipped' "$RUNNER_TEMP/$OUT_SUBDIR/result.json" > /dev/null
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes."
-            exit 0
-          fi
-          forbidden=$(git diff --cached --name-only | grep -E '^(\.claude/hooks/|\.claude/settings[^/]*\.json$|\.github/)' || true)
-          if [ -n "$forbidden" ]; then
-            echo "::error::The fix touched paths only the user changes:"
-            echo "$forbidden"
-            exit 1
-          fi
-          # The same checks CI runs, so a red commit never reaches the PR.
-          pnpm lint
-          pnpm format:check
-          pnpm check-types
-          pnpm test
-          refs=$(jq -r --arg picked "$NUMBERS" \
-            '($picked | split(" ") | map(tonumber)) as $p | [.fixed[].number | select(. as $n | $p | index($n)) | "#\(.)"] | join(", ")' \
-            "$RUNNER_TEMP/$OUT_SUBDIR/result.json")
-          git -c user.name="github-actions[bot]" \
-            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -q -m "chore: address friction reports (${refs:-no report fixed})"
-          base=$(git rev-parse HEAD~1)
-          git bundle create "$RUNNER_TEMP/$OUT_SUBDIR/fix.bundle" "$base..$BRANCH"
-          echo "base=$base" > "$RUNNER_TEMP/$OUT_SUBDIR/base"
+          # $NUMBERS is split on purpose: one argument per report.
+          # shellcheck disable=SC2086
+          node harness/packages/cli/src/cli.ts friction commit $NUMBERS --checkout work \
+            --dir "$RUNNER_TEMP/$OUT_SUBDIR"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: steps.commit.outcome == 'success'
+        if: always() && steps.claude.outcome == 'success'
         with:
           name: friction-fix
           path: ${{ runner.temp }}/friction-out
           retention-days: 7
 
+  # Also when the commit step failed: publish files the fixer's own friction and says why the fix
+  # didn't land.
   publish:
     needs: fix
-    if: needs.fix.outputs.ran == 'true'
+    if: always() && needs.fix.outputs.ran == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
       issues: write
-      # To start CI on the PR: a push with this token doesn't trigger workflows, a dispatch does.
-      actions: write
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
       NUMBERS: ${{ needs.fix.outputs.numbers }}
-      PR: ${{ needs.fix.outputs.pr }}
-      OUT_SUBDIR: friction-out
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      # dev's code, whichever ref the run started from: the steps below run `cw` with this token.
-      # Its credentials stay, since "Push the commit" pushes with them; this job uploads no artifact.
+      # dev's code, whichever ref the run started from: `cw` runs here with this token. Its
+      # credentials stay, since `publish` pushes with them; this job uploads no artifact.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
@@ -334,163 +329,60 @@ jobs:
           name: friction-fix
           path: ${{ runner.temp }}/friction-out
 
-      # Only the reports this run picked count, whatever the answer names.
-      - name: Read the answer
-        run: |
-          picked=$(jq -nc --arg n "$NUMBERS" '$n | split(" ") | map(tonumber)')
-          jq --argjson picked "$picked" '{
-            fixed: [.fixed[] | select(.number as $n | $picked | index($n))],
-            skipped: [.skipped[] | select(.number as $n | $picked | index($n))]
-          }' "$RUNNER_TEMP/$OUT_SUBDIR/result.json" > "$RUNNER_TEMP/$OUT_SUBDIR/answer.json"
-          cat "$RUNNER_TEMP/$OUT_SUBDIR/answer.json"
-
-      - name: Push the commit
-        id: push
-        run: |
-          if [ ! -f "$RUNNER_TEMP/$OUT_SUBDIR/fix.bundle" ]; then
-            echo "No commit to push."
-            exit 0
-          fi
-          git fetch -q "$RUNNER_TEMP/$OUT_SUBDIR/fix.bundle" "refs/heads/$BRANCH:refs/remotes/bundle/$BRANCH"
-          # The fix job runs code the model edited, so the bundle is checked here, where the token
-          # can push: exactly one commit, whose parent is the base the fix job recorded, which must
-          # be the open PR's head or a commit of dev's (dev may have moved since). Then its paths.
-          if [ -n "$PR" ]; then trusted="origin/$BRANCH"; else trusted=origin/dev; fi
-          base=$(sed -n 's/^base=//p' "$RUNNER_TEMP/$OUT_SUBDIR/base")
-          tip="refs/remotes/bundle/$BRANCH"
-          if ! git merge-base --is-ancestor "$base" "$trusted" \
-            || { [ -n "$PR" ] && [ "$(git rev-parse "$base")" != "$(git rev-parse "$trusted")" ]; } \
-            || [ "$(git rev-list --count "$base..$tip")" != 1 ] \
-            || [ "$(git rev-parse "$tip~1")" != "$(git rev-parse "$base")" ]; then
-            echo "::error::The bundle isn't one commit on $trusted."
-            exit 1
-          fi
-          changed=$(git diff --name-only "$base" "$tip")
-          forbidden=$(grep -E '^(\.claude/hooks/|\.claude/settings[^/]*\.json$|\.github/)' <<< "$changed" || true)
-          if [ -n "$forbidden" ]; then
-            echo "::error::Refusing to push changes to: $forbidden"
-            exit 1
-          fi
-          if [ -n "$PR" ]; then
-            git push origin "refs/remotes/bundle/$BRANCH:refs/heads/$BRANCH"
-          else
-            # No open PR: the branch, if it's still there, is an old one of the bot's.
-            git push --force origin "refs/remotes/bundle/$BRANCH:refs/heads/$BRANCH"
-          fi
-          echo "pushed=true" >> "$GITHUB_OUTPUT"
-
-      - name: Open or update the PR
-        id: pr
-        if: steps.push.outputs.pushed == 'true'
-        run: |
-          {
-            echo "### $(date -u +'%Y-%m-%d %H:%M') UTC, [run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
-            echo
-            jq -r '.fixed[] | "- Closes #\(.number): \(.summary)"' "$RUNNER_TEMP/$OUT_SUBDIR/answer.json"
-            jq -r '.skipped[] | "- Skipped #\(.number) (now `ready-for-human`): \(.reason)"' "$RUNNER_TEMP/$OUT_SUBDIR/answer.json"
-          } > "$RUNNER_TEMP/$OUT_SUBDIR/section.md"
-          if [ -n "$PR" ]; then
-            gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$RUNNER_TEMP/$OUT_SUBDIR/body.md"
-            { echo; cat "$RUNNER_TEMP/$OUT_SUBDIR/section.md"; } >> "$RUNNER_TEMP/$OUT_SUBDIR/body.md"
-            gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/$OUT_SUBDIR/body.md"
-            echo "number=$PR" >> "$GITHUB_OUTPUT"
-          else
-            {
-              echo "Friction reports fixed by \`.github/workflows/friction-fix.yml\` (Sonnet). Each run adds a commit and a section below while this PR is open."
-              echo
-              echo "Review it like any agent's PR. Reports it passed on are labelled \`ready-for-human\`."
-              echo
-              cat "$RUNNER_TEMP/$OUT_SUBDIR/section.md"
-            } > "$RUNNER_TEMP/$OUT_SUBDIR/body.md"
-            url=$(gh pr create --repo "$GITHUB_REPOSITORY" --base dev --head "$BRANCH" \
-              --title "chore: address friction reports (automated)" --body-file "$RUNNER_TEMP/$OUT_SUBDIR/body.md")
-            echo "number=${url##*/}" >> "$GITHUB_OUTPUT"
-          fi
-          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
-
-      - name: Relabel the reports
-        env:
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-        run: |
-          answer="$RUNNER_TEMP/$OUT_SUBDIR/answer.json"
-          footer=$'\n\n---\n_From `.github/workflows/friction-fix.yml` (Sonnet)._'
-          to_human() {
-            gh issue edit "$1" --repo "$GITHUB_REPOSITORY" --remove-label ready-for-agent --add-label ready-for-human
-            gh issue comment "$1" --repo "$GITHUB_REPOSITORY" --body "$2$footer"
-          }
-          for n in $NUMBERS; do
-            fixed=$(jq -r --argjson n "$n" '.fixed[] | select(.number == $n) | .summary' "$answer")
-            skipped=$(jq -r --argjson n "$n" '.skipped[] | select(.number == $n) | .reason' "$answer")
-            if [ -n "$skipped" ]; then
-              to_human "$n" "Passed on: $skipped"
-            elif [ -n "$fixed" ] && [ -n "$PR_NUMBER" ]; then
-              gh issue edit "$n" --repo "$GITHUB_REPOSITORY" --remove-label ready-for-agent
-              gh issue comment "$n" --repo "$GITHUB_REPOSITORY" --body "Fixed in #$PR_NUMBER: $fixed$footer"
-            elif [ -n "$fixed" ]; then
-              to_human "$n" "The agent called this fixed but changed no file: $fixed"
-            else
-              # Left in ready-for-agent it would be picked again every run.
-              to_human "$n" "The agent's answer didn't mention this report."
-            fi
-          done
-
-      # The fixer's own friction (`friction` in its answer, at most 3), filed as new reports here,
-      # where the token can write. Each is filed `ready-for-human`, not triaged: its text is the
-      # model's, so a person reads it before relabelling it `ready-for-agent`, and no run's answer
-      # becomes the next run's instructions unread. (An issue this token files fires no workflow.)
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        if: needs.fix.outputs.friction == 'true'
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: needs.fix.outputs.friction == 'true'
         with:
           node-version: 24
 
-      - if: needs.fix.outputs.friction == 'true'
-        run: pnpm install --frozen-lockfile --prod --filter "@repo/cli..."
+      - run: pnpm install --frozen-lockfile --prod --filter "@repo/cli..."
 
-      - name: File the fixer's own friction
-        if: needs.fix.outputs.friction == 'true'
-        env:
-          GH_REPO: ${{ github.repository }}
+      # The fixer's friction first (each `ready-for-human`, untriaged: its text is the model's),
+      # then the push (never over work still wanted), the PR, and each report's label and comment.
+      # A step that fails is listed in `errors` and the rest still run.
+      - name: Publish the fix
         run: |
-          refs=$(sed 's/[0-9]\+/#&/g; s/ /, /g' <<< "$NUMBERS")
-          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          # The answer passed through a job that ran model-edited scripts, so its limits are applied
-          # again here: at most 3 entries, each all strings, cut to a sane length.
-          jq -c '[.friction // [] | .[]
-              | select(type == "object" and all(.title, .what, .cost, .where, .fix; type == "string"))]
-            | .[0:3][] | .title |= .[0:200] | (.what, .cost, .where, .fix) |= .[0:4000]' \
-            "$RUNNER_TEMP/$OUT_SUBDIR/result.json" | while read -r entry; do
-            field() { jq -r --arg name "$1" '.[$name]' <<< "$entry"; }
-            # `--name=value`, so a value the model wrote can't be read as a flag.
-            args=("--title=$(field title)"
-              "--what=$(field what)"$'\n\n'"_Found by [friction-fix.yml]($run_url) (Sonnet) while fixing $refs._"
-              "--cost=$(field cost)" "--where=$(field where)")
-            if [ -n "$(field fix)" ]; then args+=("--fix=$(field fix)"); fi
-            filed=$(node packages/cli/src/cli.ts friction report --json "${args[@]}")
-            echo "$filed"
-            gh issue edit "$(jq -r .number <<< "$filed")" --add-label ready-for-human
-          done
+          # $NUMBERS is split on purpose: one argument per report.
+          # shellcheck disable=SC2086
+          node packages/cli/src/cli.ts friction publish $NUMBERS --dir "$RUNNER_TEMP/friction-out" \
+            --run-url "$RUN_URL" --branch "$BRANCH" --json > "$RUNNER_TEMP/publish.json" \
+            || { cat "$RUNNER_TEMP/publish.json"; exit 1; }
+          cat "$RUNNER_TEMP/publish.json"
+          jq -e '.errors | length == 0' "$RUNNER_TEMP/publish.json" > /dev/null
 
-  # A run that fails after picking reports hands them to a human, so they aren't retried every run.
+  # A run that stopped before publish labelled its reports hands them to a human, so they aren't
+  # retried every run. Only those still `ready-for-agent`: publish labelled the rest for what
+  # happened to them.
   hand-back:
     needs: [fix, publish]
     if: >-
       always() && needs.fix.outputs.numbers != ''
-      && (needs.fix.result == 'failure' || needs.publish.result == 'failure')
+      && (needs.fix.result != 'success' || needs.publish.result != 'success')
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
+      contents: read
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
       NUMBERS: ${{ needs.fix.outputs.numbers }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - run: pnpm install --frozen-lockfile --prod --filter "@repo/cli..."
+
       - run: |
-          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          for n in $NUMBERS; do
-            gh issue edit "$n" --repo "$GITHUB_REPOSITORY" --remove-label ready-for-agent --add-label ready-for-human
-            gh issue comment "$n" --repo "$GITHUB_REPOSITORY" \
-              --body $'The automated fix failed ([run]('"$run_url"$')), so this needs a human.\n\n---\n_From `.github/workflows/friction-fix.yml`._'
-          done
+          # $NUMBERS is split on purpose: one argument per report.
+          # shellcheck disable=SC2086
+          node packages/cli/src/cli.ts friction hand-back $NUMBERS --run-url "$RUN_URL"

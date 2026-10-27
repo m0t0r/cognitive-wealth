@@ -251,6 +251,52 @@ export async function triageReport(
   };
 }
 
+type TriageBacklogArgs = Omit<TriageReportArgs, "number" | "retriage"> & {
+  /** At most this many reports a run. */
+  limit: number;
+  /** A report filed more recently is left to the triage run its label started. */
+  olderThanMinutes: number;
+  now?: Date;
+};
+
+/**
+ * Triages the open friction reports that carry no triage label, oldest first: those whose own
+ * triage run failed or never started (one filed with a workflow's token starts none). A report it
+ * can't triage is recorded in `failed`, and the rest still go.
+ */
+export async function triageBacklog(
+  github: GitHub,
+  { decide, limit, olderThanMinutes, now = new Date(), dryRun }: TriageBacklogArgs,
+) {
+  const cutoff = now.getTime() - olderThanMinutes * 60_000;
+  const open = await github.list({ state: "open", labels: [FRICTION], limit: 200 });
+  const waiting = open
+    .filter(({ labels }) => !TRIAGED.some((label) => labels.includes(label)))
+    .filter(({ createdAt }) => Date.parse(createdAt) <= cutoff)
+    .toSorted((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+    .slice(0, limit);
+  const triaged: { issue: number; decision: Triage["decision"] }[] = [];
+  const failed: { issue: number; code: string; message: string }[] = [];
+  for (const { number } of waiting) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- one at a time, so a duplicate sees the last close
+      const outcome = await triageReport(github, { number, decide, retriage: false, dryRun });
+      if (outcome.status === "triaged") triaged.push({ issue: number, decision: outcome.decision });
+    } catch (error) {
+      const code =
+        error instanceof Error && "code" in error && typeof error.code === "string"
+          ? error.code
+          : "error";
+      failed.push({
+        issue: number,
+        code,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return { triaged, failed };
+}
+
 /** Reports `numbers`, with trusted comments and triage's brief only, as the fixer's prompt takes them. */
 export async function gatherReports(github: GitHub, { numbers }: { numbers: number[] }) {
   const issues = await Promise.all(numbers.map((number) => github.view(number)));

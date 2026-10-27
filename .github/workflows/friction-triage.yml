@@ -2,7 +2,8 @@
 # `pnpm cw friction triage` (packages/cli/src/commands/friction.ts): Haiku reads the report beside
 # the open ones and CLAUDE.md, and only answers; the command then labels, comments or closes.
 # `ready-for-agent` reports are picked up by friction-fix.yml, which a `ready-for-agent` decision
-# dispatches. To see what it would decide for a report, run `pnpm cw friction triage <number> --dry-run` (with ANTHROPIC_API_KEY set).
+# dispatches, and whose hourly run also triages any report this workflow missed. To see what it
+# would decide for a report, run `pnpm cw friction triage <number> --dry-run` (with ANTHROPIC_API_KEY set).
 name: Friction triage
 
 on:
@@ -70,14 +71,13 @@ jobs:
           cat "$RUNNER_TEMP/triage.json"
           echo "decision=$(jq -r '.decision // empty' "$RUNNER_TEMP/triage.json")" >> "$GITHUB_OUTPUT"
 
-      # A report just labelled `ready-for-agent` asks friction-fix.yml to look now, rather than
-      # leaving it to the schedule, which GitHub runs best-effort and may skip. `force=false` keeps
-      # the fix job's batching rule (MIN_READY, MAX_WAIT_HOURS). A dispatch is the one event this
-      # job's token can start a workflow with.
-      - name: Ask friction-fix.yml to look
+      # A report just labelled `ready-for-agent` is fixed now, rather than left to the schedule,
+      # which GitHub runs best-effort and may skip for hours. A dispatch is the one event this job's
+      # token can start a workflow with.
+      - name: Start friction-fix.yml
         if: steps.triage.outputs.decision == 'ready-for-agent'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           REF: ${{ github.event.repository.default_branch }}
-        run: gh workflow run friction-fix.yml --ref "$REF" -f force=false
+        run: gh workflow run friction-fix.yml --ref "$REF"
