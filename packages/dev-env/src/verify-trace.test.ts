@@ -77,12 +77,18 @@ function fakeSystem({
   }: SendArgs): Promise<Record<string, unknown>> => {
     const expression = typeof params.expression === "string" ? params.expression : "";
     const calibration = method === "Runtime.evaluate" && expression.includes("performance.now");
+    const writes = /^\((.*)\)\.forEach/.exec(expression)?.[1];
+    const reads = expression === "Object.entries(localStorage)";
     const detail =
       method.startsWith("Emulation") || shown.has(method)
         ? ` ${JSON.stringify(params)}`
         : calibration
           ? " (timed work)"
-          : "";
+          : reads
+            ? " (read localStorage)"
+            : writes
+              ? ` (write localStorage ${writes})`
+              : "";
     log.push(`${method}${detail}${sessionId ? ` @${sessionId}` : ""}`);
     if (method === failOn) throw new Error(`${method} failed`);
     if (method === hangOn) return new Promise(() => {});
@@ -113,6 +119,8 @@ function fakeSystem({
         if (calibration) {
           return { result: { value: throttlingApplies ? 40 * cpuRate : 40 } };
         }
+        if (reads) return { result: { value: [["theme", "dark"]] } };
+        if (writes) return { result: {} };
         if (sessionId === "page-1") return { result: { value: viewport } };
         return {
           result: {
@@ -194,8 +202,10 @@ describe("traceSession", () => {
       "Target.getTargets",
       "Target.attachToTarget",
       "Runtime.evaluate @page-1",
-      // The session's cookies, so the trace is signed in as the session is.
+      // The session's localStorage and cookies, so the trace is signed in, with the session's
+      // settings.
       "Target.getBrowserContexts",
+      "Runtime.evaluate (read localStorage) @page-1",
       'Storage.getCookies {"browserContextId":"c-1"}',
       "close",
       // A Chrome of its own, nothing else attached: agent-browser makes any new tab in its browser
@@ -212,6 +222,7 @@ describe("traceSession", () => {
       // The MCP's starting point, a tab already on the page, then its sequence: about:blank, the
       // trace started, the page loaded, 5 s.
       `Page.navigate {"url":"${APP_PAGE}"} @trace-1`,
+      'Runtime.evaluate (write localStorage [["theme","dark"]]) @trace-1',
       'Page.navigate {"url":"about:blank"} @trace-1',
       "Tracing.start @trace-1",
       CATEGORIES,
@@ -250,6 +261,42 @@ describe("traceSession", () => {
     expect(log).toContain(`Storage.setCookies {"cookies":[${JSON.stringify(COOKIE)}]}`);
   });
 
+  it("carries the session's localStorage into its Chrome before the traced load", async () => {
+    // The app keeps settings such as the theme there: the trace renders what the session renders.
+    const { system, log } = fakeSystem();
+
+    await traceSession({ checkout: checkout(), name: "x", steps: [], throttle: false, system });
+
+    expect(log).toContain("Runtime.evaluate (read localStorage) @page-1");
+    const written = log.indexOf(
+      'Runtime.evaluate (write localStorage [["theme","dark"]]) @trace-1',
+    );
+    expect(written).toBeGreaterThan(-1);
+    expect(written).toBeLessThan(log.indexOf("Tracing.start @trace-1"));
+  });
+
+  it("refuses as no_browser when the session has no browser open", async () => {
+    const { system } = fakeSystem();
+    system.agentBrowser = vi.fn(() => {
+      throw new Error("no such session");
+    });
+
+    await expect(
+      traceSession({ checkout: checkout(), name: "x", steps: [], throttle: false, system }),
+    ).rejects.toMatchObject({ code: "no_browser", message: expect.stringContaining(SESSION) });
+  });
+
+  it("refuses as no_page when the session isn't on a web page, before reaching its browser", async () => {
+    // agent-browser opens a fresh browser on about:blank for a session it doesn't know.
+    const { system, log } = fakeSystem();
+    system.agentBrowser = vi.fn((args: string[]) => (args.includes("url") ? "about:blank" : ""));
+
+    await expect(
+      traceSession({ checkout: checkout(), name: "x", steps: [], throttle: false, system }),
+    ).rejects.toMatchObject({ code: "no_page", message: expect.stringContaining("about:blank") });
+    expect(log).toEqual([]);
+  });
+
   it("refuses as hidden_tab when its tab isn't visible, since Chrome records no LCP then", async () => {
     const { system, log } = fakeSystem({ visibility: "hidden" });
 
@@ -273,8 +320,9 @@ describe("traceSession", () => {
     });
 
     const blank = log.indexOf('Page.navigate {"url":"about:blank"} @trace-1');
-    expect(log.slice(blank - 3, blank)).toEqual([
+    expect(log.slice(blank - 4, blank)).toEqual([
       `Page.navigate {"url":"${APP_PAGE}"} @trace-1`,
+      'Runtime.evaluate (write localStorage [["theme","dark"]]) @trace-1',
       // A fixed piece of work timed unthrottled, twice for a settled JIT.
       "Runtime.evaluate (timed work) @trace-1",
       "Runtime.evaluate (timed work) @trace-1",

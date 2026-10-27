@@ -554,13 +554,12 @@ export function verifyCommands({
           const env = await verify();
           if (dryRun) {
             const { verifyResources } = await import("@repo/dev-env/names");
-            const { join } = await import("node:path");
-            const mode: "load" | "interaction" = steps.length > 0 ? "interaction" : "load";
+            const { traceFileOf, traceModeOf } = await import("@repo/dev-env/verify-trace");
             return {
               session: session ?? verifyResources(env.worktreeId).session,
-              mode,
+              mode: traceModeOf(steps),
               throttled: throttle,
-              file: join(env.top, ".dev/perf", `${name}.trace.json.gz`),
+              file: traceFileOf({ top: env.top, name }),
               dryRun: true,
             };
           }
@@ -573,7 +572,22 @@ export function verifyCommands({
           });
           return { ...traced, dryRun: false };
         } catch (error) {
-          return c.error(refusal(error));
+          const refused = refusal(error);
+          return c.error(
+            refused.code === "no_browser"
+              ? {
+                  ...refused,
+                  cta: {
+                    commands: [
+                      {
+                        command: "verify browser start",
+                        description: "Open the session signed in, then trace again",
+                      },
+                    ],
+                  },
+                }
+              : refused,
+          );
         }
       },
     })
