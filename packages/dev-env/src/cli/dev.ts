@@ -17,11 +17,13 @@ await sweep(mainCheckout);
 let token: string | undefined;
 if (worktreeId) {
   try {
-    const { record, created } = await setUpWorktree({ ...checkout, worktreeId });
+    const { record, created, ingested } = await setUpWorktree({ ...checkout, worktreeId });
     token = record.token;
+    const deliveries = ingested.map(({ asOf }) => asOf).join(", ");
     console.log(
       `${created ? "Created, migrated and seeded" : "Migrated"} this worktree's database ` +
-        `${record.database} (verification Postgres, :5433); Redis keys under ${record.redisPrefix}.`,
+        `${record.database} (verification Postgres, :5433); Redis keys under ${record.redisPrefix}.` +
+        (deliveries ? ` Ingested the custodian's example Deliveries for ${deliveries}.` : ""),
     );
   } catch (error) {
     // Never fall back to the dev stack: that's the shared data this setup keeps worktrees off.

@@ -14,10 +14,9 @@
 // (ADR 0026).
 import { isIP } from "node:net";
 import { Cli, z } from "incur";
-import { CliError } from "@repo/db/cli/cli-error";
 import type { Checkout } from "@repo/dev-env/checkout";
-import type { DomainCalls } from "@repo/dev-env/populate";
 import type { Dependencies } from "../dependencies.ts";
+import { domainCalls } from "../domain-calls.ts";
 import { fromInvocation } from "../paths.ts";
 import { refusal } from "../refusal.ts";
 
@@ -121,40 +120,6 @@ function stopFailed({ error, retry }: { error: unknown; retry: string }) {
     message: error instanceof Error ? error.message : String(error),
     retryable: true,
     cta: { commands: [{ command: retry, description: "Retry once the cause is fixed" }] },
-  };
-}
-
-/**
- * `cw db seed`'s and `cw custodian ingest`'s own calls, on a verification database: for this
- * checkout's code only, since a `--ref`'s schema may differ.
- */
-async function domainCalls(openDatabase: Dependencies["openDatabase"]): Promise<DomainCalls> {
-  const { WORLD_FILE, seed } = await import("./db.ts");
-  const { WORLD_FIRM, ingest } = await import("./custodian.ts");
-  return {
-    async seed(target) {
-      await seed({
-        world: WORLD_FILE,
-        dryRun: false,
-        openDatabase: () => openDatabase({ target }),
-      });
-    },
-    async ingest({ target, asOf, root }) {
-      const { result } = await ingest({
-        asOf,
-        firm: WORLD_FIRM,
-        root,
-        dryRun: false,
-        openDatabase: () => openDatabase({ target }),
-      });
-      if (result.status === "refused") {
-        throw new CliError({
-          code: result.reason,
-          message: `Refused the example Delivery for ${asOf}: ${result.message}.`,
-        });
-      }
-      return result.status;
-    },
   };
 }
 

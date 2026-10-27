@@ -131,6 +131,10 @@ function devEnv({
     setUpWorktree: vi.fn(async () => ({
       record: { ...RESOURCES, id: "feat-x", path: WORKTREE },
       created: true,
+      ingested: [
+        { asOf: "2026-03-02", status: "ingested" as const },
+        { asOf: "2026-03-06", status: "ingested" as const },
+      ],
     })),
     teardownTargetAt: vi.fn(() => target),
     tearDown: vi.fn(tearDown),
@@ -148,6 +152,10 @@ describe("cw dev env", () => {
       database: RESOURCES.database,
       redisPrefix: RESOURCES.redisPrefix,
       created: true,
+      ingested: [
+        { asOf: "2026-03-02", status: "ingested" },
+        { asOf: "2026-03-06", status: "ingested" },
+      ],
       envFile: join(WORKTREE, "apps/web/.env.local"),
       pruned: ["wt_gone: dropped"],
       warnings: [],
@@ -157,6 +165,7 @@ describe("cw dev env", () => {
       top: WORKTREE,
       mainCheckout: "/repo",
       worktreeId: "feat-x",
+      domain: { seed: expect.any(Function), ingest: expect.any(Function) },
     });
   });
 

@@ -1,13 +1,15 @@
-// Prepares a worktree's dev environment: its own database on the verification Postgres (created,
-// migrated and seeded the first time, migrated after that), and an `apps/web/.env.local` that
-// points at it, its Redis prefix and the shared verification Mailpit. Node runs the CLIs that
-// import this directly (type stripping), so relative imports keep their `.ts` extension.
-import { execFileSync } from "node:child_process";
+// Prepares a worktree's dev environment: its own database on the verification Postgres (the first
+// time created, migrated, seeded and given the custodian's example Deliveries, as a verification
+// database is, #223; migrated after that), and an `apps/web/.env.local` that points at it, its
+// Redis prefix and the shared verification Mailpit. Node runs the CLIs that import this directly
+// (type stripping), so relative imports keep their `.ts` extension.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Checkout } from "./checkout.ts";
 import { VERIFY_PORTS, worktreeEnvFile } from "./env-file.ts";
 import { worktreeResources } from "./names.ts";
+import { type DomainCalls, type Populated, populate } from "./populate.ts";
+import { type RunResult, checked, runCommand } from "./processes.ts";
 import { type WorktreeRecord, readRecord, writeRecord } from "./registry.ts";
 import {
   assertSecrets,
@@ -17,25 +19,46 @@ import {
   startServices,
 } from "./services.ts";
 
-type RunArgs = { top: string; script: string[]; env: Record<string, string> };
+type ExecArgs = { command: string; args: string[]; cwd: string; env: Record<string, string> };
 
-/** Runs a repo script (`pnpm …`) in `top` with `env` on top of this process's environment. */
-function run({ top, script, env }: RunArgs) {
-  execFileSync("pnpm", ["--silent", ...script], {
-    cwd: top,
-    env: { ...process.env, ...env },
-    // Captured, and shown only when the step fails (execFileSync puts it on the error).
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-}
+/** What setting a worktree up reaches outside itself for; a test hands in its own. */
+export type SetupSystem = {
+  assertSecrets: typeof assertSecrets;
+  startServices: typeof startServices;
+  createDatabase: typeof createDatabase;
+  dropDatabase: typeof dropDatabase;
+  /** Runs a command to its end, captured. */
+  exec: (args: ExecArgs) => RunResult;
+  populate: typeof populate;
+};
+
+export const defaultSetupSystem: SetupSystem = {
+  assertSecrets,
+  startServices,
+  createDatabase,
+  dropDatabase,
+  exec: runCommand,
+  populate,
+};
+
+type SetUpWorktreeArgs = Checkout & {
+  worktreeId: string;
+  /** The seed and Ingestion as direct calls (`cw`'s own); without them, `pnpm cw … --json` runs. */
+  domain?: DomainCalls | undefined;
+  system?: SetupSystem;
+};
 
 /**
  * Sets up the worktree `checkout` and returns its record. The record is written first, so a crash
  * part-way still leaves teardown and prune something to find.
  */
-export async function setUpWorktree(checkout: Checkout & { worktreeId: string }) {
+export async function setUpWorktree({
+  system = defaultSetupSystem,
+  domain,
+  ...checkout
+}: SetUpWorktreeArgs) {
   const { top, mainCheckout, worktreeId } = checkout;
-  assertSecrets(mainCheckout);
+  system.assertSecrets(mainCheckout);
   const resources = worktreeResources(worktreeId);
   const record: WorktreeRecord = {
     ...readRecord({ mainCheckout, token: resources.token }),
@@ -45,32 +68,36 @@ export async function setUpWorktree(checkout: Checkout & { worktreeId: string })
   };
   writeRecord({ mainCheckout, record });
 
-  startServices({ mainCheckout, top });
+  system.startServices({ mainCheckout, top });
   const { database } = resources;
   const secrets = secretsDir(mainCheckout);
   const url = (role: string) => `postgres://${role}@localhost:${VERIFY_PORTS.postgres}/${database}`;
-  const created = await createDatabase({ mainCheckout, database });
+  const created = await system.createDatabase({ mainCheckout, database });
+  let ingested: Populated["ingested"] = [];
   try {
-    run({
-      top,
-      script: ["--filter", "@repo/db", "db:migrate"],
-      env: {
-        DATABASE_URL: url("migrator"),
-        DATABASE_PASSWORD_FILE: join(secrets, "db_migrator_password"),
-      },
-    });
-    // Only a new database: a reseed after world/v0.json changed would refuse (SeedConflict), and
-    // the rows this worktree added since are its own.
+    // Only a new database is seeded and given the example Deliveries: a reseed after
+    // world/v0.json changed would refuse (SeedConflict), and the rows this worktree added since
+    // are its own.
     if (created) {
-      run({
-        top,
-        script: ["db:seed"],
-        env: { DATABASE_URL: url("app"), DATABASE_PASSWORD_FILE: join(secrets, "db_app_password") },
+      ({ ingested } = await system.populate({ checkout: top, url, secrets, domain }));
+    } else {
+      checked({
+        result: system.exec({
+          command: "pnpm",
+          args: ["--silent", "--filter", "@repo/db", "db:migrate"],
+          cwd: top,
+          env: {
+            DATABASE_URL: url("migrator"),
+            DATABASE_PASSWORD_FILE: join(secrets, "db_migrator_password"),
+          },
+        }),
+        code: "migrate_failed",
+        what: `Migrating ${url("migrator")}`,
       });
     }
   } catch (error) {
     // A half-set-up database would never be seeded again (the next run finds it exists).
-    if (created) await dropDatabase({ mainCheckout, database });
+    if (created) await system.dropDatabase({ mainCheckout, database });
     throw error;
   }
 
@@ -78,5 +105,5 @@ export async function setUpWorktree(checkout: Checkout & { worktreeId: string })
     join(top, "apps/web/.env.local"),
     worktreeEnvFile({ secretsDir: secrets, database, redisPrefix: resources.redisPrefix }),
   );
-  return { record, created };
+  return { record, created, ingested };
 }

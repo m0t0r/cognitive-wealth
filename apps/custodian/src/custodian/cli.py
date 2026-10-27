@@ -240,7 +240,10 @@ def _known(error: Exception) -> CliError:
                 message=(
                     "DATABASE_URL is not set: point it at the custodian's own database, Compose's"
                     " custodian-db (localhost:5434 with compose.dev.yaml, as"
-                    " apps/custodian/README.md says). A git worktree has none of its own yet (#223)"
+                    " apps/custodian/README.md says). A git worktree has none of its own: its"
+                    " database gets the example Deliveries instead (pnpm dev ingests them when it"
+                    " creates it, or run pnpm cw custodian ingest <date> --root"
+                    " apps/custodian/fixtures/feed for 2026-03-02 and 2026-03-06)"
                 ),
             )
         case FactorFileMismatch():

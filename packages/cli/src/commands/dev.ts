@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { Cli, z } from "incur";
 import { CliError } from "@repo/db/cli/cli-error";
 import type { Dependencies } from "../dependencies.ts";
+import { domainCalls } from "../domain-calls.ts";
 import { fromInvocation } from "../paths.ts";
 import { refusal } from "../refusal.ts";
 import { shellQuoted } from "../shell-quoted.ts";
@@ -65,7 +66,17 @@ const envOutput = z.object({
   created: z
     .boolean()
     .optional()
-    .describe("true when the database was created, migrated and seeded; false when only migrated"),
+    .describe(
+      "true when the database was created, migrated, seeded and given the example Deliveries; " +
+        "false when only migrated",
+    ),
+  ingested: z
+    .array(z.object({ asOf: z.string(), status: z.enum(["ingested", "already_ingested"]) }))
+    .optional()
+    .describe(
+      "The custodian's example Deliveries (apps/custodian/fixtures/feed) ingested into Larkspur; " +
+        "empty unless created",
+    ),
   envFile: z.string().describe("The apps/web/.env.local written, pointing at them"),
   pruned: z.array(z.string()).describe("What removed worktrees left, torn down first"),
   warnings: z.array(z.string()).describe("What couldn't be torn down; retry with dev prune"),
@@ -109,7 +120,10 @@ const output = z.object({
     .describe("pnpm dev processes found only in the process table, in no live checkout"),
 });
 
-export function devCommands({ devEnv }: Pick<Dependencies, "devEnv">) {
+export function devCommands({
+  devEnv,
+  openDatabase,
+}: Pick<Dependencies, "devEnv" | "openDatabase">) {
   return Cli.create("dev", {
     description: "Local development: signing in, and the dev environments of git worktrees",
   })
@@ -152,8 +166,8 @@ export function devCommands({ devEnv }: Pick<Dependencies, "devEnv">) {
     .command("env", {
       description:
         "Set up this worktree's dev environment without starting the app: its own database on " +
-        "the verification Postgres (created, migrated and seeded the first time, migrated after " +
-        "that), its Redis prefix, and apps/web/.env.local pointing at them",
+        "the verification Postgres (created, migrated, seeded and given the custodian's example " +
+        "Deliveries the first time, migrated after that), its Redis prefix, and apps/web/.env.local pointing at them",
       hint: "pnpm dev does the same on every start. First it tears down removed worktrees' ones.",
       options: z.object({
         dryRun: z.boolean().default(false).describe("Name the environment, and set nothing up"),
@@ -173,12 +187,18 @@ export function devCommands({ devEnv }: Pick<Dependencies, "devEnv">) {
           }
           // What removed worktrees left goes first; a failure there doesn't stop this one.
           const { removed, failed } = await env.prune(mainCheckout);
-          const { record, created } = await env.setUpWorktree({ top, mainCheckout, worktreeId });
+          const { record, created, ingested } = await env.setUpWorktree({
+            top,
+            mainCheckout,
+            worktreeId,
+            domain: await domainCalls(openDatabase),
+          });
           return {
             ...named,
             database: record.database,
             redisPrefix: record.redisPrefix,
             created,
+            ingested,
             pruned: removed,
             warnings: failed.map(
               (line) => `Couldn't tear down what's left of a removed worktree: ${line}`,
