@@ -407,7 +407,21 @@ function firmFilter(tx: Database, { spec, firmId }: Omit<WriteTableArgs, "dir">)
         .select({ id: auditEvent.actorUserId })
         .from(auditEvent)
         .where(eq(auditEvent.organizationId, firmId));
-      const referenced = or(inArray(id, members), inArray(id, inviters), inArray(id, actors));
+      // Every history table's actors (ADR 0025), found by their column, so a new one counts too.
+      const editors = RECORD_TABLES.flatMap((record) => {
+        const changedBy = getTableColumns(record.table).changedByUserId;
+        if (changedBy === undefined || record.scope !== "firm_id") return [];
+        const firm = columnNamed({ spec: record, name: "firm_id" });
+        return [
+          inArray(id, tx.select({ id: changedBy }).from(record.table).where(eq(firm, firmId))),
+        ];
+      });
+      const referenced = or(
+        inArray(id, members),
+        inArray(id, inviters),
+        inArray(id, actors),
+        ...editors,
+      );
       if (referenced === undefined) throw new Error("firm_users has no condition");
       return referenced;
     }

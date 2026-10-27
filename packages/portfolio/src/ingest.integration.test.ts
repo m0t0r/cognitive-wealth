@@ -3,7 +3,12 @@ import { join } from "node:path";
 import type { Database } from "@repo/db";
 import { deactivateOrganization, reactivateOrganization } from "@repo/db/cli/organizations";
 import { withFirm } from "@repo/db/firm";
-import { organization } from "@repo/db/schema";
+import {
+  custodialAccountHistory,
+  custodianDelivery,
+  organization,
+  securityHistory,
+} from "@repo/db/schema";
 import { WORLD_FIRM_SLUG } from "@repo/db/seed-data";
 import { test } from "@repo/db/testing";
 import { seedDevWorld } from "@repo/households/seed";
@@ -216,6 +221,94 @@ describe("ingestDelivery", () => {
       tradeDate: "2026-03-03",
       postingDate: FRIDAY,
     });
+  });
+
+  // ADR 0025: the earlier details are kept, with the Delivery that replaced them.
+  test("keeps an Account's and a Security's earlier details, naming the Delivery that changed them", async ({
+    orm,
+    migratorOrm,
+  }) => {
+    const firmId = await seededFirm(orm);
+    await ingest(orm, { firmId, asOf: MONDAY });
+    const friday = await textOf({ source: FEED, key: `${FRIDAY}/accounts.csv` });
+    const securities = await textOf({ source: FEED, key: `${FRIDAY}/securities.csv` });
+    const source = await rewrittenDelivery({
+      base: FEED,
+      asOf: FRIDAY,
+      files: {
+        "accounts.csv": friday.replace("CW-000002,traditional_ira", "CW-000002,roth_ira"),
+        "securities.csv": securities.replace(
+          "BRWP,Brightwell Pharmaceuticals,stock",
+          "BRWP,Brightwell Pharma,stock",
+        ),
+      },
+    });
+
+    await ingest(orm, { firmId, asOf: FRIDAY, source });
+
+    const [delivery] = await migratorOrm
+      .select({ id: custodianDelivery.id })
+      .from(custodianDelivery)
+      .where(eq(custodianDelivery.asOfDate, FRIDAY));
+    expect(
+      await migratorOrm
+        .select({
+          accountNumber: custodialAccountHistory.accountNumber,
+          registrationType: custodialAccountHistory.registrationType,
+          openedOn: custodialAccountHistory.openedOn,
+          operation: custodialAccountHistory.operation,
+          validUntil: custodialAccountHistory.validUntil,
+          deliveryId: custodialAccountHistory.changedByDeliveryId,
+        })
+        .from(custodialAccountHistory)
+        .where(eq(custodialAccountHistory.changedByDeliveryId, delivery!.id)),
+    ).toEqual([
+      {
+        accountNumber: "CW-000002",
+        registrationType: "traditional_ira",
+        openedOn: "2026-03-02",
+        operation: "update",
+        validUntil: expect.any(Date),
+        deliveryId: delivery!.id,
+      },
+    ]);
+    expect(
+      await migratorOrm
+        .select({
+          identifier: securityHistory.identifier,
+          name: securityHistory.name,
+          kind: securityHistory.kind,
+          operation: securityHistory.operation,
+          deliveryId: securityHistory.changedByDeliveryId,
+        })
+        .from(securityHistory)
+        .where(eq(securityHistory.changedByDeliveryId, delivery!.id)),
+    ).toEqual([
+      {
+        identifier: "BRWP",
+        name: "Brightwell Pharmaceuticals",
+        kind: "stock",
+        operation: "update",
+        deliveryId: delivery!.id,
+      },
+    ]);
+  });
+
+  test("keeps no history when nothing changed", async ({ orm, migratorOrm }) => {
+    const firmId = await seededFirm(orm);
+    // Monday fills in the seed's empty Account details, which keeps their empty versions.
+    await ingest(orm, { firmId, asOf: MONDAY });
+    const history = async () => ({
+      accounts: await migratorOrm.select().from(custodialAccountHistory),
+      securities: await migratorOrm.select().from(securityHistory),
+    });
+    const afterMonday = await history();
+
+    await ingest(orm, { firmId, asOf: MONDAY });
+    await ingest(orm, { firmId, asOf: FRIDAY });
+
+    expect(afterMonday.accounts.map((row) => row.registrationType)).toEqual([null, null]);
+    expect(await history()).toEqual(afterMonday);
   });
 
   test("stores a Position with no price yet as empty, not zero", async ({ orm, migratorOrm }) => {

@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { createDatabase, databaseUrl, dropDatabase } from "@repo/testing/postgres";
 import { eq, sql } from "drizzle-orm";
+import { setActor } from "./actor";
 import { APP_PRIVILEGES } from "./app-privileges";
 import { connect } from "./connect";
 import { withFirm } from "./firm";
@@ -137,6 +138,7 @@ describe("app's writes", () => {
     await withFirm(orm, {
       firmId,
       query: async (tx) => {
+        await setActor(tx, { system: "test" });
         await tx
           .update(custodialAccount)
           .set({ registrationType: "individual", openedOn: "2020-01-02" })

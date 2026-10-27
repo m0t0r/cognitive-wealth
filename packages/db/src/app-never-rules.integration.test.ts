@@ -14,6 +14,7 @@ import {
   accountRole,
   auditEvent,
   custodialAccount,
+  custodialAccountHistory,
   custodialPosition,
   custodialTransaction,
   custodianDelivery,
@@ -21,9 +22,11 @@ import {
   householdMember,
   person,
   security,
+  securityHistory,
   securityPrice,
   worldSeed,
 } from "./schema";
+import { textArray } from "./sql-array";
 import { test } from "./testing";
 
 // postgres.js's Drizzle type, so `execute` takes the rows' type.
@@ -44,7 +47,14 @@ const FACTS: PgTable[] = [
  */
 const CUSTODIAN_RECORDS: PgTable[] = [custodialAccount, security];
 
-const NEVER_DELETED: PgTable[] = [...FACTS, ...CUSTODIAN_RECORDS];
+/**
+ * Earlier versions of rows (ADR 0025), which only the `record_history()` trigger writes, so `app`
+ * can neither skip a version nor edit or delete one.
+ */
+const HISTORY: PgTable[] = [custodialAccountHistory, securityHistory];
+
+const NEVER_UPDATED: PgTable[] = [...FACTS, ...HISTORY];
+const NEVER_DELETED: PgTable[] = [...FACTS, ...CUSTODIAN_RECORDS, ...HISTORY];
 
 /**
  * Cognitive Wealth's own tables whose rows `app` may change or remove, as far as its grants allow:
@@ -59,6 +69,7 @@ const MAY_CHANGE: PgTable[] = [accountRole, household, householdMember, person, 
 const GROUPS: Record<string, readonly string[]> = {
   facts: tableNames(FACTS),
   "Custodian records": tableNames(CUSTODIAN_RECORDS),
+  history: tableNames(HISTORY),
   "Better Auth": BETTER_AUTH_TABLES,
   "may change": tableNames(MAY_CHANGE),
 };
@@ -92,21 +103,18 @@ async function unsortedTables(db: PostgresDatabase): Promise<string[]> {
   });
 }
 
-/** A `text[]` literal; Drizzle would spread a plain array into a list of parameters. */
-function textArray(values: readonly string[]) {
-  return sql`array[${sql.join(
-    values.map((value) => sql`${value}`),
-    sql`, `,
-  )}]::text[]`;
-}
-
 /** Every rule `app`'s privileges break in this database, empty when none. */
 async function neverRuleBreaches(db: PostgresDatabase): Promise<string[]> {
   // has_any_column_privilege, since has_table_privilege sees only a table-wide `update`.
   const updates = await db.execute<{ breach: string }>(sql`
     select format('app may update %s', t.name) as breach
-    from unnest(${textArray(tableNames(FACTS))}) as t(name)
+    from unnest(${textArray(tableNames(NEVER_UPDATED))}) as t(name)
     where has_any_column_privilege('app', format('public.%I', t.name), 'UPDATE')
+  `);
+  const inserts = await db.execute<{ breach: string }>(sql`
+    select format('app may insert into %s', t.name) as breach
+    from unnest(${textArray(tableNames(HISTORY))}) as t(name)
+    where has_any_column_privilege('app', format('public.%I', t.name), 'INSERT')
   `);
   const deletes = await db.execute<{ breach: string }>(sql`
     select format('app may delete %s', t.name) as breach
@@ -145,7 +153,7 @@ async function neverRuleBreaches(db: PostgresDatabase): Promise<string[]> {
     ) as k(table_name, column_name)
     where has_column_privilege('app', format('public.%I', k.table_name), k.column_name, 'UPDATE')
   `);
-  return [...updates, ...deletes, ...truncates, ...identifiers, ...naturalKeys]
+  return [...updates, ...inserts, ...deletes, ...truncates, ...identifiers, ...naturalKeys]
     .map(({ breach }) => breach)
     .toSorted();
 }
@@ -175,6 +183,20 @@ describe("app's never-rules", () => {
 
     expect(await neverRuleBreaches(migratorOrm)).toEqual(["app may update custodial_position"]);
   });
+
+  // A single column for `update`, since a table-wide one also breaks the identifier rules.
+  test.for([
+    ["insert into", sql`grant insert on table security_history to app`],
+    ["update", sql`grant update (name) on table security_history to app`],
+    ["delete", sql`grant delete on table security_history to app`],
+  ] as const)(
+    "report app being able to %s a history table",
+    async ([verb, grant], { migratorOrm }) => {
+      await migratorOrm.execute(grant);
+
+      expect(await neverRuleBreaches(migratorOrm)).toEqual([`app may ${verb} security_history`]);
+    },
+  );
 
   test("report app updating a column that identifies a row", async ({ migratorOrm }) => {
     await migratorOrm.execute(sql`grant update (identifier) on table security to app`);
