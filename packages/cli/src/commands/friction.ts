@@ -230,7 +230,7 @@ export function frictionCommands({ github, claude }: Pick<Dependencies, "github"
           .describe("What was (or with --dry-run, would be) done, in order"),
         dryRun: z.boolean(),
       }),
-      examples: [{ args: { issue: 240 }, options: { dryRun: true }, description: "Preview it" }],
+      examples: [{ args: { issue: 240 }, description: "Add --dry-run to preview it" }],
       mcp: false,
       async run(c) {
         try {
