@@ -98,10 +98,15 @@ Sign-in is rate limited per client IP, and everything you run locally comes from
 
 ```sh
 pnpm dev:sign-in owner@cognitive-wealth.test --app http://localhost:3000 --ip 10.77.0.1
-agent-browser --state .dev/auth/owner@cognitive-wealth.test.json \
+agent-browser --session owner --state .dev/auth/owner@cognitive-wealth.test.json \
   --headers '{"x-forwarded-for":"10.77.0.1"}' open http://localhost:3000
 pnpm dev:sign-in admin@cognitive-wealth.test --app http://localhost:3000 --ip 10.77.0.2
+agent-browser --session admin --state .dev/auth/admin@cognitive-wealth.test.json \
+  --headers '{"x-forwarded-for":"10.77.0.2"}' open http://localhost:3000
+agent-browser --session admin snapshot -i      # every later call: --session only
 ```
+
+`--state` and `--headers` go on the `open` that starts a session, and nowhere else. The headers stay with the session, so later calls and navigations still send them, but `--state` on a session that's already running leaves it on `about:blank` without an error, and the next `snapshot` is empty (#225). That's easy to hit with a wrapper script that adds both flags to every call. To load a different state, `close` the session first.
 
 `--ip` takes one IPv4 or IPv6 address and sends it as `x-forwarded-for` on the sign-in request and the verify call (with `--link`, on the request only). Behind portless (`pnpm dev`) it doesn't help: the proxy appends its own hop, and a header holding more than one address doesn't count as a client IP unless `AUTH_TRUSTED_PROXIES` names the proxy.
 
