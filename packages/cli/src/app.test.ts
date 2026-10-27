@@ -21,6 +21,8 @@ describe("cw", () => {
       { name: "org deactivate" },
       { name: "org export" },
       { name: "org reactivate" },
+      { name: "verify browser stop" },
+      { name: "verify stop" },
     ]);
   });
 

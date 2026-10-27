@@ -9,6 +9,7 @@ import { dbCommands } from "./commands/db.ts";
 import { devCommands } from "./commands/dev.ts";
 import { frictionCommands } from "./commands/friction.ts";
 import { orgCommands } from "./commands/org.ts";
+import { verifyCommands } from "./commands/verify.ts";
 import { type Dependencies, defaultDependencies } from "./dependencies.ts";
 
 /** Every command group `cw` mounts, apart from the root so a test can mount them on its own. */
@@ -20,6 +21,7 @@ export function commandGroups(dependencies: Dependencies) {
     custodianCommands(dependencies),
     cveCommands(dependencies),
     dbCommands(dependencies),
+    verifyCommands(dependencies),
   ];
 }
 

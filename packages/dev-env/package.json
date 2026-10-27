@@ -9,7 +9,8 @@
     "./env-file": "./src/env-file.ts",
     "./prune": "./src/prune.ts",
     "./setup": "./src/setup.ts",
-    "./teardown": "./src/teardown.ts"
+    "./teardown": "./src/teardown.ts",
+    "./verify": "./src/verify.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",

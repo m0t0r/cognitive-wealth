@@ -1,5 +1,5 @@
 // What `cw`'s commands reach outside themselves for: the database, the checkout and its dev
-// environment, GitHub, Claude, and the cve.now scan. `createCli` takes them as one object, so a
+// environment, what verifier-web left, GitHub, Claude, and the cve.now scan. `createCli` takes them as one object, so a
 // test hands in its own (a test database, a fake sweep, issues in memory, a canned answer) and runs
 // the real command in-process. The defaults load their modules only when a command asks, so
 // `cw dev prune` never loads the database schema and `cw org …` never loads `@repo/dev-env` or
@@ -41,6 +41,16 @@ export type DevEnv = import("@repo/dev-env/checkout").Checkout & {
   tearDown: typeof import("@repo/dev-env/teardown").tearDown;
 };
 
+/** What the verifier-web skill's runs from this checkout left, and how to remove it. */
+export type Verify = import("@repo/dev-env/checkout").Checkout & {
+  verifyServersOf: typeof import("@repo/dev-env/verify").verifyServersOf;
+  stopVerifyServers: typeof import("@repo/dev-env/verify").stopVerifyServers;
+  refCheckoutsOf: typeof import("@repo/dev-env/verify").refCheckoutsOf;
+  removeRefCheckouts: typeof import("@repo/dev-env/verify").removeRefCheckouts;
+  chromeHolder: typeof import("@repo/dev-env/verify").chromeHolder;
+  releaseChrome: typeof import("@repo/dev-env/verify").releaseChrome;
+};
+
 /** The Claude calls behind `cw friction`, each needing `ANTHROPIC_API_KEY`. */
 export type Claude = {
   /** One triage decision (Haiku), given the gathered report; the repo's guides are added. */
@@ -65,6 +75,7 @@ export type Dependencies = {
   /** A connection of one, on `DATABASE_URL` or `apps/web/.env.local`'s; the command closes it. */
   openDatabase: (args?: OpenDatabaseArgs) => Promise<OpenedDatabase>;
   devEnv: () => Promise<DevEnv>;
+  verify: () => Promise<Verify>;
   /** This repository's issues, through `gh`. */
   github: () => Promise<GitHub>;
   claude: () => Promise<Claude>;
@@ -140,6 +151,19 @@ export const defaultDependencies: Dependencies = {
       setUpWorktree,
       teardownTargetAt,
       tearDown,
+    };
+  },
+  async verify() {
+    const { checkoutAt } = await import("@repo/dev-env/checkout");
+    const verify = await import("@repo/dev-env/verify");
+    return {
+      ...checkoutAt(process.cwd()),
+      verifyServersOf: verify.verifyServersOf,
+      stopVerifyServers: verify.stopVerifyServers,
+      refCheckoutsOf: verify.refCheckoutsOf,
+      removeRefCheckouts: verify.removeRefCheckouts,
+      chromeHolder: verify.chromeHolder,
+      releaseChrome: verify.releaseChrome,
     };
   },
   async github() {

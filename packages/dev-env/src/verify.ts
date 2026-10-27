@@ -1,15 +1,15 @@
-// What the verifier-web skill leaves behind for one checkout, and how teardown removes it: the
-// production servers its `start-app.sh` runs (pidfiles under the main checkout's
-// `.dev/verify/<token>/`, which outlive the worktree), the `--ref` checkouts it builds
-// (`.dev/worktrees/<token>-<sha>`) and the shared headless Chrome while this checkout holds it
-// (`.dev/verify/chrome.*`), and the Compose project its `compose.sh` runs. Its databases are dropped with the worktree's own (`teardown.ts`).
+// What the verifier-web skill leaves behind for one checkout, and how `cw verify stop`,
+// `cw verify browser stop` and teardown remove it: the production servers its `start-app.sh`
+// runs (pidfiles under the main checkout's `.dev/verify/<token>/`, which outlive the worktree),
+// the `--ref` checkouts it builds (`.dev/worktrees/<token>-<sha>`) and the shared headless Chrome
+// while this checkout holds it (`.dev/verify/chrome.*`), and the Compose project its `compose.sh`
+// runs. Its databases are dropped with the worktree's own (`teardown.ts`).
 // Node runs the CLIs that import this directly (type stripping), so relative imports keep their
 // `.ts` extension.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { tokenOfRefCheckout } from "./names.ts";
+import { basename, join } from "node:path";
 import { commandOf, stop } from "./processes.ts";
 
 export const verifyDir = (mainCheckout: string) => join(mainCheckout, ".dev/verify");
@@ -33,6 +33,24 @@ function isWebServer(command: string | undefined) {
   );
 }
 
+/**
+ * The servers `start-app.sh` recorded for `token` that still run: a recorded pid whose process is
+ * now something else (the system reused it) isn't one.
+ */
+export function verifyServersOf({
+  mainCheckout,
+  token,
+}: {
+  mainCheckout: string;
+  token: string;
+}): number[] {
+  const dir = stateDirOf({ mainCheckout, token });
+  return namesIn(dir)
+    .filter((file) => file.endsWith(".pid"))
+    .map((name) => Number(readFileSync(join(dir, name), "utf8").trim()))
+    .filter((pid) => Number.isInteger(pid) && pid > 0 && isWebServer(commandOf(pid)));
+}
+
 /** Stops the servers `start-app.sh` recorded for `token`, then removes their pidfiles and logs. */
 export async function stopVerifyServers({
   mainCheckout,
@@ -41,20 +59,36 @@ export async function stopVerifyServers({
   mainCheckout: string;
   token: string;
 }): Promise<string> {
-  const dir = stateDirOf({ mainCheckout, token });
   const stopped: string[] = [];
-  for (const name of namesIn(dir).filter((file) => file.endsWith(".pid"))) {
-    const pid = Number(readFileSync(join(dir, name), "utf8").trim());
-    if (Number.isInteger(pid) && pid > 0 && isWebServer(commandOf(pid))) {
-      // oxlint-disable-next-line no-await-in-loop -- at most two, one at a time
-      if (!(await stop(pid))) throw new Error(`verification server (pid ${pid}) won't exit`);
-      stopped.push(`pid ${pid}`);
-    }
+  for (const pid of verifyServersOf({ mainCheckout, token })) {
+    // oxlint-disable-next-line no-await-in-loop -- at most two, one at a time
+    if (!(await stop(pid))) throw new Error(`verification server (pid ${pid}) won't exit`);
+    stopped.push(`pid ${pid}`);
   }
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(stateDirOf({ mainCheckout, token }), { recursive: true, force: true });
   return stopped.length > 0
     ? `stopped the verification server ${stopped.join(" and ")}`
     : "no verification server was running";
+}
+
+/**
+ * The `--ref` checkouts `start-app.sh` built for `token` (`<token>-<sha>`), as paths. Matched on
+ * the token itself, not `tokenOfRefCheckout`, which knows only worktrees' tokens: the main
+ * checkout's `main-<sha>` is this checkout's too.
+ */
+export function refCheckoutsOf({
+  mainCheckout,
+  token,
+}: {
+  mainCheckout: string;
+  token: string;
+}): string[] {
+  const dir = refCheckoutsDir(mainCheckout);
+  return namesIn(dir)
+    .filter(
+      (name) => name.startsWith(`${token}-`) && /^[0-9a-f]+$/.test(name.slice(token.length + 1)),
+    )
+    .map((name) => join(dir, name));
 }
 
 /** Removes the `--ref` checkouts `start-app.sh` built for `token`. */
@@ -65,15 +99,14 @@ export function removeRefCheckouts({
   mainCheckout: string;
   token: string;
 }): string {
-  const dir = refCheckoutsDir(mainCheckout);
-  const checkouts = namesIn(dir).filter((name) => tokenOfRefCheckout(name) === token);
-  for (const name of checkouts) {
-    execFileSync("git", ["-C", mainCheckout, "worktree", "remove", "--force", join(dir, name)], {
+  const checkouts = refCheckoutsOf({ mainCheckout, token });
+  for (const checkout of checkouts) {
+    execFileSync("git", ["-C", mainCheckout, "worktree", "remove", "--force", checkout], {
       stdio: ["ignore", "pipe", "pipe"],
     });
   }
   return checkouts.length > 0
-    ? `removed the --ref checkouts ${checkouts.join(", ")}`
+    ? `removed the --ref checkouts ${checkouts.map((checkout) => basename(checkout)).join(", ")}`
     : "no --ref checkout";
 }
 
@@ -121,10 +154,15 @@ export const chromeFiles = (mainCheckout: string) => ({
 
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8").trim() : "");
 
+/** The token of the checkout holding the shared Chrome (`chrome.owner`'s first line), if any. */
+export function chromeHolder(mainCheckout: string): string | undefined {
+  return read(chromeFiles(mainCheckout).owner).split("\n")[0] || undefined;
+}
+
 /**
- * Closes `session` and, when `token` holds the shared Chrome (`chrome.owner`'s first line), stops
- * that Chrome as `stop-browser.sh` does: only while its command line is still the headless one with
- * the recorded profile.
+ * Closes `session` and, when `token` holds the shared Chrome, stops that Chrome: only while its
+ * command line is still the headless one with the recorded profile, since the system may have
+ * reused the pid.
  */
 export async function releaseChrome({
   mainCheckout,
@@ -141,7 +179,7 @@ export async function releaseChrome({
     // No such session, or no agent-browser here: nothing to close.
   }
   const files = chromeFiles(mainCheckout);
-  if (read(files.owner).split("\n")[0] !== token) return "didn't hold the shared Chrome";
+  if (chromeHolder(mainCheckout) !== token) return "didn't hold the shared Chrome";
   const pid = Number(read(files.pid));
   const profile = read(files.profile);
   const command = pid > 0 ? commandOf(pid) : undefined;
