@@ -18,10 +18,10 @@ Restatement: no "now" in any file, rows sorted in Python (Postgres orders text b
 collation, which can differ between machines), and every value written one way only.
 """
 
-import argparse
 import csv
 import hashlib
 import io
+import shlex
 from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
@@ -31,7 +31,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, aliased
 
-from custodian.cli import script_args
+from custodian.cli import Command, Cta, Done, Options, Output
 from custodian.database import engine_from_env
 from custodian.feed_store import FeedStore, LocalFeedStore
 from custodian.market_value import market_value_as_of
@@ -48,6 +48,7 @@ from custodian.money import Money, Price, Shares
 from custodian.positions import CASH_SWEEP_PRICE, positions_as_of
 
 __all__ = [
+    "COMMAND",
     "DEFAULT_ROOT",
     "AccountRow",
     "Manifest",
@@ -292,22 +293,85 @@ def _prices(session: Session, as_of: date) -> list[PriceRow]:
     return sorted(rows, key=lambda row: row.security)
 
 
-def main(argv: Sequence[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="feed:write", description=__doc__)
-    parser.add_argument("--date", type=date.fromisoformat, required=True, help="the As-of date")
-    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="where Deliveries go")
-    arguments = parser.parse_args(script_args(argv))
-    as_of: date = arguments.date
-    root: Path = arguments.root
+# `pnpm --filter custodian feed:write`, on cli.py's runner.
 
+
+class FeedWriteOptions(Options):
+    date: date
+    """The As-of date, YYYY-MM-DD"""
+    root: Path = DEFAULT_ROOT
+    """Where Deliveries go, one folder per As-of date"""
+    dry_run: bool = False
+    """Build the Delivery and report its Manifest, writing nothing"""
+
+
+class FeedWriteOutput(Output):
+    dry_run: bool
+    as_of: date
+    delivery: str
+    """The Delivery's folder (with --dry-run, where it would be)"""
+    files: list[ManifestFile]
+    """The Manifest's files: each one's name, rows and SHA-256"""
+
+
+class _DiscardingStore:
+    """A feed store that keeps nothing, for --dry-run: each file is built, then thrown away."""
+
+    def put(self, key: str, content: bytes) -> None:
+        pass
+
+    def get(self, key: str) -> bytes:
+        raise LookupError(f"A dry run keeps nothing, so not {key}")
+
+    def list(self, prefix: str) -> list[str]:
+        return []
+
+
+def _feed_write(options: FeedWriteOptions) -> Done[FeedWriteOutput]:
+    as_of = options.date
+    store: FeedStore = _DiscardingStore() if options.dry_run else LocalFeedStore(options.root)
     engine = engine_from_env()
     try:
-        manifest = write_delivery(engine, LocalFeedStore(root), as_of)
+        manifest = write_delivery(engine, store, as_of)
     finally:
         engine.dispose()
-    counts = ", ".join(f"{file.rows} rows in {file.name}" for file in manifest.files)
-    print(f"Wrote the Delivery for {as_of.isoformat()} to {root / as_of.isoformat()}: {counts}")
+    # The default root needs no option: it's where `cw custodian ingest` looks by default too.
+    root = "" if options.root == DEFAULT_ROOT else f" --root {shlex.quote(str(options.root))}"
+    if options.dry_run:
+        next_step = Cta(
+            command=f"pnpm --filter custodian feed:write --date {as_of}{root}",
+            description="Write this Delivery",
+        )
+    else:
+        next_step = Cta(
+            command=f"pnpm cw custodian ingest {as_of}{root}",
+            description="Ingest it into Cognitive Wealth",
+        )
+    return Done(
+        FeedWriteOutput(
+            dry_run=options.dry_run,
+            as_of=as_of,
+            delivery=str(options.root / as_of.isoformat()),
+            files=manifest.files,
+        ),
+        cta=[next_step],
+    )
+
+
+COMMAND = Command(
+    name="feed:write",
+    description=(
+        "Write one As-of date's Delivery of the Custodian feed (five CSV files and a Manifest)"
+        " from the custodian's database into .dev/custodian-feed/, for pnpm cw custodian ingest"
+    ),
+    options=FeedWriteOptions,
+    output=FeedWriteOutput,
+    run=_feed_write,
+)
+
+main = COMMAND.main
 
 
 if __name__ == "__main__":
-    main()
+    # `SystemExit(code)` exits with that code, like `process.exit(code)`.
+    raise SystemExit(main())

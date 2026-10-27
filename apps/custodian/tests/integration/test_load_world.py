@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -39,7 +40,7 @@ def run_world_load(postgres_server: PostgresServer, database: Database, tmp_path
     assert pnpm, "pnpm is not on PATH"
 
     result = subprocess.run(
-        [pnpm, "run", "world:load"],
+        [pnpm, "run", "world:load", "--json"],
         cwd=CUSTODIAN,
         env={
             **os.environ,
@@ -70,7 +71,16 @@ def test_loading_the_world_twice_changes_nothing(
         "price": 14,
         '"transaction"': 13,
     }
-    assert f"Loaded 2 Accounts, {securities} Securities, 14 prices and 13 Transactions" in output
+    loaded_output = json.loads(output)
+    assert {key: loaded_output[key] for key in ("accounts", "securities", "prices")} == {
+        "accounts": 2,
+        "securities": securities,
+        "prices": 14,
+    }
+    assert loaded_output["transactions"] == 13
+    # The last Transaction in the ledger fixture was posted on Friday 6 March 2026.
+    [next_step] = loaded_output["cta"]["commands"]
+    assert next_step["command"] == "pnpm --filter custodian feed:write --date 2026-03-06"
     # The first load recorded the inputs: tests/conftest.py's fixture Pin, the committed yields.
     with database.migrator.connect() as connection:
         recorded = connection.execute(

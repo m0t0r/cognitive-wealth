@@ -11,23 +11,23 @@ yields, so its SHA-256, which the build record keeps, changes only when a yield 
 on unchanged yields, the script writes nothing.
 """
 
-import argparse
 import csv
 import hashlib
 import io
 import json
 import urllib.request
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
 from pathlib import Path
 
-from custodian.cli import script_args
+from custodian.cli import CliError, Command, Cta, Done, Options, Output
 from custodian.factor_file import PIN_PATH, read_pin
 from custodian.money import Rate
 
 __all__ = [
+    "COMMAND",
     "TREASURY_YIELDS_PATH",
     "TREASURY_YIELDS_SOURCE_PATH",
     "Tenor",
@@ -158,34 +158,102 @@ def yields_csv(rows: Mapping[date, Mapping[Tenor, str]], *, last_day: date) -> s
     return out.getvalue()
 
 
-def main(argv: Sequence[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="yields:write", description=__doc__)
-    parser.parse_args(script_args(argv))
+# `pnpm --filter custodian yields:write`, on cli.py's runner.
 
+
+class YieldsWriteOptions(Options):
+    dry_run: bool = False
+    """Download the yields and say whether the file would change, writing nothing"""
+
+
+class YieldsWriteOutput(Output):
+    dry_run: bool
+    last_day: date
+    """The pinned Factor file's last date, where the yields end"""
+    changed: bool
+    """Whether the yields differ from the committed file's"""
+    rebuild_needed: bool
+    """The file was rewritten, so its SHA-256 is new: every custodian database built from the old
+    one must be rebuilt from empty, or world:load and the API refuse it (ADR 0019)"""
+    rebuild: str | None
+    """When a rebuild is needed, what to do about it; else null"""
+    sha256: str
+    """The SHA-256 of the file as these yields write it"""
+
+
+REBUILD = (
+    "Every custodian database built from the old yields must be rebuilt from empty"
+    " (apps/custodian/README.md, 'Rebuilding it from empty'). That deletes the database's data,"
+    " the dev stack's shared custodian-db included, so ask the user before running it"
+)
+"""Said, not suggested as a `cta`: a `cta` is a command to run next, and the rebuild deletes the
+user's local custodian data, which an agent must not do without asking."""
+
+
+def _yields_write(options: YieldsWriteOptions) -> Done[YieldsWriteOutput]:
     last_day = read_pin(PIN_PATH).ends_on
     rows: dict[date, dict[Tenor, str]] = {}
     for year in range(FIRST_DAY.year, last_day.year + 1):
-        rows |= _treasury_rows(_download(year))
+        try:
+            text = _download(year)
+        except OSError as error:  # urllib's URLError and a timeout are both OSErrors
+            raise CliError(
+                code="treasury_unavailable",
+                message=f"Couldn't download the Treasury's yields for {year}: {error}",
+                retryable=True,
+            ) from None
+        try:
+            rows |= _treasury_rows(text)
+        except ValueError as error:
+            raise CliError(code="treasury_format_changed", message=str(error)) from None
     if last_day not in rows:
-        raise SystemExit(f"The Treasury has no yields for {last_day}, the Factor file's last date")
+        raise CliError(
+            code="no_treasury_yields",
+            message=(
+                f"The Treasury has no yields for {last_day}, the Factor file's last date; once it"
+                " publishes them, run this again"
+            ),
+        )
 
     text = yields_csv(rows, last_day=last_day)
-    if TREASURY_YIELDS_PATH.exists() and TREASURY_YIELDS_PATH.read_text() == text:
-        # Nothing to write, not even the retrieval date: the committed yields are still right.
-        print(f"The Treasury's yields to {last_day} are unchanged; nothing written")
-        return
-    TREASURY_YIELDS_PATH.write_text(text)
-    source = {
-        "url": SOURCE_URL,
-        "retrieved_on": date.today().isoformat(),
-        "sha256": hashlib.sha256(text.encode()).hexdigest(),
-    }
-    TREASURY_YIELDS_SOURCE_PATH.write_text(json.dumps(source, indent=2) + "\n")
-    print(
-        f"Wrote a changed {TREASURY_YIELDS_PATH.name}: its SHA-256 is new, so every custodian"
-        " database built from the old file must be rebuilt from empty (ADR 0019)"
+    sha256 = hashlib.sha256(text.encode()).hexdigest()
+    # Unchanged, nothing is written, not even the retrieval date: the committed yields are right.
+    changed = not (TREASURY_YIELDS_PATH.exists() and TREASURY_YIELDS_PATH.read_text() == text)
+    written = changed and not options.dry_run
+    if written:
+        TREASURY_YIELDS_PATH.write_text(text)
+        source = {"url": SOURCE_URL, "retrieved_on": date.today().isoformat(), "sha256": sha256}
+        TREASURY_YIELDS_SOURCE_PATH.write_text(json.dumps(source, indent=2) + "\n")
+    cta = (
+        [Cta(command="pnpm --filter custodian yields:write", description="Write the changed file")]
+        if changed and options.dry_run
+        else []
     )
+    output = YieldsWriteOutput(
+        dry_run=options.dry_run,
+        last_day=last_day,
+        changed=changed,
+        rebuild_needed=written,
+        rebuild=REBUILD if written else None,
+        sha256=sha256,
+    )
+    return Done(output, cta=cta)
+
+
+COMMAND = Command(
+    name="yields:write",
+    description=(
+        "Rebuild market/treasury-yields.csv from the Treasury's yearly CSVs, up to the pinned"
+        " Factor file's last date; run by hand when the Pin moves, and writes nothing when the"
+        " yields are unchanged"
+    ),
+    options=YieldsWriteOptions,
+    output=YieldsWriteOutput,
+    run=_yields_write,
+)
+
+main = COMMAND.main
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

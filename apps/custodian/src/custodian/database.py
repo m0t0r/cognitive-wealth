@@ -10,14 +10,18 @@ from pathlib import Path
 
 from sqlalchemy import URL, Engine, create_engine, make_url
 
-__all__ = ["database_url", "engine_from_env"]
+__all__ = ["NoDatabase", "database_url", "engine_from_env"]
+
+
+class NoDatabase(LookupError):
+    """`DATABASE_URL` isn't set, so there's no database to connect to."""
 
 
 def database_url(environ: Mapping[str, str]) -> URL:
     """The URL from `environ`, with psycopg as the driver and the password file's password."""
     raw = environ.get("DATABASE_URL")
     if not raw:
-        raise LookupError("DATABASE_URL is not set")
+        raise NoDatabase("DATABASE_URL is not set")
     url = make_url(raw)
     # `postgres://` is the form the rest of the repo uses; SQLAlchemy only knows `postgresql://`.
     if url.get_backend_name() not in ("postgres", "postgresql"):

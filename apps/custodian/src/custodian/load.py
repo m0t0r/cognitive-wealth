@@ -12,7 +12,6 @@ role this runs as can't change or delete a Transaction, and shouldn't. A row tha
 fixed with a Correction, which is new rows, never an edit.
 """
 
-import argparse
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -23,9 +22,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from custodian.build_record import BuildMismatch, market_inputs, record_build
-from custodian.cli import script_args
+from custodian.cli import CliError, Command, Cta, Done, Options, Output
 from custodian.database import engine_from_env
-from custodian.factor_file import FactorFileError
 from custodian.ledger_fixture import (
     LEDGER_V0_PATH,
     FixtureTransaction,
@@ -42,7 +40,7 @@ from custodian.security_catalog import (
 )
 from custodian.world import WORLD_V0_PATH, CustodianAccount, WorldFile, read_world
 
-__all__ = ["LoadConflict", "load", "main"]
+__all__ = ["COMMAND", "LoadConflict", "load", "main"]
 
 
 # An exception class: like `class LoadConflict extends Error {}` in TypeScript.
@@ -248,48 +246,102 @@ def _check_ledger(
         )
 
 
-def main(argv: Sequence[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="world:load", description=__doc__)
-    parser.add_argument("--world", type=Path, default=WORLD_V0_PATH)
-    parser.add_argument("--ledger", type=Path, default=LEDGER_V0_PATH)
-    arguments = parser.parse_args(script_args(argv))
-    world_path: Path = arguments.world
-    ledger_path: Path = arguments.ledger
+# `pnpm --filter custodian world:load`, on cli.py's runner.
+
+
+class WorldLoadOptions(Options):
+    world: Path = WORLD_V0_PATH
+    """The world file, whose custodian half is loaded"""
+    ledger: Path = LEDGER_V0_PATH
+    """The ledger fixture: the Transactions and prices"""
+    dry_run: bool = False
+    """Make every check and write, then roll back: nothing is loaded"""
+
+
+class WorldLoadOutput(Output):
+    dry_run: bool
+    accounts: int
+    securities: int
+    prices: int
+    transactions: int
+    """What the files hold, all of it in the database now (with --dry-run, it would be)"""
+
+
+def _world_load(options: WorldLoadOptions) -> Done[WorldLoadOutput]:
     try:
-        world = read_world(world_path)
+        world = read_world(options.world)
         catalog = read_security_catalog(SECURITY_CATALOG_PATH)
-        ledger = read_ledger_fixture(ledger_path)
+        ledger = read_ledger_fixture(options.ledger)
+    except FileNotFoundError as error:
+        raise CliError(code="invalid_input", message=f"No such file: {error.filename}") from None
     except ValidationError as error:
         # The message names each bad field, such as custodian.accounts.1.registration_type.
-        raise SystemExit(f"{error.title} is malformed:\n{error}") from None
+        raise CliError(
+            code="malformed_input", message=f"{error.title} is malformed: {error}"
+        ) from None
     try:
         _check_files_agree(world=world, catalog=catalog, ledger=ledger)
     except ValueError as error:
-        raise SystemExit(f"Nothing was loaded: {error}") from None
+        raise CliError(code="files_disagree", message=f"Nothing was loaded: {error}") from None
 
-    # Market data first, with nothing written yet: the verified Factor file (downloaded into the
-    # cache on a first run) and the inputs it and the Treasury yields make.
-    try:
-        inputs = market_inputs()
-    except FactorFileError as error:
-        raise SystemExit(f"Nothing was loaded: {error}") from None
-
+    # A database to load into before anything is downloaded; the engine doesn't connect yet.
     engine = engine_from_env()
     try:
-        with Session(engine) as session:
-            # Before any row: an empty database records the inputs, any other must match them.
-            record_build(session, inputs)
-            load(session, world=world, catalog=catalog, ledger=ledger)
-    except (BuildMismatch, LoadConflict) as error:
-        raise SystemExit(f"Nothing was loaded: {error}") from None
+        # Market data next, with nothing written yet: the verified Factor file (downloaded into
+        # the cache on a first run) and the inputs it and the Treasury yields make. Its errors
+        # are the runner's (`pin_mismatch`, `factor_file_unavailable`).
+        inputs = market_inputs()
+        # One database transaction around both steps, committed at the end or, for a dry run,
+        # rolled back. Each `session.begin()` inside them becomes a savepoint in it
+        # (`join_transaction_mode`), so a dry run makes every check and write a real run makes.
+        with engine.connect() as connection, connection.begin() as transaction:
+            with Session(connection, join_transaction_mode="create_savepoint") as session:
+                # Before any row: an empty database records the inputs, any other must match them.
+                record_build(session, inputs)
+                load(session, world=world, catalog=catalog, ledger=ledger)
+            if options.dry_run:
+                transaction.rollback()
+    except BuildMismatch as error:
+        raise CliError(code="build_record_differs", message=str(error)) from None
+    except LoadConflict as error:
+        raise CliError(code="load_conflict", message=f"Nothing was loaded: {error}") from None
     finally:
         engine.dispose()
-    prices = sum(len(by_day) for by_day in ledger.prices.values())
-    print(
-        f"Loaded {len(world.custodian.accounts)} Accounts, {len(catalog.securities)} Securities,"
-        f" {prices} prices and {len(ledger.transactions)} Transactions"
+
+    if options.dry_run:
+        next_step = Cta(command="pnpm --filter custodian world:load", description="Load it")
+    else:
+        last_day = max(row.posting_date for row in ledger.transactions)
+        next_step = Cta(
+            command=f"pnpm --filter custodian feed:write --date {last_day}",
+            description="Write the Delivery for the ledger's last day",
+        )
+    return Done(
+        WorldLoadOutput(
+            dry_run=options.dry_run,
+            accounts=len(world.custodian.accounts),
+            securities=len(catalog.securities),
+            prices=sum(len(by_day) for by_day in ledger.prices.values()),
+            transactions=len(ledger.transactions),
+        ),
+        cta=[next_step],
     )
 
 
+COMMAND = Command(
+    name="world:load",
+    description=(
+        "Load the world file's custodian half, the Security catalog and the ledger fixture into"
+        " the custodian's database, first recording the market inputs that built it; adds what's"
+        " missing and refuses to change what's there"
+    ),
+    options=WorldLoadOptions,
+    output=WorldLoadOutput,
+    run=_world_load,
+)
+
+main = COMMAND.main
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
