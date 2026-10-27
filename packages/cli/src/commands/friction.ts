@@ -25,6 +25,16 @@ const summary = z.object({
 
 const triageDecision = z.enum(["ready-for-agent", "ready-for-human", "duplicate", "already-fixed"]);
 
+/** `TRIAGE_MAX_STEPS` in `@repo/friction-bot/triage`, which loads only inside `run`. */
+const TRIAGE_STEPS = 8;
+
+const triageSteps = z.coerce
+  .number()
+  .int()
+  .positive()
+  .default(TRIAGE_STEPS)
+  .describe("Haiku's step limit; its last step reads nothing. 2 is one read, then the answer");
+
 const triageAction = z.union([
   z.object({
     kind: z.literal("label"),
@@ -249,13 +259,14 @@ export function frictionCommands({
         "label it ready-for-agent or ready-for-human, close it as a duplicate with a comment on " +
         "the original, or close it as already fixed (wontfix), naming where the fix lives. " +
         "friction-triage.yml runs it",
-      hint: "Needs ANTHROPIC_API_KEY. A dry run still asks Haiku (at most 8 steps and about $0.10) but changes nothing on GitHub.",
+      hint: "Needs ANTHROPIC_API_KEY. A dry run still asks Haiku (at most --max-steps steps and about $0.10) but changes nothing on GitHub.",
       args: z.object({ issue: issueNumber.describe("The report's issue number") }),
       options: z.object({
         retriage: z
           .boolean()
           .default(false)
           .describe("Triage it again although it has a triage label; the new label replaces it"),
+        maxSteps: triageSteps,
         dryRun: z.boolean().default(false).describe("Ask Haiku and show the actions; do none"),
       }),
       output: z.object({
@@ -279,7 +290,7 @@ export function frictionCommands({
           const { triage } = await claude();
           const outcome = await triageReport(gh, {
             number: c.args.issue,
-            decide: triage,
+            decide: (input) => triage({ ...input, maxSteps: c.options.maxSteps }),
             retriage: c.options.retriage,
             dryRun: c.options.dryRun,
           });
@@ -348,7 +359,7 @@ export function frictionCommands({
           const gh = await github();
           const { triage } = await claude();
           const outcome = await triageBacklog(gh, {
-            decide: triage,
+            decide: (input) => triage({ ...input, maxSteps: TRIAGE_STEPS }),
             limit: c.options.limit,
             olderThanMinutes: c.options.olderThanMinutes,
             dryRun: c.options.dryRun,

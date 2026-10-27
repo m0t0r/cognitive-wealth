@@ -11,14 +11,15 @@ import { memoryGitHub, report } from "./testing/memory-github.ts";
 import type { TriageInput } from "./reports.ts";
 import type { Brief, Triage, TriageDecision } from "./triage.ts";
 
-// A brief, fixed_in and checked list only where a test checks them.
+// A brief, fixed_in, read and checked list only where a test checks them.
 const answer = (
   triage: Omit<Triage, "brief" | "fixed_in"> &
-    Partial<Pick<TriageDecision, "brief" | "fixed_in" | "checked">>,
+    Partial<Pick<TriageDecision, "brief" | "fixed_in" | "read" | "checked">>,
 ) =>
   vi.fn(async (_input: TriageInput): Promise<TriageDecision> => ({
     brief: null,
     fixed_in: null,
+    read: [],
     checked: [],
     ...triage,
   }));
@@ -215,6 +216,7 @@ describe("triageReport", () => {
         duplicate_of: null,
         fixed_in: "CLAUDE.md, the packages/cli bullet",
         reason: "It says a CTA names a cw command.",
+        read: ["CLAUDE.md"],
         checked: ["`CLAUDE.md`", "search for `CTA`"],
       }),
       retriage: false,
@@ -232,17 +234,31 @@ describe("triageReport", () => {
     ]);
   });
 
-  it("hands an already-fixed report that names no fix to a human", async () => {
+  it.for([
+    { name: "names no place", fixedIn: null, read: ["CLAUDE.md"], says: "read: Gone." },
+    {
+      name: "names a file it never read",
+      fixedIn: "docs/auth.md, Sessions",
+      read: ["CLAUDE.md"],
+      says: 'read: "docs/auth.md, Sessions". Gone.',
+    },
+  ])("hands an already-fixed report that $name to a human", async ({ fixedIn, read, says }) => {
     const { github, writes } = memoryGitHub(issues());
     await triageReport(github, {
       number: 10,
-      decide: answer({ decision: "already-fixed", duplicate_of: null, reason: "Gone." }),
+      decide: answer({
+        decision: "already-fixed",
+        duplicate_of: null,
+        fixed_in: fixedIn,
+        reason: "Gone.",
+        read,
+      }),
       retriage: false,
       dryRun: false,
     });
     expect(writes).toMatchObject([
       { kind: "label", number: 10, add: ["ready-for-human"], remove: [] },
-      { kind: "comment", body: expect.stringContaining("named no place it lives: Gone.") },
+      { kind: "comment", body: expect.stringContaining(`named no file it ${says}`) },
     ]);
   });
 
@@ -414,6 +430,7 @@ describe("triageBacklog", () => {
         fixed_in: null,
         reason: "Needs a human.",
         brief: null,
+        read: [],
         checked: [],
       };
     });

@@ -31,6 +31,7 @@ const claude = (overrides: Partial<Claude> = {}): Claude => ({
     fixed_in: null,
     reason: "A doc fix.",
     brief: null,
+    read: [],
     checked: [],
   })),
   fix: vi.fn(async () => ({
@@ -155,6 +156,7 @@ describe("cw friction triage", () => {
       fixed_in: "CLAUDE.md, the packages/cli bullet",
       reason: "It's there.",
       brief: null,
+      read: ["CLAUDE.md"],
       checked: ["`CLAUDE.md`"],
     }));
     const { cli, writes } = setup({ claude: claude({ triage }) });
@@ -165,6 +167,14 @@ describe("cw friction triage", () => {
       actions: [{ kind: "label", add: ["wontfix"] }, { kind: "close" }],
     });
     expect(writes).toHaveLength(2);
+  });
+
+  it("hands Haiku the step cap, 8 unless --max-steps says otherwise", async () => {
+    const triage = claude().triage;
+    const { cli } = setup({ claude: claude({ triage }) });
+    await run({ cli, argv: ["friction", "triage", "12", "--dry-run"] });
+    await run({ cli, argv: ["friction", "triage", "12", "--dry-run", "--max-steps", "2"] });
+    expect(vi.mocked(triage).mock.calls.map(([args]) => args.maxSteps)).toEqual([8, 2]);
   });
 
   it("writes nothing on a dry run, and suggests applying it", async () => {

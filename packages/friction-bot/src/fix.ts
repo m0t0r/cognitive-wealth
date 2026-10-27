@@ -2,17 +2,9 @@
 // `generateText` with tools), for `.github/workflows/friction-fix.yml`. It only edits the
 // checkout; `commit.ts` checks and commits it, and `publish.ts` pushes it and labels from the answer.
 import { anthropic } from "@ai-sdk/anthropic";
-import {
-  generateText,
-  isStepCount,
-  Output,
-  type LanguageModel,
-  type ModelMessage,
-  type StepResult,
-  type ToolSet,
-} from "ai";
+import { generateText, isStepCount, Output, type LanguageModel } from "ai";
 import { z } from "zod";
-import { SONNET_5_5, usageCost } from "./cost.ts";
+import { SONNET_5_5, spent, withCacheBreakpoint } from "./cost.ts";
 import { fixTools } from "./tools.ts";
 
 export const FIX_MODEL = "claude-sonnet-5-5";
@@ -88,33 +80,7 @@ Rules:
   have no suggestion. Each one is filed as a new friction report, for a person to read first.`;
 }
 
-/**
- * `messages` with one prompt-cache breakpoint, on the last message, so each step reads the
- * conversation so far from the cache. Earlier breakpoints are dropped: the API allows four.
- */
-export function withCacheBreakpoint(messages: ModelMessage[]): ModelMessage[] {
-  return messages.map((message, index) => {
-    const { cacheControl: _dropped, ...anthropicOptions } =
-      message.providerOptions?.anthropic ?? {};
-    const last = index === messages.length - 1;
-    return {
-      ...message,
-      providerOptions: {
-        ...message.providerOptions,
-        anthropic: last
-          ? { ...anthropicOptions, cacheControl: { type: "ephemeral" } }
-          : anthropicOptions,
-      },
-    };
-  });
-}
-
-function spent(steps: StepResult<ToolSet>[]): number {
-  return steps.reduce(
-    (total, step) => total + usageCost({ usage: step.usage, price: SONNET_5_5 }),
-    0,
-  );
-}
+const sonnet = () => SONNET_5_5;
 
 export type FixOutcome = { result: FixResult; costUsd: number; steps: number };
 
@@ -144,8 +110,12 @@ export async function fix({
     output: Output.object({ schema: FixResult }),
     prompt: fixPrompt({ numbers, issues }),
     maxOutputTokens: 16000,
-    stopWhen: [isStepCount(maxSteps), ({ steps }) => spent(steps) >= maxCostUsd],
+    stopWhen: [isStepCount(maxSteps), ({ steps }) => spent({ steps, price: sonnet }) >= maxCostUsd],
     prepareStep: ({ messages }) => ({ messages: withCacheBreakpoint(messages) }),
   });
-  return { result: result.output, costUsd: spent(result.steps), steps: result.steps.length };
+  return {
+    result: result.output,
+    costUsd: spent({ steps: result.steps, price: sonnet }),
+    steps: result.steps.length,
+  };
 }

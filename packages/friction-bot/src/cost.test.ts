@@ -1,5 +1,26 @@
-import type { LanguageModelUsage } from "ai";
-import { HAIKU_5_5, haikuPrice, SONNET_5_5, usageCost } from "./cost.ts";
+import type { LanguageModelUsage, ModelMessage } from "ai";
+import { HAIKU_5_5, haikuPrice, SONNET_5_5, usageCost, withCacheBreakpoint } from "./cost.ts";
+
+describe("withCacheBreakpoint", () => {
+  const cache = { cacheControl: { type: "ephemeral" } };
+
+  it("leaves one breakpoint, on the last message", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "first", providerOptions: { anthropic: { ...cache } } },
+      { role: "assistant", content: "second" },
+      { role: "user", content: "third" },
+    ];
+
+    const marked = withCacheBreakpoint(withCacheBreakpoint(messages));
+
+    expect(marked.map((message) => message.providerOptions?.anthropic?.cacheControl)).toEqual([
+      undefined,
+      undefined,
+      cache.cacheControl,
+    ]);
+    expect(marked.map((message) => message.content)).toEqual(["first", "second", "third"]);
+  });
+});
 
 function usage({
   noCache,
