@@ -81,7 +81,8 @@ export function authOptionsFromEnv(env: AuthEnv): AuthEnvOptions {
     baseURL,
     secret,
     trustedIpHeader,
-    trustedProxies: trustedProxies?.length === 0 ? undefined : trustedProxies,
+    trustedProxies:
+      trustedProxies === undefined || trustedProxies.length === 0 ? undefined : trustedProxies,
     secureCookies: production || baseURL.startsWith("https:"),
     redis: redisOptions(vars, production),
   };
