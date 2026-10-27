@@ -11,7 +11,7 @@ import { worktreeResources } from "./names.ts";
 import { type WorktreeRecord, readRecord, writeRecord } from "./registry.ts";
 import {
   assertSecrets,
-  connectAdmin,
+  createDatabase,
   dropDatabase,
   secretsDir,
   startServices,
@@ -27,28 +27,6 @@ function run({ top, script, env }: RunArgs) {
     // Captured, and shown only when the step fails (execFileSync puts it on the error).
     stdio: ["ignore", "pipe", "pipe"],
   });
-}
-
-async function createDatabase({
-  mainCheckout,
-  database,
-}: {
-  mainCheckout: string;
-  database: string;
-}) {
-  const { client, close } = connectAdmin(mainCheckout);
-  try {
-    const [existing] = await client`select 1 from pg_database where datname = ${database}`;
-    if (existing) return false;
-    // Cloned from the empty `cognitive_wealth`, which holds the roles' privileges, and the
-    // `connect` grant a clone doesn't copy repeated (`packages/db/CLAUDE.md`).
-    await client.unsafe(`create database "${database}" owner migrator template cognitive_wealth`);
-    await client.unsafe(`revoke all on database "${database}" from public`);
-    await client.unsafe(`grant connect on database "${database}" to app`);
-    return true;
-  } finally {
-    await close();
-  }
 }
 
 /**

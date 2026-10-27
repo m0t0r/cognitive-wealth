@@ -1,14 +1,15 @@
-# compose.sh's override: publishes its project's own `db` on the checkout's own loopback port
-# (VERIFY_COMPOSE_DB_PORT), so compose.sh can migrate, seed and ingest it from the host as
-# start-app.sh does, and `owner@` can sign in. The same trade-off as compose.dev.yaml's `db`: a
-# published port needs a network with a route to the host.
+# `cw verify compose up`'s override (src/verify-compose.ts): publishes its project's own `db` on
+# the checkout's own loopback port (DB_PORT), so it can migrate, seed and ingest it from the host
+# as `cw verify start` does, and `owner@` can sign in. The same trade-off as compose.dev.yaml's
+# `db`: a published port needs a network with a route to the host. Relative paths resolve against
+# the checkout's root, the project directory.
 #
 # The custodian runs on the tests' fixture Pin, with the fixture's own folder (read-only) as its
 # cache: the fixture is there under its SHA-256, so it starts without reaching the archive.
 services:
   db:
     ports:
-      - "127.0.0.1:${DB_PORT:?compose.sh sets DB_PORT}:5432"
+      - "127.0.0.1:${DB_PORT:?cw verify compose up sets DB_PORT}:5432"
     networks: [data, host-access]
   custodian:
     environment:

@@ -32,6 +32,11 @@ export type OpenDatabaseArgs = {
    * name it.
    */
   asMigrator?: boolean;
+  /**
+   * This database instead of `DATABASE_URL`'s, as its URL's role, with the password in
+   * `passwordFile`: a verification database `cw verify` seeds.
+   */
+  target?: { url: string; passwordFile: string } | undefined;
 };
 
 export type DevEnv = import("@repo/dev-env/checkout").Checkout & {
@@ -42,8 +47,14 @@ export type DevEnv = import("@repo/dev-env/checkout").Checkout & {
   tearDown: typeof import("@repo/dev-env/teardown").tearDown;
 };
 
-/** What the verifier-web skill's runs from this checkout left, and how to remove it. */
+/** The verifier-web skill's runs from this checkout: starting them, and what they left. */
 export type Verify = import("@repo/dev-env/checkout").Checkout & {
+  planVerifyServer: typeof import("@repo/dev-env/verify-server").planVerifyServer;
+  startVerifyServer: typeof import("@repo/dev-env/verify-server").startVerifyServer;
+  sessionFileOf: typeof import("@repo/dev-env/verify-browser").sessionFileOf;
+  startBrowser: typeof import("@repo/dev-env/verify-browser").startBrowser;
+  composeUp: typeof import("@repo/dev-env/verify-compose").composeUp;
+  removeComposeProject: typeof import("@repo/dev-env/verify").removeComposeProject;
   verifyServersOf: typeof import("@repo/dev-env/verify").verifyServersOf;
   stopVerifyServers: typeof import("@repo/dev-env/verify").stopVerifyServers;
   refCheckoutsOf: typeof import("@repo/dev-env/verify").refCheckoutsOf;
@@ -110,7 +121,7 @@ export const defaultDependencies: Dependencies = {
       fileIssues,
     };
   },
-  async openDatabase({ asMigrator = false } = {}) {
+  async openDatabase({ asMigrator = false, target } = {}) {
     const { describeDatabaseUrl, loadWebEnvFallback } = await import("@repo/db/cli/env");
     const { connectionConfig } = await import("@repo/db/config");
     const { connect } = await import("@repo/db/connect");
@@ -120,15 +131,22 @@ export const defaultDependencies: Dependencies = {
     let config;
     let asRole = "";
     try {
-      envFile = loadWebEnvFallback();
-      if (asMigrator) {
-        if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set.");
-        const { url, passwordFile, role } = studioConnection(process.env);
-        const password = passwordFile ? () => readFileSync(passwordFile, "utf8").trim() : undefined;
-        config = { url, password };
-        asRole = ` as ${role}`;
+      if (target) {
+        const { passwordFile } = target;
+        config = { url: target.url, password: () => readFileSync(passwordFile, "utf8").trim() };
       } else {
-        config = connectionConfig();
+        envFile = loadWebEnvFallback();
+        if (asMigrator) {
+          if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set.");
+          const { url, passwordFile, role } = studioConnection(process.env);
+          const password = passwordFile
+            ? () => readFileSync(passwordFile, "utf8").trim()
+            : undefined;
+          config = { url, password };
+          asRole = ` as ${role}`;
+        } else {
+          config = connectionConfig();
+        }
       }
     } catch (error) {
       throw new CliError({
@@ -162,8 +180,17 @@ export const defaultDependencies: Dependencies = {
   async verify() {
     const { checkoutAt } = await import("@repo/dev-env/checkout");
     const verify = await import("@repo/dev-env/verify");
+    const { planVerifyServer, startVerifyServer } = await import("@repo/dev-env/verify-server");
+    const { sessionFileOf, startBrowser } = await import("@repo/dev-env/verify-browser");
+    const { composeUp } = await import("@repo/dev-env/verify-compose");
     return {
       ...checkoutAt(process.cwd()),
+      planVerifyServer,
+      startVerifyServer,
+      sessionFileOf,
+      startBrowser,
+      composeUp,
+      removeComposeProject: verify.removeComposeProject,
       verifyServersOf: verify.verifyServersOf,
       stopVerifyServers: verify.stopVerifyServers,
       refCheckoutsOf: verify.refCheckoutsOf,

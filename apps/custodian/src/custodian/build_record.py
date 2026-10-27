@@ -64,7 +64,7 @@ def factor_file_cache(environ: Mapping[str, str]) -> Path:
 def market_inputs(environ: Mapping[str, str] = os.environ) -> MarketInputs:
     """The committed inputs, after getting the verified Factor file, or raising why not.
 
-    `FACTOR_FILE_PIN` names another Pin file: the tests' and compose.sh's fixture, which needs
+    `FACTOR_FILE_PIN` names another Pin file: the tests' and `cw verify compose up`'s fixture, which needs
     no network. Everything else uses the world's.
     """
     pin = read_pin(Path(environ.get("FACTOR_FILE_PIN") or PIN_PATH))

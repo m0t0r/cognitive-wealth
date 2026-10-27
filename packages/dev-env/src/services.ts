@@ -67,15 +67,71 @@ export function isRefused(error: unknown): boolean {
   return code === "ECONNREFUSED" || /ECONNREFUSED/.test(error.message);
 }
 
-/** A superuser connection to the verification Postgres's `postgres` database. */
-export function connectAdmin(mainCheckout: string) {
+/** A superuser connection to `database` on the verification Postgres. */
+function connectSuperuser({ mainCheckout, database }: { mainCheckout: string; database: string }) {
   return connect(
     {
-      url: `postgres://postgres@localhost:${VERIFY_PORTS.postgres}/postgres`,
+      url: `postgres://postgres@localhost:${VERIFY_PORTS.postgres}/${database}`,
       password: () => secret({ mainCheckout, name: "postgres_password" }),
     },
     { max: 1, connect_timeout: 5 },
   );
+}
+
+/** A superuser connection to the verification Postgres's `postgres` database. */
+export function connectAdmin(mainCheckout: string) {
+  return connectSuperuser({ mainCheckout, database: "postgres" });
+}
+
+/** Creates `database` unless it exists; true when it did. */
+export async function createDatabase({
+  mainCheckout,
+  database,
+}: {
+  mainCheckout: string;
+  database: string;
+}) {
+  const { client, close } = connectAdmin(mainCheckout);
+  try {
+    const [existing] = await client`select 1 from pg_database where datname = ${database}`;
+    if (existing) return false;
+    // Cloned from the empty `cognitive_wealth`, which holds the roles' privileges, and the
+    // `connect` grant a clone doesn't copy repeated (`packages/db/CLAUDE.md`).
+    await client.unsafe(`create database "${database}" owner migrator template cognitive_wealth`);
+    await client.unsafe(`revoke all on database "${database}" from public`);
+    await client.unsafe(`grant connect on database "${database}" to app`);
+    return true;
+  } finally {
+    await close();
+  }
+}
+
+/** Drops `database` if it's there and creates it empty, as a verification server's fresh start. */
+export async function recreateDatabase(args: { mainCheckout: string; database: string }) {
+  await dropDatabase(args);
+  await createDatabase(args);
+}
+
+/**
+ * Every Household in `database`, by name, read as the superuser, since row-level security shows
+ * `app` none without a Firm set. None in a database from before Households (#86).
+ */
+export async function householdsIn({
+  mainCheckout,
+  database,
+}: {
+  mainCheckout: string;
+  database: string;
+}): Promise<Array<{ name: string; publicId: string }>> {
+  const { client, close } = connectSuperuser({ mainCheckout, database });
+  try {
+    const exists = await client`select to_regclass('public.household') is not null as found`;
+    if (!exists[0]?.found) return [];
+    const rows = await client`select name, public_id from household order by name`;
+    return rows.map((row) => ({ name: String(row.name), publicId: String(row.public_id) }));
+  } finally {
+    await close();
+  }
 }
 
 /** Drops `database` if it exists; `with (force)` ends open connections, which would block it. */

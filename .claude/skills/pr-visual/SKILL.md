@@ -40,8 +40,8 @@ This writes `facts.json` (totals, per-file change and lines, test cases added an
 Serve both sides with the verifier's isolated stack, each with its own fresh database:
 
 ```sh
-.claude/skills/verifier-web/start-app.sh                 # after: the working tree; prints its URL
-.claude/skills/verifier-web/start-app.sh --ref <base>    # before: on the next port
+pnpm cw verify start                 # after: the working tree; its url is in the output
+pnpm cw verify start --ref <base>    # before: on the next port
 ```
 
 Each checkout has its own port pair (the main checkout's is `:3100` and `:3101`), so use the URLs the script prints.

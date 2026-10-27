@@ -27,7 +27,11 @@ describe("cw", () => {
       { name: "org deactivate" },
       { name: "org export" },
       { name: "org reactivate" },
+      { name: "verify browser start" },
       { name: "verify browser stop" },
+      { name: "verify compose down" },
+      { name: "verify compose up" },
+      { name: "verify start" },
       { name: "verify stop" },
     ]);
   });

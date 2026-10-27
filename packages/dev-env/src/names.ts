@@ -52,7 +52,7 @@ export type VerifyResources = {
   databases: { head: string; ref: string };
   session: string;
   /**
-   * `compose.sh`'s own Compose project, for changes only `compose.yaml`'s images exercise, and the
+   * `cw verify compose up`'s own Compose project, for changes only `compose.yaml`'s images exercise, and the
    * host ports its services publish: offset from `ports.head`, so two checkouts never share them.
    */
   compose: {

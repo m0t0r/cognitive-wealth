@@ -9,7 +9,7 @@ import type { Dependencies } from "../dependencies.ts";
 import { REPO_ROOT, fromInvocation } from "../paths.ts";
 import { refusal } from "../refusal.ts";
 
-const WORLD_FILE = join(REPO_ROOT, "world/v0.json");
+export const WORLD_FILE = join(REPO_ROOT, "world/v0.json");
 
 const output = z.object({
   database: z.string().describe("The database it ran on, without its password"),
@@ -45,7 +45,8 @@ type SeedArgs = {
   openDatabase: Dependencies["openDatabase"];
 };
 
-async function seed({ world: worldFile, dryRun, openDatabase }: SeedArgs) {
+/** The seed, as `cw db seed` and `cw verify`'s databases run it. */
+export async function seed({ world: worldFile, dryRun, openDatabase }: SeedArgs) {
   const { TransactionRollbackError } = await import("drizzle-orm");
   const { SeedConflict, seedDevWorld } = await import("@repo/households/seed");
   const world: unknown = JSON.parse(await readFile(worldFile, "utf8"));
