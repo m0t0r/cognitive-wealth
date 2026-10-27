@@ -64,7 +64,8 @@
     "typescript/prefer-nullish-coalescing": ["error", { "ignorePrimitives": { "string": true } }],
     // A number in a condition reads `0` as missing, and `0` is a real amount, quantity or count:
     // compare it (`> 0`, `!== undefined`) instead. Strings, nullable strings and nullable booleans
-    // stay allowed for the reason above: `""` and `undefined` both mean "not given" (#274).
+    // stay allowed for the reason above: `""` and `undefined` both mean "not given" (#274). An
+    // object is never falsy, so a nullable one reads as a null check.
     "typescript/strict-boolean-expressions": [
       "error",
       {
@@ -129,7 +130,7 @@
         "turbo/no-undeclared-env-vars": "off",
         "max-params": "off",
         "repo/max-inline-param-type-members": "off",
-        // Same reason: and they're untyped `.mjs`, where every JSON field is `any`.
+        // Same reason, and they're untyped `.mjs`, where every JSON field is `any`.
         "typescript/strict-boolean-expressions": "off"
       }
     },
