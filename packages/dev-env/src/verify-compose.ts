@@ -79,19 +79,21 @@ export function composeProjectOfCheckout(checkout: Checkout) {
   return verifyResources(checkout.worktreeId).compose;
 }
 
-export async function composeUp({
-  checkout,
-  services,
-  domain,
-  system = defaultComposeSystem,
-}: {
+type ComposeUpArgs = {
   checkout: Checkout;
   /** compose.yaml's services to start; all of them when empty. */
   services: string[];
   /** `cw`'s seed and Ingestion; without them, the checkout's own `cw … --json` runs. */
   domain?: DomainCalls | undefined;
   system?: ComposeSystem;
-}): Promise<ComposeUp> {
+};
+
+export async function composeUp({
+  checkout,
+  services,
+  domain,
+  system = defaultComposeSystem,
+}: ComposeUpArgs): Promise<ComposeUp> {
   const { top } = checkout;
   const { project, ports } = composeProjectOfCheckout(checkout);
   ensureSecrets(top);

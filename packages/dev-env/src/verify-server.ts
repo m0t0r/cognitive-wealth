@@ -356,7 +356,10 @@ export async function startVerifyServer({
     script: join(web, ".next/standalone/apps/web/server.js"),
     log: p.log,
     env: {
+      // The shell's, which a Turborepo task never reads: `cw` isn't one.
+      // oxlint-disable-next-line turbo/no-undeclared-env-vars
       PATH: process.env.PATH ?? "",
+      // oxlint-disable-next-line turbo/no-undeclared-env-vars
       HOME: process.env.HOME ?? "",
       NODE_ENV: "production",
       HOSTNAME: "127.0.0.1",

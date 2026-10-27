@@ -108,7 +108,10 @@ function agentBrowser(args: string[]) {
   try {
     execFileSync("agent-browser", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   } catch (error) {
-    const stderr = (error as { stderr?: string }).stderr?.trim();
+    const stderr =
+      error instanceof Error && "stderr" in error && typeof error.stderr === "string"
+        ? error.stderr.trim()
+        : "";
     throw new CliError({
       code: "agent_browser_failed",
       message: `agent-browser ${args.join(" ")} failed${stderr ? `: ${stderr}` : ""}`,
