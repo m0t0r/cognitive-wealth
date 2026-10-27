@@ -29,7 +29,9 @@ A citation rests on the page itself, read by you. A search engine's summary of a
    | a public law                        | govinfo.gov                                                                     |
    | a CRS report                        | its PDF download, not the HTML page                                             |
 
-   For a CFR section, govinfo's link service finds the annual CFR volume itself, so it needs no volume number, and WebFetch reads it: `https://www.govinfo.gov/link/cfr/<title>/<part>?sectionnum=<section>&year=mostrecent&link-type=xml` (for 17 CFR 275.204-2: `/link/cfr/17/275?sectionnum=204-2`). Title 17's annual edition is as of April 1, so it can lag eCFR by months, and so can Cornell's copy: name the edition you read. eCFR itself is no fallback: in a headed agent-browser on 2026-10-26, `get text body` returned only "Unsupported format" (#209).
+   For a CFR section, use eCFR's versioner API first. `curl --compressed` reads it, though WebFetch and a headed agent-browser don't (`get text body` returned only "Unsupported format" on 2026-10-26, #209): `https://www.ecfr.gov/api/versioner/v1/full/<YYYY-MM-DD>/title-<title>.xml?part=<part>&section=<section>` (for 17 CFR 275.204-2: `.../full/<date>/title-17.xml?part=275&section=275.204-2`). It returns the text as of that date, so fetching two dates and comparing them shows when a rule was added or amended. From a `.dev/scratch/` script, since the command holds a URL.
+
+   govinfo's link service is the fallback. It finds the annual CFR volume itself, so it needs no volume number, and WebFetch reads it: `https://www.govinfo.gov/link/cfr/<title>/<part>?sectionnum=<section>&year=mostrecent&link-type=xml` (for 17 CFR 275.204-2: `/link/cfr/17/275?sectionnum=204-2`). `mostrecent` isn't always the latest: it served the 2020 edition of 17 CFR 275.204-2, without the 2024 paragraph (a)(25) (#259). Title 17's annual edition is as of April 1, so it can lag eCFR by months, and so can Cornell's copy: name the edition you read.
 
    Link the official page in the text if you like, but say which copy you read.
 
