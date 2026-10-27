@@ -11,6 +11,7 @@ import type { Database } from "@repo/db";
 import { CliError } from "@repo/db/cli/cli-error";
 import type { FixArgs, FixOutcome } from "@repo/friction-bot/fix";
 import type { GitHub } from "@repo/friction-bot/github";
+import type { Check, CheckResult } from "@repo/friction-bot/tools";
 import type { TriageInput } from "@repo/friction-bot/reports";
 import type { Triage } from "@repo/friction-bot/triage";
 import { REPO_ROOT } from "./paths.ts";
@@ -49,6 +50,9 @@ export type Claude = {
   fix: (args: Omit<FixArgs, "root" | "model"> & { root?: string }) => Promise<FixOutcome>;
 };
 
+/** Runs one of the repo's checks (`pnpm <check>`) in a checkout, without the secrets. */
+export type RunCheck = (args: { root: string; check: Check }) => Promise<CheckResult>;
+
 export type CveScan = {
   /** The checkout whose lockfiles and pins are scanned. */
   root: string;
@@ -68,6 +72,8 @@ export type Dependencies = {
   /** This repository's issues, through `gh`. */
   github: () => Promise<GitHub>;
   claude: () => Promise<Claude>;
+  /** The checks `cw friction commit` runs before it commits a fix. */
+  checks: () => Promise<RunCheck>;
   cveScan: () => Promise<CveScan>;
 };
 
@@ -145,6 +151,10 @@ export const defaultDependencies: Dependencies = {
   async github() {
     const { ghCli } = await import("@repo/friction-bot/github");
     return ghCli();
+  },
+  async checks() {
+    const { runCheck } = await import("@repo/friction-bot/tools");
+    return runCheck;
   },
   // The AI SDK reads ANTHROPIC_API_KEY on the first call; without it the call fails as
   // `no_api_key` (`api-error.ts`), before triage or the fixer has changed anything.

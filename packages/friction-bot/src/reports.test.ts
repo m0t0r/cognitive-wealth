@@ -2,6 +2,7 @@ import {
   briefMarkdown,
   gatherReports,
   reportBody,
+  triageBacklog,
   triageBrief,
   triageReport,
   trustedComments,
@@ -284,5 +285,103 @@ describe("gatherReports", () => {
     await expect(gatherReports(github, { numbers: [5] })).rejects.toMatchObject({
       code: "not_a_friction_report",
     });
+  });
+});
+
+describe("triageBacklog", () => {
+  const NOW = new Date("2026-10-27T13:00:00Z");
+
+  it("triages untriaged open reports, oldest first, leaving new ones to their own run", async () => {
+    const decide = answer({
+      decision: "ready-for-agent",
+      duplicate_of: null,
+      reason: "A doc fix.",
+    });
+    const { github, issue } = memoryGitHub([
+      report({ number: 228, createdAt: "2026-10-20T10:00:00Z" }),
+      report({
+        number: 240,
+        createdAt: "2026-10-21T10:00:00Z",
+        labels: ["friction", "ready-for-human"],
+      }),
+      report({ number: 250, createdAt: "2026-10-22T10:00:00Z" }),
+      report({ number: 251, createdAt: "2026-10-23T10:00:00Z", state: "closed" }),
+      report({ number: 260, createdAt: "2026-10-27T12:45:00Z" }),
+    ]);
+
+    const outcome = await triageBacklog(github, {
+      decide,
+      limit: 10,
+      olderThanMinutes: 30,
+      now: NOW,
+      dryRun: false,
+    });
+
+    expect(outcome).toEqual({
+      triaged: [
+        { issue: 228, decision: "ready-for-agent" },
+        { issue: 250, decision: "ready-for-agent" },
+      ],
+      failed: [],
+    });
+    expect(issue(228).labels).toContain("ready-for-agent");
+    expect(issue(260).labels).toEqual(["friction"]);
+  });
+
+  it("stops at the limit, and records a report it couldn't triage without stopping", async () => {
+    const decide = vi.fn(async (input: TriageInput): Promise<Triage> => {
+      if (input.issue.includes('"number":1,'))
+        throw Object.assign(new Error("Overloaded"), { code: "anthropic_api_error" });
+      return {
+        decision: "ready-for-human",
+        duplicate_of: null,
+        reason: "Needs a human.",
+        brief: null,
+      };
+    });
+    const { github, writes } = memoryGitHub([
+      report({ number: 1, createdAt: "2026-10-20T10:00:00Z" }),
+      report({ number: 2, createdAt: "2026-10-21T10:00:00Z" }),
+      report({ number: 3, createdAt: "2026-10-22T10:00:00Z" }),
+    ]);
+
+    const outcome = await triageBacklog(github, {
+      decide,
+      limit: 2,
+      olderThanMinutes: 30,
+      now: NOW,
+      dryRun: false,
+    });
+
+    expect(outcome).toEqual({
+      triaged: [{ issue: 2, decision: "ready-for-human" }],
+      failed: [{ issue: 1, code: "anthropic_api_error", message: "Overloaded" }],
+    });
+    expect(writes).toMatchObject([
+      { kind: "label", number: 2 },
+      { kind: "comment", number: 2 },
+    ]);
+  });
+
+  it("changes nothing on a dry run", async () => {
+    const decide = answer({
+      decision: "ready-for-agent",
+      duplicate_of: null,
+      reason: "A doc fix.",
+    });
+    const { github, writes } = memoryGitHub([
+      report({ number: 228, createdAt: "2026-10-20T10:00:00Z" }),
+    ]);
+
+    const outcome = await triageBacklog(github, {
+      decide,
+      limit: 10,
+      olderThanMinutes: 30,
+      now: NOW,
+      dryRun: true,
+    });
+
+    expect(outcome.triaged).toEqual([{ issue: 228, decision: "ready-for-agent" }]);
+    expect(writes).toEqual([]);
   });
 });

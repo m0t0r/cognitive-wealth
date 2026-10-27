@@ -35,6 +35,17 @@ type ListArgs = {
 
 type EditLabelsArgs = { number: number; add: string[]; remove: string[] };
 
+export type PullRequest = {
+  number: number;
+  state: "open" | "closed" | "merged";
+  /** The commit the PR's branch pointed at when it was last open. */
+  headSha: string;
+  body: string;
+  url: string;
+};
+
+type CreatePullRequestArgs = { head: string; base: string; title: string; body: string };
+
 export type GitHub = {
   view: (number: number) => Promise<Issue>;
   list: (args: ListArgs) => Promise<IssueSummary[]>;
@@ -47,6 +58,10 @@ export type GitHub = {
   editLabels: (args: EditLabelsArgs) => Promise<void>;
   /** Closes it as not planned, with `comment`. */
   close: (args: { number: number; comment: string }) => Promise<void>;
+  /** Every PR from `head` into `base`, open, closed or merged, newest first. */
+  pullRequests: (args: { head: string; base: string }) => Promise<PullRequest[]>;
+  createPullRequest: (args: CreatePullRequestArgs) => Promise<{ number: number; url: string }>;
+  editPullRequest: (args: { number: number; body: string }) => Promise<void>;
 };
 
 const SUMMARY_FIELDS = "number,title,body,state,url,labels,createdAt,closedAt";
@@ -61,6 +76,14 @@ type GhIssue = {
   createdAt: string;
   closedAt: string | null;
   comments?: { author: { login: string } | null; body: string; authorAssociation: string }[];
+};
+
+type GhPullRequest = {
+  number: number;
+  state: "OPEN" | "CLOSED" | "MERGED";
+  headRefOid: string;
+  body: string;
+  url: string;
 };
 
 function summary(issue: GhIssue): IssueSummary {
@@ -146,6 +169,56 @@ export function ghCli(): GitHub {
       await gh({
         args: ["issue", "close", String(number), "--reason", "not planned", "--comment", comment],
       });
+    },
+    async pullRequests({ head, base }) {
+      const pulls: GhPullRequest[] = JSON.parse(
+        await gh({
+          args: [
+            "pr",
+            "list",
+            "--head",
+            head,
+            "--base",
+            base,
+            "--state",
+            "all",
+            "--limit",
+            "50",
+            "--json",
+            "number,state,headRefOid,body,url",
+          ],
+        }),
+      );
+      return pulls.map((pull) => ({
+        number: pull.number,
+        state: pull.state === "OPEN" ? "open" : pull.state === "MERGED" ? "merged" : "closed",
+        headSha: pull.headRefOid,
+        body: pull.body,
+        url: pull.url,
+      }));
+    },
+    async createPullRequest({ head, base, title, body }) {
+      const url = (
+        await gh({
+          args: [
+            "pr",
+            "create",
+            "--head",
+            head,
+            "--base",
+            base,
+            "--title",
+            title,
+            "--body-file",
+            "-",
+          ],
+          input: body,
+        })
+      ).trim();
+      return { number: Number(url.slice(url.lastIndexOf("/") + 1)), url };
+    },
+    async editPullRequest({ number, body }) {
+      await gh({ args: ["pr", "edit", String(number), "--body-file", "-"], input: body });
     },
   };
 }

@@ -1,8 +1,8 @@
-// The fixer's tools: read, list and search the checkout, write and edit files outside the paths
-// only the user changes, and run the repo's own checks. Nothing here reaches the network or git's
-// history, and the checks run without the workflow's credentials.
+// The fixer's tools: read, list and search the checkout, write, edit and delete files outside the
+// paths only the user changes, and run the repo's own checks. Nothing here reaches the network or
+// git's history, and the checks run without the workflow's credentials.
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { tool, type ToolSet } from "ai";
@@ -10,8 +10,12 @@ import { z } from "zod";
 
 const run = promisify(execFile);
 
-/** What only the user changes (CLAUDE.md, "Worktrees"); `friction-fix.yml` checks it again. */
-export const FORBIDDEN = /^(\.claude\/hooks\/|\.claude\/settings[^/]*\.json$|\.github\/|\.git\/)/;
+/**
+ * What only the user changes (CLAUDE.md, "Worktrees"). The skills' scripts are among them: they
+ * run on the user's machine, where no check here reaches. `commitFix` and `pushFix` check it again.
+ */
+export const FORBIDDEN =
+  /^(\.claude\/hooks\/|\.claude\/settings[^/]*\.json$|\.claude\/skills\/|\.github\/|\.git\/)/;
 
 export const CHECKS = [
   "lint",
@@ -108,6 +112,35 @@ async function git({ root, args }: { root: string; args: string[] }): Promise<st
   }
 }
 
+export type Check = (typeof CHECKS)[number];
+export type CheckResult = { exitCode: number | string; output: string };
+
+/** `pnpm <check>` in `root`, without the secrets: its exit code and the end of its output. */
+export async function runCheck({
+  root,
+  check,
+}: {
+  root: string;
+  check: Check;
+}): Promise<CheckResult> {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !SECRETS.has(name)),
+  );
+  try {
+    const { stdout, stderr } = await run("pnpm", [check], {
+      cwd: root,
+      env,
+      timeout: CHECK_TIMEOUT_MS,
+      maxBuffer: 256 * 1024 * 1024,
+    });
+    return { exitCode: 0, output: tail(stdout + stderr) };
+  } catch (error) {
+    // A non-zero exit, or the timeout (code undefined, the process killed).
+    const { code, output } = execFailure(error);
+    return { exitCode: code ?? "killed", output: tail(output) };
+  }
+}
+
 export function fixTools(root: string): ToolSet {
   return {
     read_file: tool({
@@ -158,28 +191,20 @@ export function fixTools(root: string): ToolSet {
         return `Edited ${path}.`;
       },
     }),
+    delete_file: tool({
+      description:
+        "Delete a file, such as a scratch file you made. A new file is committed only when a fixed report's summary names its path.",
+      inputSchema: z.object({ path: z.string() }),
+      execute: async ({ path }) => {
+        await rm(resolve(root, writablePath({ root, path })));
+        return `Deleted ${path}.`;
+      },
+    }),
     run_check: tool({
       description:
         "Run one of the repository's checks from its root (`pnpm <check>`) and get its exit code and the end of its output. `format` rewrites files to the repo's formatting.",
       inputSchema: z.object({ check: z.enum(CHECKS) }),
-      execute: async ({ check }) => {
-        const env = Object.fromEntries(
-          Object.entries(process.env).filter(([name]) => !SECRETS.has(name)),
-        );
-        try {
-          const { stdout, stderr } = await run("pnpm", [check], {
-            cwd: root,
-            env,
-            timeout: CHECK_TIMEOUT_MS,
-            maxBuffer: 256 * 1024 * 1024,
-          });
-          return { exitCode: 0, output: tail(stdout + stderr) };
-        } catch (error) {
-          // A non-zero exit, or the timeout (code undefined, the process killed).
-          const { code, output } = execFailure(error);
-          return { exitCode: code ?? "killed", output: tail(output) };
-        }
-      },
+      execute: async ({ check }) => await runCheck({ root, check }),
     }),
   };
 }

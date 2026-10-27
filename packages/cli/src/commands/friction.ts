@@ -1,13 +1,15 @@
 // `cw friction …`: friction reports (docs/agents/friction.md) from filing to fix. An agent runs
 // `search` and `report` at the end of a task; `friction-triage.yml` runs `triage` when the label
-// lands, and `friction-fix.yml` runs `fix` on the `ready-for-agent` ones. The rules are
-// `@repo/friction-bot`'s (`reports.ts`); this is their options, output and codes. Every command but
-// `search` writes (to GitHub, or the checkout), so none is an MCP tool (ADR 0026).
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+// lands, and `friction-fix.yml` runs `triage-backlog`, then `start`, `fix`, `commit` and `publish`
+// on the `ready-for-agent` ones (`hand-back` when a run stops early). The rules are
+// `@repo/friction-bot`'s; this is their options, output and codes. Every command but `search`
+// writes (to GitHub, or a checkout), so none is an MCP tool (ADR 0026).
+import { readFile, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { Cli, z } from "incur";
 import { CliError } from "@repo/db/cli/cli-error";
 import type { Dependencies } from "../dependencies.ts";
+import { fromInvocation, REPO_ROOT } from "../paths.ts";
 import { refusal } from "../refusal.ts";
 import { shellQuoted } from "../shell-quoted.ts";
 
@@ -50,6 +52,36 @@ const reportOptions = z.object({
 
 type ReportInput = z.output<typeof reportOptions>;
 
+const branchOptions = {
+  branch: z.string().default("chore/friction-autofix").describe("The bot's branch"),
+  base: z.string().default("dev").describe("The branch its PR goes into"),
+};
+
+const picked = z.object({
+  issues: z.array(issueNumber).describe("The reports this run picked"),
+});
+
+const runUrl = z.string().describe("The workflow run, linked from comments and the PR");
+
+const dryRunOption = z.boolean().default(false);
+
+/** `dir/name` parsed as JSON, or undefined when there's no such file. */
+async function readJson({ dir, name }: { dir: string; name: string }): Promise<unknown> {
+  try {
+    return JSON.parse(await readFile(join(dir, name), "utf8"));
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+const reportFate = z.object({
+  number: z.number(),
+  outcome: z.enum(["fixed", "handed_back"]),
+  labels: z.object({ add: z.array(z.string()), remove: z.array(z.string()) }),
+  comment: z.string(),
+});
+
 /** An option's name as its flag spells it: `bodyFile` → `body-file`. */
 const kebab = (name: string) => name.replaceAll(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 
@@ -69,7 +101,11 @@ async function bodyOf(input: ReportInput): Promise<string> {
   return reportBody({ what: input.what, cost: input.cost, where: input.where, fix: input.fix });
 }
 
-export function frictionCommands({ github, claude }: Pick<Dependencies, "github" | "claude">) {
+export function frictionCommands({
+  github,
+  claude,
+  checks,
+}: Pick<Dependencies, "github" | "claude" | "checks">) {
   return Cli.create("friction", {
     description: "Friction reports (docs/agents/friction.md): search, file, triage and fix them",
   })
@@ -274,13 +310,59 @@ export function frictionCommands({ github, claude }: Pick<Dependencies, "github"
         }
       },
     })
+    .command("triage-backlog", {
+      description:
+        "Triage, with Haiku, the open friction reports that have no triage label, oldest first: " +
+        "those whose own triage run failed or never started. friction-fix.yml runs it every hour. " +
+        "A report it couldn't triage is listed in failed and the rest still go; it exits 0 either " +
+        "way, so check failed",
+      hint: "Needs ANTHROPIC_API_KEY. A dry run still asks Haiku but changes nothing on GitHub.",
+      options: z.object({
+        limit: z.coerce.number().int().positive().default(10).describe("At most this many"),
+        olderThanMinutes: z.coerce
+          .number()
+          .int()
+          .nonnegative()
+          .default(30)
+          .describe("Leave a report filed more recently to the triage run its label started"),
+        dryRun: dryRunOption.describe("Ask Haiku and list the decisions; act on none"),
+      }),
+      output: z.object({
+        triaged: z.array(
+          z.object({
+            issue: z.number(),
+            decision: z.enum(["ready-for-agent", "ready-for-human", "duplicate"]),
+          }),
+        ),
+        failed: z.array(z.object({ issue: z.number(), code: z.string(), message: z.string() })),
+        dryRun: z.boolean(),
+      }),
+      mcp: false,
+      async run(c) {
+        try {
+          const { triageBacklog } = await import("@repo/friction-bot/reports");
+          const gh = await github();
+          const { triage } = await claude();
+          const outcome = await triageBacklog(gh, {
+            decide: triage,
+            limit: c.options.limit,
+            olderThanMinutes: c.options.olderThanMinutes,
+            dryRun: c.options.dryRun,
+          });
+          return { ...outcome, dryRun: c.options.dryRun };
+        } catch (error) {
+          return c.error(refusal(error));
+        }
+      },
+    })
     .command("fix", {
       description:
         "Fix friction reports in this checkout with Sonnet in a tool loop, and say which it fixed " +
         "and which it passed on. friction-fix.yml runs it on a throwaway checkout and commits",
       hint:
         "Needs ANTHROPIC_API_KEY. It edits files (never .claude/hooks/, .claude/settings*.json, " +
-        ".github/ or .git/) and runs pnpm checks without the API key or GitHub token. It doesn't commit.",
+        ".claude/skills/, .github/ or .git/) and runs pnpm checks without the API key or GitHub " +
+        "token. It doesn't commit: friction commit does.",
       args: z.object({
         issues: z.array(issueNumber).describe("The reports' issue numbers"),
       }),
@@ -360,6 +442,210 @@ export function frictionCommands({ github, claude }: Pick<Dependencies, "github"
             steps,
             costUsd,
           };
+        } catch (error) {
+          return c.error(refusal(error));
+        }
+      },
+    })
+    .command("start", {
+      description:
+        "Put a full clone on the bot's branch where the next fix starts: the branch while its PR " +
+        "is open or none has had its tip, else the base branch (its PR was merged or closed, and " +
+        "closing it rejected that work). friction-fix.yml runs it before fix",
+      options: z.object({
+        checkout: z.string().describe("The clone to put on the branch, with origin fetched"),
+        ...branchOptions,
+        dryRun: dryRunOption.describe("Say where it would start; check nothing out"),
+      }),
+      output: z.object({
+        from: z.enum(["branch", "base"]),
+        branch: z.string(),
+        commit: z.string().describe("The commit the fix starts from"),
+        dryRun: z.boolean(),
+      }),
+      mcp: false,
+      async run(c) {
+        try {
+          const { startFix } = await import("@repo/friction-bot/push");
+          const { branch, base, dryRun } = c.options;
+          const pulls = await (await github()).pullRequests({ head: branch, base });
+          const started = await startFix({
+            root: fromInvocation(c.options.checkout),
+            branch,
+            baseBranch: base,
+            pulls,
+            dryRun,
+          });
+          return { ...started, branch, dryRun };
+        } catch (error) {
+          return c.error(refusal(error));
+        }
+      },
+    })
+    .command("commit", {
+      description:
+        "Commit the fixer's changes as one commit, if they pass lint, format:check, check-types, " +
+        "test and test:integration. A new file no fixed report's summary names is deleted first; a " +
+        "path only the user changes refuses the commit. Reads <dir>/result.json (fix's output), " +
+        "writes <dir>/commit.json and <dir>/fix.bundle for publish",
+      args: picked,
+      options: z.object({
+        checkout: z.string().describe("The checkout the fixer edited, on the bot's branch"),
+        dir: z.string().describe("Where fix's result.json is, and the outcome and bundle go"),
+        dryRun: dryRunOption.describe(
+          "List what it would commit; delete, check and commit nothing",
+        ),
+      }),
+      output: z.object({
+        status: z.enum(["committed", "would_commit", "no_changes"]),
+        commit: z.string().optional(),
+        base: z.string().optional(),
+        files: z.array(z.string()).optional(),
+        dropped: z.array(z.string()).describe("New files deleted, since no summary names them"),
+        dryRun: z.boolean(),
+      }),
+      mcp: false,
+      async run(c) {
+        try {
+          const { parseAnswer } = await import("@repo/friction-bot/publish");
+          const { commitFix } = await import("@repo/friction-bot/commit");
+          const dir = fromInvocation(c.options.dir);
+          const root = fromInvocation(c.options.checkout);
+          const answer = parseAnswer({
+            value: await readJson({ dir, name: "result.json" }),
+            picked: c.args.issues,
+          });
+          const runCheck = await checks();
+          const outcome = await commitFix({
+            root,
+            fixed: answer.fixed,
+            runCheck: (check) => runCheck({ root, check }),
+            bundle: join(dir, "fix.bundle"),
+            dryRun: c.options.dryRun,
+          });
+          if (!c.options.dryRun) {
+            await writeFile(join(dir, "commit.json"), JSON.stringify(outcome, null, 2));
+          }
+          if (outcome.status === "forbidden") {
+            throw new CliError({
+              code: "forbidden_paths",
+              message: `The fix changes paths only the user changes: ${outcome.paths.join(", ")}.`,
+            });
+          }
+          if (outcome.status === "checks_failed") {
+            throw new CliError({
+              code: "checks_failed",
+              message: `pnpm ${outcome.check} failed, so nothing was committed:\n${outcome.output.slice(-4000)}`,
+            });
+          }
+          return { ...outcome, dryRun: c.options.dryRun };
+        } catch (error) {
+          return c.error(refusal(error));
+        }
+      },
+    })
+    .command("publish", {
+      description:
+        "Publish a fix: file the fixer's own friction (ready-for-human), push its commit to the " +
+        "bot's branch (never over work still wanted), open or update the PR, and relabel each " +
+        "report from what happened to it. A step that fails is listed in errors and the rest " +
+        "still run; it exits 0 either way, so check errors",
+      hint: "Reads <dir>/result.json, <dir>/commit.json and <dir>/fix.bundle, as fix and commit left them.",
+      args: picked,
+      options: z.object({
+        dir: z.string().describe("Where fix and commit left their output"),
+        runUrl,
+        checkout: z
+          .string()
+          .optional()
+          .describe("The clone to push from, when it isn't the one cw runs from"),
+        ...branchOptions,
+        dryRun: dryRunOption.describe("Check the bundle and say what it would do; change nothing"),
+      }),
+      output: z.object({
+        filed: z.array(z.object({ number: z.number().nullable(), title: z.string() })),
+        pushed: z.object({ commit: z.string(), stacked: z.boolean() }).nullable(),
+        pullRequest: z
+          .object({
+            number: z.number().nullable(),
+            url: z.string().nullable(),
+            created: z.boolean(),
+          })
+          .nullable(),
+        reports: z.array(reportFate),
+        errors: z.array(
+          z.object({
+            step: z.enum(["friction", "push", "pull_request", "relabel"]),
+            code: z.string(),
+            message: z.string(),
+          }),
+        ),
+        dryRun: z.boolean(),
+      }),
+      mcp: false,
+      async run(c) {
+        try {
+          const { parseAnswer, parseCommitOutcome, publishFix } =
+            await import("@repo/friction-bot/publish");
+          const { pushFix } = await import("@repo/friction-bot/push");
+          const { branch, base, dryRun } = c.options;
+          const dir = fromInvocation(c.options.dir);
+          const root = c.options.checkout ? fromInvocation(c.options.checkout) : REPO_ROOT;
+          const answer = parseAnswer({
+            value: await readJson({ dir, name: "result.json" }),
+            picked: c.args.issues,
+          });
+          const commit = parseCommitOutcome(await readJson({ dir, name: "commit.json" }));
+          const outcome = await publishFix(await github(), {
+            picked: c.args.issues,
+            answer,
+            commit,
+            push: (pulls) =>
+              pushFix({
+                root,
+                bundle: join(dir, "fix.bundle"),
+                base: commit?.status === "committed" ? commit.base : "",
+                branch,
+                baseBranch: base,
+                pulls,
+                dryRun,
+              }),
+            branch,
+            baseBranch: base,
+            runUrl: c.options.runUrl,
+            dryRun,
+          });
+          return { ...outcome, dryRun };
+        } catch (error) {
+          return c.error(refusal(error));
+        }
+      },
+    })
+    .command("hand-back", {
+      description:
+        "Label ready-for-human, with a comment, the reports a fix run picked that are still " +
+        "ready-for-agent: the run stopped before publish labelled them. friction-fix.yml runs it " +
+        "when a run fails",
+      args: picked,
+      options: z.object({
+        runUrl,
+        dryRun: dryRunOption.describe("List the reports it would hand back; change nothing"),
+      }),
+      output: z.object({
+        handedBack: z.array(z.number()),
+        left: z.array(z.number()).describe("Already labelled, or closed"),
+        dryRun: z.boolean(),
+      }),
+      mcp: false,
+      async run(c) {
+        try {
+          const { handBack } = await import("@repo/friction-bot/publish");
+          const outcome = await handBack(await github(), {
+            numbers: c.args.issues,
+            runUrl: c.options.runUrl,
+            dryRun: c.options.dryRun,
+          });
+          return { ...outcome, dryRun: c.options.dryRun };
         } catch (error) {
           return c.error(refusal(error));
         }

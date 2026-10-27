@@ -12,6 +12,7 @@ export function dependencies(overrides: Partial<Dependencies> = {}): Dependencie
     devEnv: () => Promise.reject(new Error("The test gave this command no dev environment")),
     github: () => Promise.reject(new Error("The test gave this command no GitHub")),
     claude: () => Promise.reject(new Error("The test gave this command no Claude")),
+    checks: () => Promise.reject(new Error("The test gave this command no checks")),
     cveScan: () => Promise.reject(new Error("The test gave this command no cve.now scan")),
     ...overrides,
   };

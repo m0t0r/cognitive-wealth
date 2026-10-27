@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ModelMessage } from "ai";
@@ -100,6 +100,24 @@ describe("fix", () => {
 
     expect(JSON.stringify(calls()[1]?.prompt)).toContain("only by the user");
     await expect(readFile(join(root, ".github/workflows/x.yml"), "utf8")).rejects.toThrow(/ENOENT/);
+  });
+
+  it("deletes a file the model asks to, but not one only the user changes", async () => {
+    await mkdir(join(root, ".claude/skills/x"), { recursive: true });
+    await writeFile(join(root, ".claude/skills/x/SKILL.md"), "skill\n");
+    const { model, calls } = scriptedModel({
+      responses: [
+        { toolCall: { name: "delete_file", input: { path: "notes.md" } } },
+        { toolCall: { name: "delete_file", input: { path: ".claude/skills/x/SKILL.md" } } },
+        { text: JSON.stringify(answer) },
+      ],
+    });
+
+    await fix({ root, numbers: [7], issues: "[]", maxSteps: 10, maxCostUsd: 5, model });
+
+    await expect(readFile(join(root, "notes.md"), "utf8")).rejects.toThrow(/ENOENT/);
+    expect(await readFile(join(root, ".claude/skills/x/SKILL.md"), "utf8")).toBe("skill\n");
+    expect(JSON.stringify(calls()[2]?.prompt)).toContain("only by the user");
   });
 
   it("stops at the cost cap and gives no answer", async () => {

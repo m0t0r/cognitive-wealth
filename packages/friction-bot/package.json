@@ -10,7 +10,12 @@
     "./reports": "./src/reports.ts",
     "./triage": "./src/triage.ts",
     "./fix": "./src/fix.ts",
-    "./testing/memory-github": "./src/testing/memory-github.ts"
+    "./tools": "./src/tools.ts",
+    "./commit": "./src/commit.ts",
+    "./push": "./src/push.ts",
+    "./publish": "./src/publish.ts",
+    "./testing/memory-github": "./src/testing/memory-github.ts",
+    "./testing/git-repo": "./src/testing/git-repo.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",
