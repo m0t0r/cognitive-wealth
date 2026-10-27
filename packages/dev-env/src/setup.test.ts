@@ -25,7 +25,7 @@ function fakeSystem({ created = true, populate }: FakeSystemArgs = {}) {
     startServices: vi.fn(),
     createDatabase: vi.fn(async () => created),
     dropDatabase: vi.fn(async () => true),
-    exec: vi.fn(() => ({ status: 0, stdout: "", stderr: "" })),
+    run: vi.fn(() => ({ status: 0, stdout: "", stderr: "" })),
     populate: vi.fn(
       populate ??
         (async () => ({
@@ -42,10 +42,10 @@ function fakeSystem({ created = true, populate }: FakeSystemArgs = {}) {
 
 describe("setUpWorktree", () => {
   it("migrates, seeds and ingests the example Deliveries into a new database", async () => {
-    const co = checkout();
+    const worktree = checkout();
     const system = fakeSystem();
 
-    const { created, ingested } = await setUpWorktree({ ...co, system });
+    const { created, ingested } = await setUpWorktree({ ...worktree, system });
 
     expect(created).toBe(true);
     expect(ingested).toEqual([
@@ -53,52 +53,57 @@ describe("setUpWorktree", () => {
       { asOf: "2026-03-06", status: "ingested" },
     ]);
     expect(system.populate).toHaveBeenCalledWith({
-      checkout: co.top,
+      checkout: worktree.top,
       url: expect.any(Function),
-      secrets: join(co.mainCheckout, ".secrets"),
+      secrets: join(worktree.mainCheckout, ".secrets"),
       domain: undefined,
+      run: system.run,
     });
     const { url } = vi.mocked(system.populate).mock.calls[0]![0];
     expect(url("app")).toBe(`postgres://app@localhost:5433/${database}`);
-    expect(readFileSync(join(co.top, "apps/web/.env.local"), "utf8")).toContain(database);
+    expect(readFileSync(join(worktree.top, "apps/web/.env.local"), "utf8")).toContain(database);
   });
 
   it("only migrates a database that exists, and ingests nothing", async () => {
-    const co = checkout();
+    const worktree = checkout();
     const system = fakeSystem({ created: false });
 
-    const { created, ingested } = await setUpWorktree({ ...co, system });
+    const { created, ingested } = await setUpWorktree({ ...worktree, system });
 
     expect(created).toBe(false);
     expect(ingested).toEqual([]);
     expect(system.populate).not.toHaveBeenCalled();
-    expect(system.exec).toHaveBeenCalledWith(
+    expect(system.run).toHaveBeenCalledWith(
       expect.objectContaining({
-        command: "pnpm",
         args: ["--silent", "--filter", "@repo/db", "db:migrate"],
-        cwd: co.top,
+        cwd: worktree.top,
       }),
     );
   });
 
   it("drops a new database whose ingest is refused, and passes the refusal on", async () => {
-    const co = checkout();
+    const worktree = checkout();
     const system = fakeSystem({
       populate: async () => {
         throw new CliError({ code: "incomplete", message: "Refused the example Delivery." });
       },
     });
 
-    await expect(setUpWorktree({ ...co, system })).rejects.toMatchObject({ code: "incomplete" });
-    expect(system.dropDatabase).toHaveBeenCalledWith({ mainCheckout: co.mainCheckout, database });
+    await expect(setUpWorktree({ ...worktree, system })).rejects.toMatchObject({
+      code: "incomplete",
+    });
+    expect(system.dropDatabase).toHaveBeenCalledWith({
+      mainCheckout: worktree.mainCheckout,
+      database,
+    });
   });
 
   it("refuses a failed migration of an existing database as migrate_failed, and keeps it", async () => {
-    const co = checkout();
+    const worktree = checkout();
     const system = fakeSystem({ created: false });
-    vi.mocked(system.exec).mockReturnValue({ status: 1, stdout: "", stderr: "relation exists" });
+    vi.mocked(system.run).mockReturnValue({ status: 1, stdout: "", stderr: "relation exists" });
 
-    await expect(setUpWorktree({ ...co, system })).rejects.toMatchObject({
+    await expect(setUpWorktree({ ...worktree, system })).rejects.toMatchObject({
       code: "migrate_failed",
     });
     expect(system.dropDatabase).not.toHaveBeenCalled();

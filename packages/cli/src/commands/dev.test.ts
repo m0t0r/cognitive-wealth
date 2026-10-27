@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CliError } from "@repo/db/cli/cli-error";
 import { listen, startFakeMailpit } from "@repo/testing/fake-mailpit";
 import { worktreeResources } from "@repo/dev-env/names";
 import type { TeardownTarget } from "@repo/dev-env/teardown";
@@ -175,6 +176,16 @@ describe("cw dev env", () => {
     expect(exitCode).toBe(0);
     expect(output.warnings).toEqual([expect.stringMatching(/wt_gone: Redis said no/)]);
     expect(output.created).toBe(true);
+  });
+
+  it("passes on a refused example Delivery's code", async () => {
+    const { env, cli } = devEnv();
+    env.setUpWorktree.mockRejectedValue(
+      new CliError({ code: "incomplete", message: "Refused the example Delivery for 2026-03-02." }),
+    );
+    const { output, exitCode } = await run({ cli, argv: ["dev", "env"] });
+    expect(exitCode).toBe(1);
+    expect(output).toMatchObject({ code: "incomplete" });
   });
 
   it("names the environment with --dry-run, and sets nothing up", async () => {

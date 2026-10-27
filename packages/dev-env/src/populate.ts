@@ -90,6 +90,29 @@ function subprocessCalls({ checkout, run, env }: SubprocessCallsArgs): Partial<D
   };
 }
 
+type MigrateArgs = {
+  checkout: string;
+  url: (role: "app" | "migrator") => string;
+  secrets: string;
+  run: (args: RunArgs) => RunResult;
+};
+
+/** The checkout's own migrations, as `migrator`; a worktree's existing database gets only these. */
+export function migrate({ checkout, url, secrets, run }: MigrateArgs) {
+  checked({
+    result: run({
+      cwd: checkout,
+      args: ["--silent", "--filter", "@repo/db", "db:migrate"],
+      env: {
+        DATABASE_URL: url("migrator"),
+        DATABASE_PASSWORD_FILE: join(secrets, "db_migrator_password"),
+      },
+    }),
+    code: "migrate_failed",
+    what: `Migrating ${url("migrator")}`,
+  });
+}
+
 type PopulateArgs = {
   /** The checkout whose code runs: the served one (a `--ref` checkout, or this one). */
   checkout: string;
@@ -118,15 +141,7 @@ export async function populate({
   });
   const notes: string[] = [];
 
-  checked({
-    result: run({
-      cwd: checkout,
-      args: ["--silent", "--filter", "@repo/db", "db:migrate"],
-      env: as("migrator"),
-    }),
-    code: "migrate_failed",
-    what: `Migrating ${url("migrator")}`,
-  });
+  migrate({ checkout, url, secrets, run });
 
   const app = { url: url("app"), passwordFile: join(secrets, "db_app_password") };
   const calls = domain ?? subprocessCalls({ checkout, run, env: as("app") });

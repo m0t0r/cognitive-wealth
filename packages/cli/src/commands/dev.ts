@@ -166,8 +166,8 @@ export function devCommands({
     .command("env", {
       description:
         "Set up this worktree's dev environment without starting the app: its own database on " +
-        "the verification Postgres (created, migrated, seeded and given the custodian's example " +
-        "Deliveries the first time, migrated after that), its Redis prefix, and apps/web/.env.local pointing at them",
+        "the verification Postgres (created, migrated, seeded and given the custodian's " +
+        "example Deliveries the first time, migrated after that), its Redis prefix, and apps/web/.env.local pointing at them",
       hint: "pnpm dev does the same on every start. First it tears down removed worktrees' ones.",
       options: z.object({
         dryRun: z.boolean().default(false).describe("Name the environment, and set nothing up"),
