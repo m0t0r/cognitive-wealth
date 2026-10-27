@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./actor": "./src/actor.ts",
     "./better-auth-tables": "./src/better-auth-tables.ts",
     "./cli/cli-error": "./src/cli/cli-error.ts",
     "./cli/env": "./src/cli/env.ts",

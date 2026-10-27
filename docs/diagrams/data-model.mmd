@@ -27,6 +27,12 @@ erDiagram
   security |o--o{ custodial_transaction : "traded in"
   security ||--o{ custodial_position : "held as"
   security ||--o{ security_price : "is priced by"
+  custodial_account ||--o{ custodial_account_history : "was (record_id)"
+  security ||--o{ security_history : "was (record_id)"
+  custodian_delivery |o--o{ custodial_account_history : "changed"
+  custodian_delivery |o--o{ security_history : "changed"
+  user |o--o{ custodial_account_history : "changed"
+  user |o--o{ security_history : "changed"
 
   user {
     bigint id PK
@@ -185,4 +191,28 @@ erDiagram
     date as_of_date
     numeric price "as quoted"
     timestamptz arrived_at
+  }
+  custodial_account_history {
+    bigint id PK
+    bigint record_id "the Account's id"
+    bigint firm_id FK
+    text registration_type "as it was"
+    date opened_on "as it was"
+    text operation "update or delete"
+    timestamptz valid_until "Record time"
+    bigint changed_by_user_id FK "exactly one of"
+    bigint changed_by_delivery_id FK "these three"
+    text changed_by_system
+  }
+  security_history {
+    bigint id PK
+    bigint record_id "the Security's id"
+    bigint firm_id FK
+    text name "as it was"
+    text kind "as it was"
+    text operation "update or delete"
+    timestamptz valid_until "Record time"
+    bigint changed_by_user_id FK "exactly one of"
+    bigint changed_by_delivery_id FK "these three"
+    text changed_by_system
   }

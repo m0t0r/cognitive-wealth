@@ -1,5 +1,6 @@
 // Test data for the Firm-scoped tables, shared by the integration tests that need every one of them.
 // Only tests import it.
+import { eq } from "drizzle-orm";
 import type { Database } from "./index";
 import {
   accountRole,
@@ -23,6 +24,7 @@ import {
 export const FIRM_SCOPED_TABLES = [
   "account_role",
   "custodial_account",
+  "custodial_account_history",
   "custodial_position",
   "custodial_transaction",
   "custodian_delivery",
@@ -30,6 +32,7 @@ export const FIRM_SCOPED_TABLES = [
   "household_member",
   "person",
   "security",
+  "security_history",
   "security_price",
   "world_seed",
 ];
@@ -69,6 +72,12 @@ export async function seedFirm(owner: Database, slug: string): Promise<number> {
     .insert(security)
     .values({ firmId, identifier: "VTI", name: "Total Market", kind: "fund" })
     .returning();
+  // Changed as the tables' owner, so each history table gets a row, `migrator`'s (ADR 0025).
+  await owner
+    .update(custodialAccount)
+    .set({ registrationType: "individual" })
+    .where(eq(custodialAccount.id, account!.id));
+  await owner.update(security).set({ name: "Total Stock Market" }).where(eq(security.id, fund!.id));
   const day = { firmId, deliveryId: delivery!.id, securityId: fund!.id };
   await owner.insert(custodialTransaction).values({
     ...day,

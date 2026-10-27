@@ -1,5 +1,7 @@
 # Version updates. Security updates are separate: GitHub opens those PRs as soon as an advisory
-# lands, ignoring the schedule, cooldown and ignore rules below.
+# lands, ignoring the schedule, cooldown and ignore rules below. Except for Docker and Docker
+# Compose, which get no security updates: a base image's OS patches arrive only as version updates,
+# so those entries look daily and skip the cooldown.
 version: 2
 
 updates:
@@ -30,8 +32,11 @@ updates:
   - package-ecosystem: docker
     directory: /apps/web
     schedule:
-      interval: weekly
-      day: monday
+      interval: daily
+    # No cooldown, not even Dependabot's 3-day default: a Debian or Node security patch is only
+    # ever a version update here, so a supply-chain buffer would hold back the fix.
+    cooldown:
+      exclude: ["*"] # zizmor: ignore[dependabot-cooldown]
     commit-message:
       prefix: "build(docker)"
     groups:
@@ -60,12 +65,29 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
 
+  # The workflow linters `pnpm lint` runs (actionlint, its shellcheck, zizmor), pinned in uv.lock.
+  - package-ecosystem: uv
+    directory: /packages/workflow-lint
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      linters:
+        patterns: ["*"]
+
   # The custodian's base images and uv's, pinned the same way.
   - package-ecosystem: docker
     directory: /apps/custodian
     schedule:
-      interval: weekly
-      day: monday
+      interval: daily
+    # No cooldown, as for /apps/web.
+    cooldown:
+      exclude: ["*"] # zizmor: ignore[dependabot-cooldown]
     commit-message:
       prefix: "build(docker)"
     groups:
@@ -83,8 +105,10 @@ updates:
   - package-ecosystem: docker
     directory: /docker/testcontainers
     schedule:
-      interval: weekly
-      day: monday
+      interval: daily
+    # No cooldown, as for /apps/web.
+    cooldown:
+      exclude: ["*"] # zizmor: ignore[dependabot-cooldown]
     commit-message:
       prefix: "build(docker)"
 
@@ -102,11 +126,13 @@ updates:
       actions:
         patterns: ["*"]
 
+  # Compose's images (Postgres, Redis, Mailpit), pinned the same way, with no cooldown, as for /apps/web.
   - package-ecosystem: docker-compose
     directory: /
     schedule:
-      interval: weekly
-      day: monday
+      interval: daily
+    cooldown:
+      exclude: ["*"] # zizmor: ignore[dependabot-cooldown]
     commit-message:
       prefix: "build(docker)"
     ignore:

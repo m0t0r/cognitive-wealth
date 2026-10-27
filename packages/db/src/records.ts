@@ -8,6 +8,7 @@ import {
   accountRole,
   auditEvent,
   custodialAccount,
+  custodialAccountHistory,
   custodialPosition,
   custodialTransaction,
   custodianDelivery,
@@ -18,6 +19,7 @@ import {
   organization,
   person,
   security,
+  securityHistory,
   securityPrice,
   session,
   user,
@@ -33,7 +35,8 @@ import {
  * - `firm_users`: the Users the Firm's exported rows name, which are its past and present members.
  *   A removed member's `member` row is deleted, and `org.member.removed` names only the membership,
  *   so a past member is found through what they left in the Firm: an invitation they sent, or an
- *   audit event they're the actor of. Anyone who joined by invitation is the actor of its
+ *   audit event they're the actor of, or an earlier version of a record they changed (a history
+ *   table's `changed_by_user_id`, ADR 0025). Anyone who joined by invitation is the actor of its
  *   `org.invitation.accepted`, and the invitation keeps their email. The one past member this can
  *   miss is an owner made by `pnpm org:create` (whose event has no actor) who was removed without
  *   ever acting in the Firm.
@@ -74,10 +77,12 @@ export const RECORD_TABLES: readonly RecordTable[] = [
     scope: "firm_users",
     description:
       "The name and email address of every User the other files name: present members, and past " +
-      "members through the invitations they sent or accepted and the audit events they acted in.",
+      "members through the invitations they sent or accepted, the audit events they acted in and " +
+      "the records they changed.",
     // The rest of a User's row (email verification, image, timestamps) is their account with
     // Cognitive Wealth, not the Firm's record. `id` stays, since `member.user_id`,
-    // `invitation.inviter_id` and `audit_event.actor_user_id` point at it.
+    // `invitation.inviter_id`, `audit_event.actor_user_id` and the history tables'
+    // `changed_by_user_id` point at it.
     columns: ["id", "name", "email"],
   },
   {
@@ -98,6 +103,13 @@ export const RECORD_TABLES: readonly RecordTable[] = [
     description: "Accounts at the Custodian, by account number.",
   },
   {
+    table: custodialAccountHistory,
+    scope: "firm_id",
+    description:
+      "Accounts' earlier details: each version an update or deletion replaced, when, and who " +
+      "or which Delivery replaced it.",
+  },
+  {
     table: accountRole,
     scope: "firm_id",
     description: "How each Person holds each Account (owner, beneficiary, …), and since when.",
@@ -111,6 +123,13 @@ export const RECORD_TABLES: readonly RecordTable[] = [
     table: security,
     scope: "firm_id",
     description: "The Security master: every Security the Custodian reported.",
+  },
+  {
+    table: securityHistory,
+    scope: "firm_id",
+    description:
+      "Securities' earlier details: each version an update or deletion replaced, when, and who " +
+      "or which Delivery replaced it.",
   },
   {
     table: custodialTransaction,

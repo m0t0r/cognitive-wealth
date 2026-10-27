@@ -9,6 +9,7 @@ import {
   TransactionRow,
 } from "@repo/custodian-client/schemas";
 import type { Database } from "@repo/db";
+import { setActor } from "@repo/db/actor";
 import { FirmDeactivatedError, withFirm } from "@repo/db/firm";
 import {
   custodialAccount,
@@ -437,10 +438,12 @@ async function write(
     .values({ firmId, asOfDate: asOf, manifestSha256 })
     .returning({ id: custodianDelivery.id });
   const deliveryId = delivery!.id;
+  // Every change from here on is this Delivery's, so each Account or Security it updates keeps its
+  // earlier details in its history table, naming the Delivery (ADR 0025).
+  await setActor(db, { deliveryId });
 
   // The Security master and the Accounts are snapshots: new ones are added, changed ones updated,
-  // and unchanged ones left alone, so only what changed counts as written. An update overwrites the
-  // old value, so no earlier one is kept yet (#126).
+  // and unchanged ones left alone, so only what changed counts as written.
   const securities = rows.securities.length
     ? await db
         .insert(security)

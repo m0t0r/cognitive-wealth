@@ -1,0 +1,17 @@
+[project]
+name = "workflow-lint"
+version = "0.0.0"
+description = "actionlint and zizmor for .github/workflows, run by `pnpm lint`."
+requires-python = ">=3.15,<3.16"
+
+[dependency-groups]
+dev = [
+  # actionlint's binary; it checks each `run:` script with the shellcheck on PATH.
+  "actionlint-py>=1.7.12.25",
+  "shellcheck-py>=0.11.0.1",
+  "zizmor>=1.31.1",
+]
+
+# Tools only, nothing to build or install.
+[tool.uv]
+package = false

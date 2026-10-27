@@ -8,10 +8,19 @@ import { parse } from "csv-parse/sync";
 import { eq, getTableName, sql } from "drizzle-orm";
 import { deactivateOrganization } from "./cli/organizations";
 import { type Manifest, exportRecords } from "./cli/records-export";
+import { setActor } from "./actor";
 import { seedFirm } from "./firm-test-data";
 import type { Database } from "./index";
 import { RECORD_TABLES } from "./records";
-import { auditEvent, household, invitation, member, organization, user } from "./schema";
+import {
+  auditEvent,
+  custodialAccount,
+  household,
+  invitation,
+  member,
+  organization,
+  user,
+} from "./schema";
 import { test as base } from "./testing";
 
 const byNumber = (a: number, b: number) => a - b;
@@ -36,7 +45,7 @@ type Seeded = { firmId: number; publicId: string; userIds: number[] };
  */
 async function seedExportFirm(owner: Database, slug: string): Promise<Seeded> {
   const firmId = await seedFirm(owner, slug);
-  const [current, joined, inviter] = await owner
+  const [current, joined, inviter, editor] = await owner
     .insert(user)
     .values([
       { email: `current@${slug}.test`, name: `Current ${slug}`, emailVerified: true },
@@ -44,6 +53,9 @@ async function seedExportFirm(owner: Database, slug: string): Promise<Seeded> {
       { email: `joined@${slug}.test`, name: `Joined ${slug}`, emailVerified: true },
       // Was removed after inviting someone, never having acted otherwise: found through it.
       { email: `inviter@${slug}.test`, name: `Inviter ${slug}`, emailVerified: true },
+      // Was removed after changing an Account, never having acted otherwise: found through its
+      // history (ADR 0025).
+      { email: `editor@${slug}.test`, name: `Editor ${slug}`, emailVerified: true },
       // In no Firm, so no export may name them.
       { email: `stranger@${slug}.test`, name: "Not in any Firm", emailVerified: true },
     ])
@@ -77,11 +89,22 @@ async function seedExportFirm(owner: Database, slug: string): Promise<Seeded> {
     },
   ]);
   await owner.insert(household).values({ firmId, name: TRICKY, relationshipStatus: "prospect" });
+  await owner.transaction(async (tx) => {
+    await setActor(tx, { userId: editor!.id });
+    await tx
+      .update(custodialAccount)
+      .set({ openedOn: "2026-01-02" })
+      .where(eq(custodialAccount.firmId, firmId));
+  });
   const [org] = await owner
     .select({ publicId: organization.publicId })
     .from(organization)
     .where(eq(organization.id, firmId));
-  return { firmId, publicId: org!.publicId, userIds: [current!.id, joined!.id, inviter!.id] };
+  return {
+    firmId,
+    publicId: org!.publicId,
+    userIds: [current!.id, joined!.id, inviter!.id, editor!.id],
+  };
 }
 
 const readCsv = async (out: string, file: string): Promise<Record<string, string>[]> =>
@@ -173,7 +196,9 @@ describe("exportRecords", () => {
       expect(rows.length - 1, entry.file).toBe(entry.rows);
     }
     const counts = Object.fromEntries(manifest.files.map(({ table, rows }) => [table, rows]));
-    expect(counts).toMatchObject({ organization: 1, member: 1, invitation: 2, user: 3 });
+    expect(counts).toMatchObject({ organization: 1, member: 1, invitation: 2, user: 4 });
+    // `seedFirm`'s change to each, and the editor's to the Account.
+    expect(counts).toMatchObject({ custodial_account_history: 2, security_history: 1 });
     expect(counts.household).toBe(2);
   });
 
