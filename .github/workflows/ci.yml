@@ -43,6 +43,26 @@ jobs:
       - run: pnpm check-types
       - run: pnpm test
 
+  # `pnpm lint` runs zizmor offline, so Turbo's cache can't pass a result that a new advisory has
+  # since made stale. Here it runs online, with this job's read-only token, which adds the audits
+  # that ask GitHub: impostor-commit (a pinned SHA that's only in a fork), known-vulnerable-actions,
+  # ref-confusion and ref-version-mismatch (a `# vX.Y.Z` comment that isn't its SHA's tag).
+  zizmor-online:
+    name: zizmor, online audits
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+
+      # The zizmor packages/workflow-lint's uv.lock pins, as `pnpm lint` runs.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --project packages/workflow-lint --frozen zizmor --format github .github
+
   integration:
     name: Integration tests
     runs-on: ubuntu-24.04

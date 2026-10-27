@@ -1,0 +1,6 @@
+# actionlint's config, where it looks for one. `paths` match workflow paths from the repository root.
+paths:
+  .github/workflows/cve-now.yml:
+    ignore:
+      # A GITHUB_TOKEN scope ("Read Dependabot alerts") that actionlint 1.7.12 doesn't know yet.
+      - 'unknown permission scope "vulnerability-alerts"'

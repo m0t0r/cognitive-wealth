@@ -1,0 +1,8 @@
+{
+  "name": "@repo/workflow-lint",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "lint": "cd ../.. && uv run --project packages/workflow-lint --frozen actionlint && uv run --project packages/workflow-lint --frozen zizmor --offline .github"
+  }
+}
