@@ -96,12 +96,18 @@ def test_world_v0_passes_the_committed_json_schema() -> None:
     validate(json.loads(WORLD_V0_PATH.read_text()), schema, cls=Draft202012Validator)
 
 
-def test_world_load_names_the_bad_field_and_loads_nothing(tmp_path: Path) -> None:
+def test_world_load_names_the_bad_field_and_loads_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     world = json.loads(WORLD_V0_PATH.read_text())
     world["custodian"]["accounts"][1]["registration_type"] = "brokerage"
     path = tmp_path / "world.json"
     path.write_text(json.dumps(world))
 
     # It stops before connecting: the test environment has no DATABASE_URL to connect with.
-    with pytest.raises(SystemExit, match=r"custodian\.accounts\.1\.registration_type"):
-        world_load(["--world", str(path)])
+    exit_code = world_load(["--world", str(path), "--json"])
+
+    assert exit_code == 1
+    error = json.loads(capsys.readouterr().out)
+    assert error["code"] == "malformed_input"
+    assert "custodian.accounts.1.registration_type" in error["message"]
