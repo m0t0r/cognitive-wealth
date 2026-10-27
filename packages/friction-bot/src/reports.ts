@@ -260,9 +260,9 @@ type TriageBacklogArgs = Omit<TriageReportArgs, "number" | "retriage"> & {
 };
 
 /**
- * Triages the open friction reports that carry no triage label, oldest first: those whose own
- * triage run failed or never started (one filed with a workflow's token starts none). A report it
- * can't triage is recorded in `failed`, and the rest still go.
+ * Triages the open friction reports that carry no triage label and no workflow comment, oldest
+ * first: those whose own triage run failed or never started (one filed with a workflow's token
+ * starts none). A report it can't triage is recorded in `failed`, and the rest still go.
  */
 export async function triageBacklog(
   github: GitHub,
@@ -270,15 +270,19 @@ export async function triageBacklog(
 ) {
   const cutoff = now.getTime() - olderThanMinutes * 60_000;
   const open = await github.list({ state: "open", labels: [FRICTION], limit: 200 });
-  const waiting = open
+  const unlabelled = open
     .filter(({ labels }) => !TRIAGED.some((label) => labels.includes(label)))
     .filter(({ createdAt }) => Date.parse(createdAt) <= cutoff)
-    .toSorted((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
-    .slice(0, limit);
+    .toSorted((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   const triaged: { issue: number; decision: Triage["decision"] }[] = [];
   const failed: { issue: number; code: string; message: string }[] = [];
-  for (const { number } of waiting) {
+  for (const { number } of unlabelled) {
+    if (triaged.length + failed.length >= limit) break;
     try {
+      // A workflow has had its say: a fix in the bot's PR takes the triage label off.
+      // oxlint-disable-next-line no-await-in-loop -- one at a time, up to the limit
+      const { comments } = await github.view(number);
+      if (comments.some(({ author }) => author === WORKFLOW_AUTHOR)) continue;
       // oxlint-disable-next-line no-await-in-loop -- one at a time, so a duplicate sees the last close
       const outcome = await triageReport(github, { number, decide, retriage: false, dryRun });
       if (outcome.status === "triaged") triaged.push({ issue: number, decision: outcome.decision });

@@ -23,6 +23,8 @@ describe("writablePath", () => {
     ".claude/settings.local.json",
     ".claude/skills/verifier-web/compose.sh",
     ".claude/skills/verifier-web/SKILL.md",
+    // The user's Mac checks this out into .claude/hooks/.
+    ".Claude/Hooks/require-worktree.mjs",
     ".github/workflows/ci.yml",
     ".git/config",
   ])("refuses %s", (path) => {

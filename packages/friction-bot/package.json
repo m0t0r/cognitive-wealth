@@ -14,6 +14,7 @@
     "./commit": "./src/commit.ts",
     "./push": "./src/push.ts",
     "./publish": "./src/publish.ts",
+    "./refresh": "./src/refresh.ts",
     "./testing/memory-github": "./src/testing/memory-github.ts",
     "./testing/git-repo": "./src/testing/git-repo.ts"
   },

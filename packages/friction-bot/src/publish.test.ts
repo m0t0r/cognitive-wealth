@@ -139,6 +139,23 @@ describe("publishFix", () => {
     expect(fate(gh, 12).comment).toMatch(/^Fixed in #261: /);
   });
 
+  it("counts a fix stacked on the open PR as fixed there, even if its description can't be edited", async () => {
+    const gh = setup({
+      pulls: [pullRequest({ number: 261 })],
+      fail: { editPullRequest: Object.assign(new Error("API rate limit"), { code: "gh_failed" }) },
+    });
+
+    const outcome = await publish(gh.github);
+
+    expect(outcome.errors).toEqual([
+      { step: "pull_request", code: "gh_failed", message: "API rate limit" },
+    ]);
+    expect(fate(gh, 12)).toEqual({
+      labels: ["friction"],
+      comment: expect.stringMatching(/^Fixed in #261: /),
+    });
+  });
+
   it("says the fix is on the branch when its PR can't be opened, not that it failed", async () => {
     const refused = Object.assign(
       new Error("GitHub Actions is not permitted to create or approve pull requests"),
@@ -171,6 +188,16 @@ describe("publishFix", () => {
       name: "a path only the user changes",
       commit: { status: "forbidden", paths: [".github/x.yml"], dropped: [] },
       says: /^The fix changed paths only the user changes \(\.github\/x\.yml\), so it wasn't committed\./,
+    },
+    {
+      name: "repeated text",
+      commit: {
+        status: "duplicated",
+        path: "CLAUDE.md",
+        line: "Report every friction.",
+        dropped: [],
+      },
+      says: /^The fix repeated text already in `CLAUDE\.md` \("Report every friction\."\), so it wasn't committed\./,
     },
     {
       name: "no change",
@@ -262,7 +289,7 @@ describe("handBack", () => {
     expect(fate(gh, 12)).toEqual({
       labels: ["friction", "ready-for-human"],
       comment: expect.stringMatching(
-        /^The automated fix didn't finish \(\[run\]\(https:\/\/github\.test\/actions\/runs\/1\)\)/,
+        /^The automated fix run stopped before it labelled this report \(\[run\]\(https:\/\/github\.test\/actions\/runs\/1\)\)\. Check the run and the bot's PR/,
       ),
     });
     expect(gh.writes.filter((write) => !("number" in write) || write.number !== 12)).toEqual([]);

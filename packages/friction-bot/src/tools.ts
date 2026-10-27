@@ -15,7 +15,22 @@ const run = promisify(execFile);
  * run on the user's machine, where no check here reaches. `commitFix` and `pushFix` check it again.
  */
 export const FORBIDDEN =
-  /^(\.claude\/hooks\/|\.claude\/settings[^/]*\.json$|\.claude\/skills\/|\.github\/|\.git\/)/;
+  // Any case: the user's Mac checks `.Claude/Hooks/` out into `.claude/hooks/`.
+  /^(\.claude\/hooks\/|\.claude\/settings[^/]*\.json$|\.claude\/skills\/|\.github\/|\.git\/)/i;
+
+/** The paths a `git diff --name-only` prints, unquoted (`-z`), so an odd name can't hide a prefix. */
+export async function changedPaths({ root, args }: { root: string; args: string[] }) {
+  const { stdout } = await run("git", ["diff", "--name-only", "--no-renames", "-z", ...args], {
+    cwd: root,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return stdout.split("\0").filter(Boolean);
+}
+
+/** The refusal for a fix that changes `paths`, which only the user changes. */
+export function forbiddenMessage(paths: string[]): string {
+  return `The fix changes paths only the user changes: ${paths.join(", ")}.`;
+}
 
 export const CHECKS = [
   "lint",
