@@ -1,6 +1,6 @@
-// The fixer's tools: read, list and search the checkout, write, edit and delete files outside the
-// paths only the user changes, and run the repo's own checks. Nothing here reaches the network or
-// git's history, and the checks run without the workflow's credentials.
+// The fixer's tools: read, list and search the checkout (triage's tools too), write, edit and
+// delete files outside the paths only the user changes, and run the repo's own checks. Nothing
+// here reaches the network or git's history, and the checks run without the workflow's credentials.
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
@@ -156,7 +156,8 @@ export async function runCheck({
   }
 }
 
-export function fixTools(root: string): ToolSet {
+/** Read, list and search the checkout: triage's tools, and the first half of the fixer's. */
+export function readTools(root: string): ToolSet {
   return {
     read_file: tool({
       description: "Read a file in the repository (paths are relative to its root).",
@@ -185,6 +186,12 @@ export function fixTools(root: string): ToolSet {
         );
       },
     }),
+  };
+}
+
+export function fixTools(root: string): ToolSet {
+  return {
+    ...readTools(root),
     write_file: tool({
       description:
         "Create or replace a whole file. Prefer edit_file for a change to an existing file.",

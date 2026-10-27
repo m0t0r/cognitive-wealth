@@ -28,8 +28,10 @@ const claude = (overrides: Partial<Claude> = {}): Claude => ({
   triage: vi.fn(async () => ({
     decision: "ready-for-agent" as const,
     duplicate_of: null,
+    fixed_in: null,
     reason: "A doc fix.",
     brief: null,
+    checked: [],
   })),
   fix: vi.fn(async () => ({
     result: {
@@ -142,6 +144,25 @@ describe("cw friction triage", () => {
       decision: "ready-for-agent",
       dryRun: false,
       actions: [{ kind: "label", add: ["ready-for-agent"] }, { kind: "comment" }],
+    });
+    expect(writes).toHaveLength(2);
+  });
+
+  it("closes an already-fixed report", async () => {
+    const triage = vi.fn(async () => ({
+      decision: "already-fixed" as const,
+      duplicate_of: null,
+      fixed_in: "CLAUDE.md, the packages/cli bullet",
+      reason: "It's there.",
+      brief: null,
+      checked: ["`CLAUDE.md`"],
+    }));
+    const { cli, writes } = setup({ claude: claude({ triage }) });
+    const { output, exitCode } = await run({ cli, argv: ["friction", "triage", "12"] });
+    expect(exitCode).toBe(0);
+    expect(output).toMatchObject({
+      decision: "already-fixed",
+      actions: [{ kind: "label", add: ["wontfix"] }, { kind: "close" }],
     });
     expect(writes).toHaveLength(2);
   });

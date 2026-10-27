@@ -1,5 +1,5 @@
 import type { LanguageModelUsage } from "ai";
-import { SONNET_5_5, usageCost } from "./cost.ts";
+import { HAIKU_5_5, haikuPrice, SONNET_5_5, usageCost } from "./cost.ts";
 
 function usage({
   noCache,
@@ -42,5 +42,15 @@ describe("usageCost", () => {
       cacheWriteTokens: undefined,
     };
     expect(usageCost({ usage: bare, price: SONNET_5_5 })).toBeCloseTo(1);
+  });
+});
+
+describe("haikuPrice", () => {
+  it("charges the long-context rate once a request's input passes 100K tokens", () => {
+    expect(haikuPrice(usage({ noCache: 60_000, cacheRead: 40_000, output: 10 }))).toEqual(
+      HAIKU_5_5,
+    );
+    const long = haikuPrice(usage({ noCache: 60_000, cacheRead: 40_001, output: 10 }));
+    expect(long).toEqual({ input: 0.5, output: 2.5, cacheRead: 0.05, cacheWrite: 0.625 });
   });
 });
