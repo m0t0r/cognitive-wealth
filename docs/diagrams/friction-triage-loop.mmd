@@ -1,0 +1,19 @@
+sequenceDiagram
+  participant cw as cw friction triage
+  participant reports as reports.ts
+  participant gh as GitHub (gh)
+  participant triage as triage.ts
+  participant haiku as Haiku 5.5
+  participant repo as Checkout (readTools)
+  cw->>reports: triageReport(number)
+  reports->>gh: view the report, list open and closed reports
+  reports->>triage: decide(report, open, closed)
+  triage->>haiku: prompt with CLAUDE.md, friction.md, the reports
+  loop up to 8 steps, about $0.10
+    haiku->>repo: read_file, list_files, search
+    repo-->>haiku: file text, paths, matches
+  end
+  Note over triage,haiku: last step, or the cap spent: no tools, so it answers
+  haiku-->>triage: decision, fixed_in, reason, brief
+  triage-->>reports: the decision and what it checked
+  reports->>gh: label, comment or close (triageActions)

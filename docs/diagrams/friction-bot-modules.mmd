@@ -1,0 +1,32 @@
+flowchart TB
+  cli["@repo/cli<br/>cw friction …"]
+  subgraph bot["@repo/friction-bot"]
+    reports["reports.ts<br/>file, triage, gather"]
+    triage["triage.ts<br/>Haiku, read-only loop"]
+    fixer["fix.ts<br/>Sonnet tool loop"]
+    tools["tools.ts<br/>readTools, fixTools, runCheck"]
+    cost["cost.ts<br/>dollar caps"]
+    commit["commit.ts<br/>commit gate"]
+    push["push.ts<br/>start and push the branch"]
+    refresh["refresh.ts<br/>rebase the open PR"]
+    publish["publish.ts<br/>PR, relabel, hand-back"]
+    github["github.ts<br/>gh CLI"]
+    apierr["api-error.ts and api-key.ts"]
+  end
+  cli --> reports
+  cli --> triage
+  cli --> fixer
+  cli --> commit
+  cli --> push
+  cli --> refresh
+  cli --> publish
+  triage --> tools
+  triage --> cost
+  fixer --> tools
+  fixer --> cost
+  commit --> tools
+  push --> tools
+  reports --> github
+  refresh --> github
+  publish --> github
+  cli --> apierr
