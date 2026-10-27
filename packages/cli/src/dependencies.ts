@@ -69,7 +69,7 @@ export type Claude = {
    * One triage decision (Haiku, which reads this checkout), given the gathered report; the repo's
    * guides are added.
    */
-  triage: (input: TriageInput) => Promise<TriageDecision>;
+  triage: (args: TriageInput & { maxSteps: number }) => Promise<TriageDecision>;
   /** The fixer's tool loop (Sonnet), in `root` or else the checkout `cw` runs from. */
   fix: (args: Omit<FixArgs, "root" | "model"> & { root?: string }) => Promise<FixOutcome>;
 };
@@ -217,12 +217,12 @@ export const defaultDependencies: Dependencies = {
     const { triage } = await import("@repo/friction-bot/triage");
     const { fix } = await import("@repo/friction-bot/fix");
     return {
-      triage: async (input) => {
+      triage: async (args) => {
         const [guide, claudeMd] = await Promise.all([
           read("docs/agents/friction.md"),
           read("CLAUDE.md"),
         ]);
-        return await callingTheApi(() => triage({ ...input, guide, claudeMd, root: ROOT }));
+        return await callingTheApi(() => triage({ ...args, guide, claudeMd, root: ROOT }));
       },
       fix: async (args) => {
         // friction-fix.yml hands the key over as a file, so the checks the fixer runs can't read

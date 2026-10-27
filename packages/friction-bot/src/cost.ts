@@ -1,6 +1,7 @@
-// What a run has spent, from the token counts each step reports, so the fixer can stop at a
-// dollar cap (the AI SDK has no budget of its own). Triage does too.
-import type { LanguageModelUsage } from "ai";
+// What a tool loop has spent, from the token counts each step reports, so the fixer and triage can
+// stop at a dollar cap (the AI SDK has no budget of its own), and the prompt-cache breakpoint that
+// keeps each step's input cheap.
+import type { LanguageModelUsage, ModelMessage, StepResult, ToolSet } from "ai";
 
 /** US dollars per million tokens. */
 export type Price = { input: number; output: number; cacheRead: number; cacheWrite: number };
@@ -27,4 +28,39 @@ export function usageCost({ usage, price }: { usage: LanguageModelUsage; price: 
       (usage.outputTokens ?? 0) * price.output) /
     1_000_000
   );
+}
+
+/** What `steps` cost, each at the price `price` gives for its usage. */
+export function spent({
+  steps,
+  price,
+}: {
+  steps: StepResult<ToolSet>[];
+  price: (usage: LanguageModelUsage) => Price;
+}): number {
+  return steps.reduce(
+    (total, step) => total + usageCost({ usage: step.usage, price: price(step.usage) }),
+    0,
+  );
+}
+
+/**
+ * `messages` with one prompt-cache breakpoint, on the last message, so each step reads the
+ * conversation so far from the cache. Earlier breakpoints are dropped: the API allows four.
+ */
+export function withCacheBreakpoint(messages: ModelMessage[]): ModelMessage[] {
+  return messages.map((message, index) => {
+    const { cacheControl: _dropped, ...anthropicOptions } =
+      message.providerOptions?.anthropic ?? {};
+    const last = index === messages.length - 1;
+    return {
+      ...message,
+      providerOptions: {
+        ...message.providerOptions,
+        anthropic: last
+          ? { ...anthropicOptions, cacheControl: { type: "ephemeral" } }
+          : anthropicOptions,
+      },
+    };
+  });
 }

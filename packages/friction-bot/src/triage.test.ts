@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { triageReport } from "./reports.ts";
 import { tempRepo, type TempRepo } from "./testing/git-repo.ts";
+import { memoryGitHub, report } from "./testing/memory-github.ts";
 import { scriptedModel } from "./testing/mock-model.ts";
 import { triage, triagePrompt } from "./triage.ts";
 
@@ -59,11 +61,44 @@ describe("triage", () => {
 
     expect(decision).toEqual({
       ...answer,
+      read: ["docs/notes.md"],
       checked: ["search for `origin/dev` in `docs`", "files matching `docs/**`", "`docs/notes.md`"],
     });
     const lastPrompt = JSON.stringify(calls()[3]?.prompt);
     expect(lastPrompt).toContain("docs/notes.md:1:worktrees branch from origin/dev");
     expect(lastPrompt).toContain("worktrees branch from origin/dev\\n");
+  });
+
+  it("closes a report whose fix it read, end to end on GitHub in memory", async () => {
+    const { model } = scriptedModel({
+      responses: [{ toolCall: { name: "read_file", input: { path: "docs/notes.md" } } }, reply],
+    });
+    const { github, writes } = memoryGitHub([report({ number: 218 })]);
+
+    await triageReport(github, {
+      number: 218,
+      decide: (gathered) =>
+        triage({
+          ...gathered,
+          guide: input.guide,
+          claudeMd: input.claudeMd,
+          root: repo.clone,
+          model,
+        }),
+      retriage: false,
+      dryRun: false,
+    });
+
+    expect(writes).toEqual([
+      { kind: "label", number: 218, add: ["wontfix"], remove: [] },
+      {
+        kind: "close",
+        number: 218,
+        comment: expect.stringContaining(
+          "Already fixed in docs/notes.md, its first line. The note says it now.\n\nChecked: `docs/notes.md`.",
+        ),
+      },
+    ]);
   });
 
   it("can't write or run a check", async () => {

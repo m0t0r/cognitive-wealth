@@ -151,13 +151,14 @@ export function triageActions({
     TRIAGED.filter((label) => label !== keep && issue.labels.includes(label));
   if (answer.decision === "already-fixed") {
     const fixedIn = oneLine(answer.fixed_in ?? "");
-    if (!fixedIn) {
+    // Closing rests on a file Haiku read, never its word alone.
+    if (!answer.read.some((path) => fixedIn.includes(path))) {
       return [
         { kind: "label", number, add: ["ready-for-human"], remove: stale("ready-for-human") },
         {
           kind: "comment",
           number,
-          body: `${TRIAGE_HEADER}Triage called this already fixed but named no place it lives: ${reason}${checked}${TRIAGE_FOOTER}`,
+          body: `${TRIAGE_HEADER}Triage called this already fixed but named no file it read: ${fixedIn ? `"${fixedIn}". ` : ""}${reason}${checked}${TRIAGE_FOOTER}`,
         },
       ];
     }

@@ -1,6 +1,7 @@
 # Sorts each new friction report (docs/agents/friction.md) as soon as it's filed, with
 # `pnpm cw friction triage` (packages/cli/src/commands/friction.ts): Haiku reads the report beside
-# the open ones and CLAUDE.md, and only answers; the command then labels, comments or closes.
+# the open ones and CLAUDE.md, checks it against this checkout (read and search only, at most 8
+# steps and about $0.10), and only answers; the command then labels, comments or closes.
 # `ready-for-agent` reports are picked up by friction-fix.yml, which a `ready-for-agent` decision
 # dispatches, and whose hourly run also triages any report this workflow missed. To see what it
 # would decide for a report, run `pnpm cw friction triage <number> --dry-run` (with ANTHROPIC_API_KEY set).

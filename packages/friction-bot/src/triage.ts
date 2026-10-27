@@ -4,17 +4,9 @@
 // closes. Plain Messages API requests through the AI SDK, not Claude Code: the promotional credit
 // this repo runs on covers the API, not Claude Code.
 import { anthropic } from "@ai-sdk/anthropic";
-import {
-  generateText,
-  isStepCount,
-  Output,
-  type LanguageModel,
-  type StepResult,
-  type ToolSet,
-} from "ai";
+import { generateText, isStepCount, Output, type LanguageModel } from "ai";
 import { z } from "zod";
-import { haikuPrice, usageCost } from "./cost.ts";
-import { withCacheBreakpoint } from "./fix.ts";
+import { haikuPrice, spent, withCacheBreakpoint } from "./cost.ts";
 import { readTools } from "./tools.ts";
 
 export const TRIAGE_MODEL = "claude-haiku-5-5";
@@ -40,8 +32,8 @@ export const Triage = z.object({
   // The open report this one duplicates; null unless `decision` is "duplicate". A plain number:
   // `.int()` adds bounds, which structured outputs don't accept. `triageActions` checks it.
   duplicate_of: z.number().nullable(),
-  // Where the fix already lives (a file and its section or symbol); null unless `decision` is
-  // "already-fixed".
+  // Where the fix already lives (a file it read, and its section or symbol); null unless
+  // `decision` is "already-fixed". `triageActions` checks it names a file in `read`.
   fixed_in: z.string().nullable(),
   reason: z.string(),
   // Null for a duplicate or an already-fixed report: nothing is left to brief. Nullable, not
@@ -50,8 +42,11 @@ export const Triage = z.object({
 });
 export type Triage = z.infer<typeof Triage>;
 
-/** The model's answer, and what it read or searched in the checkout before giving it. */
-export type TriageDecision = Triage & { checked: string[] };
+/**
+ * The model's answer, the files it read, and everything it looked at (reads, lists, searches) as
+ * the triage comment lists it.
+ */
+export type TriageDecision = Triage & { read: string[]; checked: string[] };
 
 export type TriagePromptArgs = {
   /** The report, as `gh issue view --json number,title,body,labels,comments` prints it. */
@@ -100,8 +95,9 @@ Decide one of:
 - "duplicate": an open report has the same cause (not just the same topic). Set duplicate_of to its number.
 - "already-fixed": a file you read shows the report's cause is gone (the fact it says is missing is
   now where it should be, the command exists, the error is fixed). Set fixed_in to where the fix
-  lives: a file and its section or symbol. Only for a fix you read yourself. The same fact in another
-  place than the report expects is duplicated context, which still needs a fix.
+  lives: the path of a file you read with read_file, and its section or symbol. Only for a fix you
+  read yourself: a fixed_in naming no file you read goes to a person instead. The same fact in
+  another place than the report expects is duplicated context, which still needs a fix.
 - "ready-for-agent": an agent can fix it alone in this repository and prove it with \`pnpm lint\`,
   \`pnpm format:check\`, \`pnpm check-types\`, \`pnpm test\` and \`pnpm test:integration\`. Typically: wrong,
   stale, missing or duplicated context in CLAUDE.md, AGENTS.md, docs/, a package CLAUDE.md or a skill under
@@ -135,25 +131,22 @@ Describe what should be true, not how to edit it. A report's "Suggested fix" is 
 hypothesis: when it conflicts with CLAUDE.md, the brief follows CLAUDE.md and out_of_scope says why.`;
 }
 
-function spent(steps: StepResult<ToolSet>[]): number {
-  return steps.reduce(
-    (total, step) => total + usageCost({ usage: step.usage, price: haikuPrice(step.usage) }),
-    0,
-  );
-}
+const asText = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value));
 
-const text = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value));
+/** One field of a tool call's input, which the SDK types as `unknown`. */
+function inputField({ input, name }: { input: unknown; name: string }): unknown {
+  return typeof input === "object" && input !== null && name in input
+    ? Reflect.get(input, name)
+    : undefined;
+}
 
 /** What one tool call looked at, as the triage comment lists it. */
 function lookedAt({ toolName, input }: { toolName: string; input: unknown }): string {
-  const field = (name: string): unknown =>
-    typeof input === "object" && input !== null && name in input
-      ? Reflect.get(input, name)
-      : undefined;
-  if (toolName === "read_file") return `\`${text(field("path"))}\``;
-  if (toolName === "list_files") return `files matching \`${text(field("pattern"))}\``;
-  const path = field("path");
-  return `search for \`${text(field("pattern"))}\`${path === undefined ? "" : ` in \`${text(path)}\``}`;
+  const field = (name: string) => asText(inputField({ input, name }));
+  if (toolName === "read_file") return `\`${field("path")}\``;
+  if (toolName === "list_files") return `files matching \`${field("pattern")}\``;
+  const under = inputField({ input, name: "path" }) === undefined ? "" : ` in \`${field("path")}\``;
+  return `search for \`${field("pattern")}\`${under}`;
 }
 
 export type TriageArgs = TriagePromptArgs & {
@@ -185,11 +178,18 @@ export async function triage({
     stopWhen: isStepCount(maxSteps),
     prepareStep: ({ messages, steps, stepNumber }) => ({
       messages: withCacheBreakpoint(messages),
-      ...(stepNumber >= maxSteps - 1 || spent(steps) >= maxCostUsd
+      ...(stepNumber >= maxSteps - 1 || spent({ steps, price: haikuPrice }) >= maxCostUsd
         ? { toolChoice: "none" as const }
         : {}),
     }),
   });
-  const checked = result.steps.flatMap((step) => step.toolCalls.map(lookedAt));
-  return { ...result.output, checked: [...new Set(checked)] };
+  const calls = result.steps.flatMap((step) => step.toolCalls);
+  const read = calls
+    .filter(({ toolName }) => toolName === "read_file")
+    .map(({ input }) => asText(inputField({ input, name: "path" })));
+  return {
+    ...result.output,
+    read: [...new Set(read)],
+    checked: [...new Set(calls.map(lookedAt))],
+  };
 }

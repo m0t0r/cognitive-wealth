@@ -92,9 +92,10 @@ jobs:
           done
           exit "$failed"
 
-      # On a PR that changes the bot, a dry-run triage of the newest open report (a Haiku request,
-      # well under a cent, and nothing changed on GitHub): the unit tests mock the model and GitHub,
-      # this runs `cw`, `gh` and the AI SDK against the real ones.
+      # On a PR that changes the bot, a dry-run triage of the newest open report (nothing changed on
+      # GitHub): the unit tests mock the model and GitHub, this runs `cw`, `gh` and the AI SDK against
+      # the real ones. Two steps, one read and the answer, exercise the tool loop for well under a
+      # cent; the default 8 could spend up to $0.10 on every push.
       # These steps run the PR's own code with the API key, so never on the bot's PR, whose code is
       # the model's (BRANCH; `env` isn't available to a step's `if`).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -126,10 +127,10 @@ jobs:
             echo "::notice::No open friction report to dry-run a triage on."
             exit 0
           fi
-          node packages/cli/src/cli.ts friction triage "$issue" --retriage --dry-run --json \
-            > "$RUNNER_TEMP/triage.json"
+          node packages/cli/src/cli.ts friction triage "$issue" --retriage --dry-run --max-steps 2 \
+            --json > "$RUNNER_TEMP/triage.json"
           cat "$RUNNER_TEMP/triage.json"
-          jq -e '.dryRun and (.decision | IN("ready-for-agent", "ready-for-human", "duplicate"))' \
+          jq -e '.dryRun and (.decision | IN("ready-for-agent", "ready-for-human", "duplicate", "already-fixed"))' \
             "$RUNNER_TEMP/triage.json"
 
   # The reports whose own triage run failed or never started (one filed with a workflow's token

@@ -1,8 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ModelMessage } from "ai";
-import { fix, fixPrompt, withCacheBreakpoint } from "./fix.ts";
+import { fix, fixPrompt } from "./fix.ts";
 import { scriptedModel } from "./testing/mock-model.ts";
 
 const answer = {
@@ -16,27 +15,6 @@ describe("fixPrompt", () => {
     const prompt = fixPrompt({ numbers: [7, 9], issues: '[{"number":7}]' });
     expect(prompt).toContain("#7, #9");
     expect(prompt).toContain('<reports>\n[{"number":7}]\n</reports>');
-  });
-});
-
-describe("withCacheBreakpoint", () => {
-  const cache = { cacheControl: { type: "ephemeral" } };
-
-  it("leaves one breakpoint, on the last message", () => {
-    const messages: ModelMessage[] = [
-      { role: "user", content: "first", providerOptions: { anthropic: { ...cache } } },
-      { role: "assistant", content: "second" },
-      { role: "user", content: "third" },
-    ];
-
-    const marked = withCacheBreakpoint(withCacheBreakpoint(messages));
-
-    expect(marked.map((message) => message.providerOptions?.anthropic?.cacheControl)).toEqual([
-      undefined,
-      undefined,
-      cache.cacheControl,
-    ]);
-    expect(marked.map((message) => message.content)).toEqual(["first", "second", "third"]);
   });
 });
 
