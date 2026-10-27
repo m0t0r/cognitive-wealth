@@ -178,7 +178,7 @@ export function createMailpit(baseUrl: string): Mailpit {
             after ? `after ${after.toISOString()}` : undefined,
           ].filter(Boolean);
           throw new Error(
-            `No email to ${to}${filters.length ? ` (${filters.join(", ")})` : ""} arrived in Mailpit within ${timeoutMs}ms`,
+            `No email to ${to}${filters.length > 0 ? ` (${filters.join(", ")})` : ""} arrived in Mailpit within ${timeoutMs}ms`,
           );
         }
         // oxlint-disable-next-line no-await-in-loop

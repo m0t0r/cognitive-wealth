@@ -62,6 +62,22 @@
     // `0` and `false` are values (an amount, a flag), so `||` mustn't replace them. Strings are
     // left out: an empty env var or `gh` field is meant to fall through to the default.
     "typescript/prefer-nullish-coalescing": ["error", { "ignorePrimitives": { "string": true } }],
+    // A number in a condition reads `0` as missing, and `0` is a real amount, quantity or count:
+    // compare it (`> 0`, `!== undefined`) instead. Strings, nullable strings and nullable booleans
+    // stay allowed for the reason above: `""` and `undefined` both mean "not given" (#274).
+    "typescript/strict-boolean-expressions": [
+      "error",
+      {
+        "allowString": true,
+        "allowNumber": false,
+        "allowNullableObject": true,
+        "allowNullableBoolean": true,
+        "allowNullableString": true,
+        "allowNullableNumber": false,
+        "allowNullableEnum": false,
+        "allowAny": false
+      }
+    ],
     "jsx-a11y/alt-text": "error",
     "jsx-a11y/anchor-ambiguous-text": "error",
     "jsx-a11y/anchor-has-content": "error",
@@ -112,7 +128,9 @@
       "rules": {
         "turbo/no-undeclared-env-vars": "off",
         "max-params": "off",
-        "repo/max-inline-param-type-members": "off"
+        "repo/max-inline-param-type-members": "off",
+        // Same reason: and they're untyped `.mjs`, where every JSON field is `any`.
+        "typescript/strict-boolean-expressions": "off"
       }
     },
     {

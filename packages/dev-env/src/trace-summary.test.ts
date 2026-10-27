@@ -76,7 +76,9 @@ describe("summarizeTrace", () => {
 
   it("refuses as no_interaction when the steps produced no interaction", async () => {
     const events = fixture("click").filter(
-      (event) => !asEvent(event).args?.data?.interactionId && asEvent(event).name !== "EventTiming",
+      (event) =>
+        (asEvent(event).args?.data?.interactionId ?? 0) === 0 &&
+        asEvent(event).name !== "EventTiming",
     );
 
     await expect(summarizeTrace({ events, mode: "interaction" })).rejects.toMatchObject({

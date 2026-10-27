@@ -158,13 +158,16 @@ async function loadCrmHalf(
     )
     .onConflictDoNothing({ target: [person.firmId, person.seedKey] })
     .returning({ id: person.id });
-  const addedAccounts = accountNumbers.length
-    ? await db
-        .insert(custodialAccount)
-        .values(accountNumbers.map((accountNumber) => ({ firmId, accountNumber })))
-        .onConflictDoNothing({ target: [custodialAccount.firmId, custodialAccount.accountNumber] })
-        .returning({ id: custodialAccount.id })
-    : [];
+  const addedAccounts =
+    accountNumbers.length > 0
+      ? await db
+          .insert(custodialAccount)
+          .values(accountNumbers.map((accountNumber) => ({ firmId, accountNumber })))
+          .onConflictDoNothing({
+            target: [custodialAccount.firmId, custodialAccount.accountNumber],
+          })
+          .returning({ id: custodialAccount.id })
+      : [];
 
   const householdIds = await idsByKey(db, {
     table: household,
@@ -207,20 +210,21 @@ async function loadCrmHalf(
       startsOn: r.starts_on,
     })),
   );
-  const addedRoles = roles.length
-    ? await db
-        .insert(accountRole)
-        .values(roles)
-        .onConflictDoNothing({
-          target: [
-            accountRole.personId,
-            accountRole.accountId,
-            accountRole.role,
-            accountRole.startsOn,
-          ],
-        })
-        .returning({ id: accountRole.id })
-    : [];
+  const addedRoles =
+    roles.length > 0
+      ? await db
+          .insert(accountRole)
+          .values(roles)
+          .onConflictDoNothing({
+            target: [
+              accountRole.personId,
+              accountRole.accountId,
+              accountRole.role,
+              accountRole.startsOn,
+            ],
+          })
+          .returning({ id: accountRole.id })
+      : [];
 
   await refuseChangedRows(db, {
     firmId,

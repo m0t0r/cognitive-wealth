@@ -125,8 +125,10 @@ export async function householdsIn({
 }): Promise<Array<{ name: string; publicId: string }>> {
   const { client, close } = connectSuperuser({ mainCheckout, database });
   try {
-    const exists = await client`select to_regclass('public.household') is not null as found`;
-    if (!exists[0]?.found) return [];
+    const exists = await client<
+      { found: boolean }[]
+    >`select to_regclass('public.household') is not null as found`;
+    if (exists[0]?.found !== true) return [];
     const rows = await client`select name, public_id from household order by name`;
     return rows.map((row) => ({ name: String(row.name), publicId: String(row.public_id) }));
   } finally {
