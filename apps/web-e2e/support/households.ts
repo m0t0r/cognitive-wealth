@@ -75,7 +75,7 @@ export async function seedIngestedWorld(
  */
 export async function seedHouseholdOfGrace(db: Database): Promise<string> {
   // The world file's People are all Larkspur's. Written through `withFirm`, as the app writes
-  // them, so this works as `app` too (verifier-web's `start-app.sh --seed`), under row-level
+  // them, so this works as `app` too (`cw verify start --seed`), under row-level
   // security (ADR 0020).
   const [larkspur] = await db
     .select({ id: organization.id })

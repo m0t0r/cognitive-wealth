@@ -24,14 +24,14 @@ function mainCheckout() {
 }
 
 /**
- * A process `ps` shows as `node …/.next/standalone/apps/web/server.js`, as `start-app.sh`'s server
+ * A process `ps` shows as `node …/.next/standalone/apps/web/server.js`, as `cw verify start`'s server
  * is before Next renames it, recorded in `token`'s state as `server-<role>.pid`.
  */
 function startFakeServer({ main, role }: { main: string; role: string }) {
   const standalone = join(main, "app/apps/web/.next/standalone/apps/web");
   mkdirSync(standalone, { recursive: true });
   writeFileSync(join(standalone, "server.js"), "setInterval(() => {}, 1000);\n");
-  // As `start-app.sh` runs it, `nohup node …`, so `ps` names it `node`, not node's full path.
+  // Run as `node`, so `ps` names it `node`, not node's full path.
   const child = spawn(process.execPath, [join(standalone, "server.js")], {
     argv0: "node",
     stdio: "ignore",

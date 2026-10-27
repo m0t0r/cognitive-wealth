@@ -16,6 +16,21 @@ export function commandOf(pid: number): string | undefined {
   }
 }
 
+/** The pid listening on TCP `port`, or undefined when nothing does. */
+export function listenerOn(port: number): number | undefined {
+  try {
+    const out = execFileSync("lsof", ["-t", `-iTCP:${port}`, "-sTCP:LISTEN"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const pid = Number(out.split("\n")[0]);
+    return pid > 0 ? pid : undefined;
+  } catch {
+    // lsof exits 1 when nothing matches.
+    return undefined;
+  }
+}
+
 export function alive(pid: number) {
   try {
     // Signal 0 checks the process (or, for a negative pid, the group) exists without touching it.

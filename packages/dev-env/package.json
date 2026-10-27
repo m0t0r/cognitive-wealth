@@ -7,10 +7,14 @@
     "./checkout": "./src/checkout.ts",
     "./names": "./src/names.ts",
     "./env-file": "./src/env-file.ts",
+    "./populate": "./src/populate.ts",
     "./prune": "./src/prune.ts",
     "./setup": "./src/setup.ts",
     "./teardown": "./src/teardown.ts",
-    "./verify": "./src/verify.ts"
+    "./verify": "./src/verify.ts",
+    "./verify-browser": "./src/verify-browser.ts",
+    "./verify-compose": "./src/verify-compose.ts",
+    "./verify-server": "./src/verify-server.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",

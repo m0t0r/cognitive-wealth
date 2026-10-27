@@ -1,6 +1,6 @@
 // `node packages/db/src/cli/run-seed.ts <file>[:<export>]`: runs one seed function, such as an e2e
 // helper (`apps/web-e2e/support/households.ts:seedHouseholdOfGrace`), against DATABASE_URL, so
-// verifier-web's `start-app.sh --seed` can add a change's own data to its verify database (#164)
+// `cw verify start --seed` can add a change's own data to its verify database (#164)
 // without a second copy of it in SQL. Node runs this file directly (type stripping), and the seed
 // module, written for the bundler, loads after `registerTsResolution()` (see there).
 import { resolve } from "node:path";

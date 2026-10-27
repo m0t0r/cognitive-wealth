@@ -68,7 +68,7 @@ The steps above set up the main checkout, whose data is yours. A linked worktree
 pnpm dev:sign-in owner@cognitive-wealth.test --app https://<branch>.cognitive-wealth.localhost
 ```
 
-The `verifier-web` skill's runs from a worktree are kept apart the same way: their own port pair (the main checkout keeps `:3100` and `:3101`), databases `verify_<token>_head` and `_ref`, `--ref` checkouts `.dev/worktrees/<token>-<sha>` agent-browser session `verify-<token>` and, for `compose.sh`, Compose project `cw-compose-<token>`, with their state in the main checkout's `.dev/verify/<token>/`. The one headless Chrome on `:9222` that the chrome-devtools MCP traces in is held by one checkout at a time.
+The `verifier-web` skill's runs from a worktree are kept apart the same way: their own port pair (the main checkout keeps `:3100` and `:3101`), databases `verify_<token>_head` and `_ref`, `--ref` checkouts `.dev/worktrees/<token>-<sha>` agent-browser session `verify-<token>` and, for `cw verify compose`, Compose project `cw-compose-<token>`, with their state in the main checkout's `.dev/verify/<token>/`. The one headless Chrome on `:9222` that the chrome-devtools MCP traces in is held by one checkout at a time.
 
 Removing the worktree tears all of it down. `pnpm dev:prune` stops the `pnpm dev`, and deletes the database and Redis keys, of every worktree git no longer lists, along with its verification servers, databases, `--ref` checkouts and Compose project (volumes included), and stops the shared Chrome if that worktree held it, and it runs at every point a worktree can have gone:
 

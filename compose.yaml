@@ -14,7 +14,7 @@
 # rather than a second database: it costs about 30 MiB idle, and it initializes its own volume even
 # where `pgdata` already exists. The custodian's API, with its docs at /docs, is on
 # http://127.0.0.1:8000 (`CUSTODIAN_PORT` changes the host port, as `WEB_PORT` and `MAILPIT_PORT`
-# do the app's and Mailpit's; verifier-web's compose.sh sets all three for a project of its own).
+# do the app's and Mailpit's; `cw verify compose up` sets all three for a project of its own).
 # Postgres, Redis and SMTP are only reachable from the stack. For `pnpm dev` on the host, also load
 # compose.dev.yaml.
 

@@ -47,7 +47,8 @@ type IngestArgs = {
   openDatabase: Dependencies["openDatabase"];
 };
 
-async function ingest({ asOf, firm: slug, root, dryRun, openDatabase }: IngestArgs) {
+/** Ingestion of one Delivery, as `cw custodian ingest` and `cw verify`'s databases run it. */
+export async function ingest({ asOf, firm: slug, root, dryRun, openDatabase }: IngestArgs) {
   const { organization } = await import("@repo/db/schema");
   const { TransactionRollbackError, eq } = await import("drizzle-orm");
   const { ingestDelivery, localFeedSource } = await import("@repo/portfolio");
