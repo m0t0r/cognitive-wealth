@@ -17,6 +17,7 @@ describe("cw", () => {
       { name: "friction fix" },
       { name: "friction hand-back" },
       { name: "friction publish" },
+      { name: "friction refresh" },
       { name: "friction report" },
       { name: "friction search" },
       { name: "friction start" },

@@ -9,7 +9,9 @@ type Write =
   | { kind: "label"; number: number; add: string[]; remove: string[] }
   | { kind: "close"; number: number; comment: string }
   | { kind: "create-pr"; head: string; base: string; title: string; body: string }
-  | { kind: "edit-pr"; number: number; body: string };
+  | { kind: "edit-pr"; number: number; body: string }
+  | { kind: "rebase-pr"; number: number }
+  | { kind: "comment-pr"; number: number; body: string };
 
 /** An open friction report, with whatever a test overrides. */
 export function report(overrides: Partial<Issue> & { number: number }): Issue {
@@ -26,15 +28,28 @@ export function report(overrides: Partial<Issue> & { number: number }): Issue {
   };
 }
 
-type MemoryPullRequest = PullRequest & { head: string; base: string };
+type MemoryPullRequest = PullRequest & {
+  head: string;
+  base: string;
+  /** How many of its base's commits it lacks; a rebase makes it 0. */
+  behind: number;
+  /** Its comments' bodies. */
+  comments: string[];
+};
+
+/** The head a rebase in this GitHub gives a PR. */
+export const REBASED_HEAD = "1".repeat(40);
 
 /** A PR from the bot's branch, with whatever a test overrides. */
 export function pullRequest(
   overrides: Partial<MemoryPullRequest> & { number: number },
 ): MemoryPullRequest {
   return {
+    id: `PR_${overrides.number}`,
     state: "open",
     headSha: "0".repeat(40),
+    behind: 0,
+    comments: [],
     body: "",
     url: `https://github.test/pull/${overrides.number}`,
     head: "chore/friction-autofix",
@@ -118,7 +133,7 @@ export function memoryGitHub(issues: Issue[] = [], options: MemoryGitHubOptions 
       pulls
         .filter((pull) => pull.head === head && pull.base === base)
         .toSorted((a, b) => b.number - a.number)
-        .map(({ head: _head, base: _base, ...pull }) => pull)
+        .map(({ head: _head, base: _base, behind: _behind, comments: _comments, ...pull }) => pull)
     ),
     async createPullRequest({ head, base, title, body }) {
       failing("createPullRequest");
@@ -133,6 +148,33 @@ export function memoryGitHub(issues: Issue[] = [], options: MemoryGitHubOptions 
       if (index === -1) throw new Error(`No PR #${number} in this test's GitHub`);
       writes.push({ kind: "edit-pr", number, body });
       pulls[index] = { ...pulls[index]!, body };
+    },
+    behindBy: async ({ base, head }) => (
+      failing("behindBy"),
+      pulls.find((pull) => pull.head === head && pull.base === base && pull.state === "open")
+        ?.behind ?? 0
+    ),
+    async pullRequestComments(number) {
+      failing("pullRequestComments");
+      const pull = pulls.find((candidate) => candidate.number === number);
+      if (!pull) throw new Error(`No PR #${number} in this test's GitHub`);
+      return pull.comments;
+    },
+    async commentOnPullRequest({ number, body }) {
+      failing("commentOnPullRequest");
+      const index = pulls.findIndex((pull) => pull.number === number);
+      if (index === -1) throw new Error(`No PR #${number} in this test's GitHub`);
+      writes.push({ kind: "comment-pr", number, body });
+      pulls[index] = { ...pulls[index]!, comments: [...pulls[index]!.comments, body] };
+    },
+    async rebasePullRequest({ id, expectedHeadSha }) {
+      failing("rebasePullRequest");
+      const index = pulls.findIndex((pull) => pull.id === id);
+      if (index === -1) throw new Error(`No PR ${id} in this test's GitHub`);
+      const pull = pulls[index]!;
+      if (pull.headSha !== expectedHeadSha) throw new Error("The head moved.");
+      writes.push({ kind: "rebase-pr", number: pull.number });
+      pulls[index] = { ...pull, headSha: REBASED_HEAD, behind: 0 };
     },
   };
   return { github, writes, issue: find };

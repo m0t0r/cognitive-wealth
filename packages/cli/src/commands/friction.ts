@@ -447,6 +447,47 @@ export function frictionCommands({
         }
       },
     })
+    .command("refresh", {
+      description:
+        "Bring the bot's open PR up to date before a fix stacks on it: when it's behind the base " +
+        "branch, have GitHub rebase it (as 'Update branch' does). If GitHub won't, the reports " +
+        "stay ready-for-agent and the PR gets one comment per stuck head asking for an update. " +
+        "friction-fix.yml runs it before fix",
+      hint: "status stale means don't fix this run: a fix would stack on old code.",
+      args: picked,
+      options: z.object({
+        runUrl,
+        ...branchOptions,
+        dryRun: dryRunOption.describe("Say whether it would rebase; change nothing"),
+      }),
+      output: z.object({
+        status: z.enum(["no_pr", "current", "would_rebase", "rebased", "stale"]),
+        pr: z.number().optional(),
+        head: z.string().optional().describe("The PR's head once rebased"),
+        reason: z.string().optional(),
+        asked: z
+          .boolean()
+          .optional()
+          .describe("Whether this run asked on the PR for an update (once per stuck head)"),
+        dryRun: z.boolean(),
+      }),
+      mcp: false,
+      async run(c) {
+        try {
+          const { refreshPullRequest } = await import("@repo/friction-bot/refresh");
+          const outcome = await refreshPullRequest(await github(), {
+            picked: c.args.issues,
+            branch: c.options.branch,
+            baseBranch: c.options.base,
+            runUrl: c.options.runUrl,
+            dryRun: c.options.dryRun,
+          });
+          return { ...outcome, dryRun: c.options.dryRun };
+        } catch (error) {
+          return c.error(refusal(error));
+        }
+      },
+    })
     .command("start", {
       description:
         "Put a full clone on the bot's branch where the next fix starts: the branch while its PR " +
@@ -527,9 +568,16 @@ export function frictionCommands({
             await writeFile(join(dir, "commit.json"), JSON.stringify(outcome, null, 2));
           }
           if (outcome.status === "forbidden") {
+            const { forbiddenMessage } = await import("@repo/friction-bot/tools");
             throw new CliError({
               code: "forbidden_paths",
-              message: `The fix changes paths only the user changes: ${outcome.paths.join(", ")}.`,
+              message: forbiddenMessage(outcome.paths),
+            });
+          }
+          if (outcome.status === "duplicated") {
+            throw new CliError({
+              code: "duplicated_text",
+              message: `The fix repeats a line already in ${outcome.path}, so nothing was committed: "${outcome.line}"`,
             });
           }
           if (outcome.status === "checks_failed") {
@@ -600,11 +648,11 @@ export function frictionCommands({
             picked: c.args.issues,
             answer,
             commit,
-            push: (pulls) =>
+            push: ({ pulls, base: fixBase }) =>
               pushFix({
                 root,
                 bundle: join(dir, "fix.bundle"),
-                base: commit?.status === "committed" ? commit.base : "",
+                base: fixBase,
                 branch,
                 baseBranch: base,
                 pulls,

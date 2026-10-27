@@ -36,6 +36,8 @@ type ListArgs = {
 type EditLabelsArgs = { number: number; add: string[]; remove: string[] };
 
 export type PullRequest = {
+  /** GitHub's node id, which the GraphQL API takes. */
+  id: string;
   number: number;
   state: "open" | "closed" | "merged";
   /** The commit the PR's branch pointed at when it was last open. */
@@ -62,6 +64,16 @@ export type GitHub = {
   pullRequests: (args: { head: string; base: string }) => Promise<PullRequest[]>;
   createPullRequest: (args: CreatePullRequestArgs) => Promise<{ number: number; url: string }>;
   editPullRequest: (args: { number: number; body: string }) => Promise<void>;
+  /** How many of `base`'s commits `head` lacks. */
+  behindBy: (args: { base: string; head: string }) => Promise<number>;
+  /**
+   * Asks GitHub to rebase the PR onto its base, as its "Update branch" button does; refused on a
+   * conflict, or when the head is no longer `expectedHeadSha`. It may finish after this returns.
+   */
+  rebasePullRequest: (args: { id: string; expectedHeadSha: string }) => Promise<void>;
+  /** The bodies of a PR's comments, oldest first. */
+  pullRequestComments: (number: number) => Promise<string[]>;
+  commentOnPullRequest: (args: { number: number; body: string }) => Promise<void>;
 };
 
 const SUMMARY_FIELDS = "number,title,body,state,url,labels,createdAt,closedAt";
@@ -78,7 +90,16 @@ type GhIssue = {
   comments?: { author: { login: string } | null; body: string; authorAssociation: string }[];
 };
 
+/** GitHub's "Update branch" with rebase, done on GitHub's side, only if the head is still `head`. */
+const REBASE_MUTATION = `mutation($id: ID!, $head: GitObjectID!) {
+  updatePullRequestBranch(input: { pullRequestId: $id, expectedHeadOid: $head, updateMethod: REBASE }) {
+    pullRequest { headRefOid }
+  }
+}`;
+
 type GhPullRequest = {
+  id: string;
+  isCrossRepository: boolean;
   number: number;
   state: "OPEN" | "CLOSED" | "MERGED";
   headRefOid: string;
@@ -185,17 +206,50 @@ export function ghCli(): GitHub {
             "--limit",
             "50",
             "--json",
-            "number,state,headRefOid,body,url",
+            "id,number,state,headRefOid,body,url,isCrossRepository",
           ],
         }),
       );
-      return pulls.map((pull) => ({
-        number: pull.number,
-        state: pull.state === "OPEN" ? "open" : pull.state === "MERGED" ? "merged" : "closed",
-        headSha: pull.headRefOid,
-        body: pull.body,
-        url: pull.url,
-      }));
+      // `--head` matches a fork's branch of the same name too; only this repository's count.
+      return pulls
+        .filter(({ isCrossRepository }) => !isCrossRepository)
+        .map((pull) => ({
+          id: pull.id,
+          number: pull.number,
+          state: pull.state === "OPEN" ? "open" : pull.state === "MERGED" ? "merged" : "closed",
+          headSha: pull.headRefOid,
+          body: pull.body,
+          url: pull.url,
+        }));
+    },
+    async behindBy({ base, head }) {
+      const compare: { behind_by: number } = JSON.parse(
+        await gh({ args: ["api", `repos/{owner}/{repo}/compare/${base}...${head}`] }),
+      );
+      return compare.behind_by;
+    },
+    async pullRequestComments(number) {
+      const pull: { comments: { body: string }[] } = JSON.parse(
+        await gh({ args: ["pr", "view", String(number), "--json", "comments"] }),
+      );
+      return pull.comments.map(({ body }) => body);
+    },
+    async commentOnPullRequest({ number, body }) {
+      await gh({ args: ["pr", "comment", String(number), "--body-file", "-"], input: body });
+    },
+    async rebasePullRequest({ id, expectedHeadSha }) {
+      await gh({
+        args: [
+          "api",
+          "graphql",
+          "-f",
+          `query=${REBASE_MUTATION}`,
+          "-f",
+          `id=${id}`,
+          "-f",
+          `head=${expectedHeadSha}`,
+        ],
+      });
     },
     async createPullRequest({ head, base, title, body }) {
       const url = (

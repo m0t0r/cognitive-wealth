@@ -6,8 +6,9 @@
 #   is ready. A run with nothing ready stops before Claude starts. Run it by hand from Actions →
 #   Friction fix → Run workflow.
 # - The steps are `cw friction` commands (packages/cli/src/commands/friction.ts, rules and tests in
-#   packages/friction-bot): `start` puts the checkout where the fix goes, `fix` runs Sonnet with a
-#   read-only token, `commit` runs the checks and commits, and `publish`, whose token can write,
+#   packages/friction-bot): `refresh` has GitHub rebase the bot's open PR onto dev (or hands the
+#   reports back when it won't), `start` puts the checkout where the fix goes, `fix` runs Sonnet
+#   with a read-only token, `commit` runs the checks and commits, and `publish`, whose token can write,
 #   checks the commit again, pushes it, opens or updates the PR and relabels each report from what
 #   happened to it. Nothing in an issue can make the model push.
 # - While the bot's PR is open, each run adds a commit to it. Closing it unmerged rejects that work:
@@ -166,26 +167,31 @@ jobs:
           cat "$RUNNER_TEMP/backlog.json"
           jq -e '.failed | length == 0' "$RUNNER_TEMP/backlog.json" > /dev/null
 
-  fix:
+  # Picks the ready reports and brings the bot's open PR up to date with dev first, so the fix
+  # stacks on current code: GitHub rebases it on its side (`cw friction refresh`), since this
+  # token can't push a branch that brings in dev's workflow changes. When GitHub won't (a conflict,
+  # or the workflow-file rule), nothing is fixed this run: the reports stay `ready-for-agent`, and
+  # the PR gets one comment asking for "Update branch", after which the next run goes on.
+  prepare:
     needs: [api-key, triage-backlog]
     # Never from the bot's own branch, whose code is the model's: a run there would run it with the
-    # API key here and the write token in publish. It runs whether or not the backlog triage did.
+    # API key in fix and a write token here and in publish. It runs whether or not the backlog
+    # triage did.
     if: >-
       !cancelled() && needs.api-key.result == 'success'
       && github.event_name != 'pull_request' && github.ref_name != 'chore/friction-autofix'
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 10
     permissions:
-      contents: read
-      issues: read
-      pull-requests: read
+      # To have GitHub rebase the bot's PR, and comment on it when GitHub won't.
+      contents: write
+      pull-requests: write
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      OUT_SUBDIR: friction-out
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     outputs:
-      ran: ${{ steps.claude.outcome == 'success' }}
-      numbers: ${{ steps.pick.outputs.numbers }}
+      numbers: ${{ steps.refresh.outputs.numbers }}
     steps:
       - name: Pick the ready reports
         id: pick
@@ -197,53 +203,97 @@ jobs:
             echo "Nothing is ready-for-agent."
             exit 0
           fi
-          echo "Fixing: $numbers"
+          echo "Picked: $numbers"
           echo "numbers=$numbers" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.pick.outputs.numbers != ''
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        if: steps.pick.outputs.numbers != ''
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.pick.outputs.numbers != ''
+        with:
+          node-version: 24
+
+      - if: steps.pick.outputs.numbers != ''
+        run: pnpm install --frozen-lockfile --prod --filter "@repo/cli..."
+
+      - name: Bring the bot's PR up to date
+        id: refresh
+        if: steps.pick.outputs.numbers != ''
+        env:
+          PICKED: ${{ steps.pick.outputs.numbers }}
+        run: |
+          # $PICKED is split on purpose: one argument per report.
+          # shellcheck disable=SC2086
+          node packages/cli/src/cli.ts friction refresh $PICKED --run-url "$RUN_URL" --branch "$BRANCH" \
+            --json > "$RUNNER_TEMP/refresh.json" || { cat "$RUNNER_TEMP/refresh.json"; exit 1; }
+          cat "$RUNNER_TEMP/refresh.json"
+          if [ "$(jq -r .status "$RUNNER_TEMP/refresh.json")" = stale ]; then
+            echo "::warning::$(jq -r .reason "$RUNNER_TEMP/refresh.json"). Nothing is fixed until the PR is updated."
+            exit 0
+          fi
+          echo "numbers=$PICKED" >> "$GITHUB_OUTPUT"
+
+  fix:
+    needs: prepare
+    if: needs.prepare.outputs.numbers != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      NUMBERS: ${{ needs.prepare.outputs.numbers }}
+      OUT_SUBDIR: friction-out
+    outputs:
+      ran: ${{ steps.claude.outcome == 'success' }}
+      numbers: ${{ needs.prepare.outputs.numbers }}
+    steps:
       # Two checkouts: `work`, which the fixer edits and the commit comes from, and `harness`, dev,
       # whose `cw` runs the loop and the commit gate. On the bot's branch `work` holds code the
       # model wrote in earlier runs; running the fixer from it would let the model loosen its own
       # tools and prompt.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.pick.outputs.numbers != ''
         with:
           path: work
           fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.pick.outputs.numbers != ''
         with:
           path: harness
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        if: steps.pick.outputs.numbers != ''
         with:
           package_json_file: harness/package.json
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: steps.pick.outputs.numbers != ''
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: work/pnpm-lock.yaml
 
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-        if: steps.pick.outputs.numbers != ''
 
       # All of `work`, for the checks; only `cw`'s runtime dependencies in `harness`.
-      - if: steps.pick.outputs.numbers != ''
-        run: |
+      - run: |
           pnpm -C work install --frozen-lockfile
           pnpm -C harness install --frozen-lockfile --prod --filter "@repo/cli..."
 
-      # On the bot's branch while its PR is open (or its PR never opened), so the new commit
-      # stacks on it; else on dev. Bringing dev into an open PR is left to its "Update branch": a
-      # merge carrying dev's workflow changes can't be pushed with this token.
+      # On the bot's branch while its PR is open (prepare rebased it onto dev) or its PR never
+      # opened, so the new commit stacks on it; else on dev.
       - name: Start where the fix goes
-        if: steps.pick.outputs.numbers != ''
         run: node harness/packages/cli/src/cli.ts friction start --checkout work --branch "$BRANCH"
 
       # `pnpm cw friction fix`: Sonnet in a tool loop through the AI SDK (packages/friction-bot/src/fix.ts,
@@ -258,7 +308,6 @@ jobs:
       # That doesn't stop a check set on it (the runner has sudo), so this key should have a low spend limit.
       # GH_TOKEN stays in it, to gather the reports; it's this job's read-only token.
       - name: Hand over the API key as a file
-        if: steps.pick.outputs.numbers != ''
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
@@ -267,10 +316,8 @@ jobs:
 
       - name: Fix with Sonnet
         id: claude
-        if: steps.pick.outputs.numbers != ''
         env:
           ANTHROPIC_API_KEY_FILE: ${{ runner.temp }}/anthropic-key
-          NUMBERS: ${{ steps.pick.outputs.numbers }}
         run: |
           mkdir -p "$RUNNER_TEMP/$OUT_SUBDIR"
           # $NUMBERS is split on purpose: one argument per report.
@@ -285,8 +332,6 @@ jobs:
       # why a fix didn't land; a failed check fails this step and the run.
       - name: Check and commit
         if: steps.claude.outcome == 'success'
-        env:
-          NUMBERS: ${{ steps.pick.outputs.numbers }}
         run: |
           # $NUMBERS is split on purpose: one argument per report.
           # shellcheck disable=SC2086
@@ -354,9 +399,9 @@ jobs:
   # retried every run. Only those still `ready-for-agent`: publish labelled the rest for what
   # happened to them.
   hand-back:
-    needs: [fix, publish]
+    needs: [prepare, fix, publish]
     if: >-
-      always() && needs.fix.outputs.numbers != ''
+      always() && needs.prepare.outputs.numbers != ''
       && (needs.fix.result != 'success' || needs.publish.result != 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -366,7 +411,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      NUMBERS: ${{ needs.fix.outputs.numbers }}
+      NUMBERS: ${{ needs.prepare.outputs.numbers }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

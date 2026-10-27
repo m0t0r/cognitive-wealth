@@ -306,6 +306,12 @@ describe("triageBacklog", () => {
       }),
       report({ number: 250, createdAt: "2026-10-22T10:00:00Z" }),
       report({ number: 251, createdAt: "2026-10-23T10:00:00Z", state: "closed" }),
+      // Fixed in the bot's PR: no triage label any more, but the fixer has said so.
+      report({
+        number: 252,
+        createdAt: "2026-10-23T11:00:00Z",
+        comments: [{ author: "github-actions", body: "Fixed in #261: …", association: "NONE" }],
+      }),
       report({ number: 260, createdAt: "2026-10-27T12:45:00Z" }),
     ]);
 

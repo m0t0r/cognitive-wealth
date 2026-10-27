@@ -6,6 +6,7 @@ import { git, type TempRepo, tempRepo } from "./testing/git-repo.ts";
 const BRANCH = "chore/friction-autofix";
 
 const pull = (overrides: Partial<PullRequest> & Pick<PullRequest, "state" | "headSha">) => ({
+  id: "PR_261",
   number: 261,
   body: "",
   url: "https://github.test/pull/261",
@@ -177,13 +178,18 @@ describe("pushFix", () => {
   it("refuses a commit that changes a path only the user changes", async () => {
     await repo.git(["checkout", "-q", "-B", BRANCH, "origin/dev"]);
     const base = await repo.git(["rev-parse", "HEAD"]);
-    await repo.commit({ files: { ".claude/skills/x/run.sh": "echo\n" } });
+    await repo.commit({
+      files: { ".claude/skills/x/run.sh": "echo\n", ".github/workflows/é.yml": "on: push\n" },
+    });
     const bundle = join(repo.dir, "fix.bundle");
     await repo.git(["bundle", "create", "-q", bundle, `${base}..HEAD`]);
 
     await expect(
       pushFix({ root: publisher, bundle, base, branch: BRANCH, baseBranch: "dev", pulls: [] }),
-    ).rejects.toMatchObject({ code: "forbidden_paths", message: /\.claude\/skills\/x\/run\.sh/ });
+    ).rejects.toMatchObject({
+      code: "forbidden_paths",
+      message: /\.claude\/skills\/x\/run\.sh, \.github\/workflows\/é\.yml/,
+    });
     expect(await branchOnOrigin()).toBeNull();
   });
 

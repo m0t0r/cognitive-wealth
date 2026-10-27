@@ -5,7 +5,7 @@ import { execFile } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { type Check, type CheckResult, FORBIDDEN } from "./tools.ts";
+import { type Check, type CheckResult, changedPaths, FORBIDDEN } from "./tools.ts";
 
 const run = promisify(execFile);
 
@@ -31,6 +31,7 @@ export type CommitOutcome =
   | { status: "would_commit"; files: string[]; dropped: string[] }
   | { status: "no_changes"; dropped: string[] }
   | { status: "forbidden"; paths: string[]; dropped: string[] }
+  | { status: "duplicated"; path: string; line: string; dropped: string[] }
   | { status: "checks_failed"; check: Check; output: string; dropped: string[] };
 
 type CommitFixArgs = {
@@ -47,6 +48,40 @@ type CommitFixArgs = {
 
 const lines = (text: string) => text.split("\n").filter(Boolean);
 
+/** Shorter Markdown lines (headings, `- None`, table rules) repeat on purpose. */
+const PROSE = 40;
+
+type RepeatedLineArgs = { before: string; after: string };
+
+/** Each prose line of `text`, with its copies. */
+const proseLines = (text: string) =>
+  Map.groupBy(
+    text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length >= PROSE),
+    (line) => line,
+  );
+
+/**
+ * A prose line `after` holds more often than `before` did, and more than once: what a fix that
+ * appends a copy of a section leaves (03b41a8 repeated CLAUDE.md's "Friction reports"). Moving a
+ * line keeps its count.
+ */
+export function repeatedLine({ before, after }: RepeatedLineArgs): string | null {
+  const was = proseLines(before);
+  for (const [line, copies] of proseLines(after)) {
+    if (copies.length > 1 && copies.length > (was.get(line)?.length ?? 0)) return line;
+  }
+  return null;
+}
+
+/** Whether `summary` names `path` whole: not as part of a longer path (`docs/x.md` isn't `x.md`). */
+export function names({ summary, path }: { summary: string; path: string }): boolean {
+  const escaped = path.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  return new RegExp(String.raw`(?<![\w./-])${escaped}(?![\w/-]|\.\w)`).test(summary);
+}
+
 export async function commitFix({
   root,
   fixed,
@@ -58,12 +93,10 @@ export async function commitFix({
     (await run("git", args, { cwd: root, maxBuffer: 64 * 1024 * 1024 })).stdout.trim();
   await git(["add", "-A"]);
   // Both sides of a rename, so moving a file out of a forbidden path is caught too.
-  const staged = lines(await git(["diff", "--cached", "--name-only", "--no-renames"]));
-  const added = lines(
-    await git(["diff", "--cached", "--name-only", "--no-renames", "--diff-filter=A"]),
-  );
+  const staged = await changedPaths({ root, args: ["--cached"] });
+  const added = await changedPaths({ root, args: ["--cached", "--diff-filter=A"] });
   // A scratch file the fixer left (#257's tmp-jsonb test): no summary names it.
-  const dropped = added.filter((path) => !fixed.some(({ summary }) => summary.includes(path)));
+  const dropped = added.filter((path) => !fixed.some(({ summary }) => names({ summary, path })));
   const files = staged.filter((path) => !dropped.includes(path));
   const forbidden = files.filter((path) => FORBIDDEN.test(path));
   if (dryRun) {
@@ -78,6 +111,13 @@ export async function commitFix({
   // A change no fixed report accounts for isn't committed.
   if (files.length === 0 || fixed.length === 0) return { status: "no_changes", dropped };
   if (forbidden.length > 0) return { status: "forbidden", paths: forbidden, dropped };
+  const show = (spec: string) => git(["show", spec]).catch(() => "");
+  for (const path of files.filter((file) => /\.mdx?$/i.test(file))) {
+    // oxlint-disable-next-line no-await-in-loop -- a few Markdown files, one at a time
+    const [before, after] = await Promise.all([show(`HEAD:${path}`), show(`:${path}`)]);
+    const line = repeatedLine({ before, after });
+    if (line !== null) return { status: "duplicated", path, line, dropped };
+  }
   for (const check of COMMIT_CHECKS) {
     // oxlint-disable-next-line no-await-in-loop -- in order, stopping at the first failure
     const { exitCode, output } = await runCheck(check);

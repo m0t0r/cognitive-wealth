@@ -249,6 +249,26 @@ describe("cw friction triage-backlog", () => {
   });
 });
 
+describe("cw friction refresh", () => {
+  it("keeps the reports waiting and asks on the PR when GitHub won't rebase it", async () => {
+    const gh = memoryGitHub([report({ number: 12, labels: ["friction", "ready-for-agent"] })], {
+      pullRequests: [pullRequest({ number: 261, behind: 8 })],
+      fail: { rebasePullRequest: new Error("Merge conflict") },
+    });
+    const cli = createCli(dependencies({ github: async () => gh.github }));
+
+    const { output, exitCode } = await run({
+      cli,
+      argv: ["friction", "refresh", "12", "--run-url", "https://github.test/runs/1"],
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toMatchObject({ status: "stale", pr: 261, asked: true, dryRun: false });
+    expect(gh.issue(12).labels).toEqual(["friction", "ready-for-agent"]);
+    expect(gh.writes).toMatchObject([{ kind: "comment-pr", number: 261 }]);
+  });
+});
+
 describe("cw friction hand-back", () => {
   it("hands back the reports still ready-for-agent", async () => {
     const { cli, writes } = setup({

@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { PullRequest } from "./github.ts";
 import { ReportError } from "./reports.ts";
-import { FORBIDDEN } from "./tools.ts";
+import { changedPaths, FORBIDDEN, forbiddenMessage } from "./tools.ts";
 
 const run = promisify(execFile);
 
@@ -109,13 +109,10 @@ export async function pushFix({
       throw mismatch(`The fix was made on ${base}, which isn't on ${baseBranch}.`);
     }
   }
-  const changed = (await git(["diff", "--name-only", "--no-renames", base, commit!])).split("\n");
+  const changed = await changedPaths({ root, args: [base, commit!] });
   const forbidden = changed.filter((path) => FORBIDDEN.test(path));
   if (forbidden.length > 0) {
-    throw new ReportError({
-      code: "forbidden_paths",
-      message: `The fix changes paths only the user changes: ${forbidden.join(", ")}.`,
-    });
+    throw new ReportError({ code: "forbidden_paths", message: forbiddenMessage(forbidden) });
   }
   if (!dryRun) {
     const lease = from === "base" && tip ? [`--force-with-lease=refs/heads/${branch}:${tip}`] : [];

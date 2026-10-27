@@ -65,6 +65,7 @@ const CommitOutcomeSchema = z.union([
   z.object({ status: z.literal("would_commit"), files: z.array(z.string()), dropped }),
   z.object({ status: z.literal("no_changes"), dropped }),
   z.object({ status: z.literal("forbidden"), paths: z.array(z.string()), dropped }),
+  z.object({ status: z.literal("duplicated"), path: z.string(), line: cut(200), dropped }),
   z.object({
     status: z.literal("checks_failed"),
     check: z.enum(["lint", "format", "format:check", "check-types", "test", "test:integration"]),
@@ -120,7 +121,10 @@ type PublishFixArgs = {
   /** `commitFix`'s outcome, or null when the commit step left none. */
   commit: CommitOutcome | null;
   /** Pushes the bundled commit (`pushFix`), given the PRs from the bot branch. */
-  push: (pulls: PullRequest[]) => Promise<{ commit: string; stacked: boolean }>;
+  push: (args: {
+    pulls: PullRequest[];
+    base: string;
+  }) => Promise<{ commit: string; stacked: boolean }>;
   branch: string;
   baseBranch: string;
   runUrl: string;
@@ -141,10 +145,14 @@ function uncommitted(commit: CommitOutcome | null): string | null {
       return `The fix changed paths only the user changes (${commit.paths.join(", ")}), so it wasn't committed.`;
     case "checks_failed":
       return `The fix failed \`pnpm ${commit.check}\`, so it wasn't committed.`;
+    case "duplicated":
+      return `The fix repeated text already in \`${commit.path}\` ("${commit.line}"), so it wasn't committed.`;
     default:
       return "The fix wasn't committed: the commit step was a dry run.";
   }
 }
+
+type SectionArgs = { answer: FixAnswer; commit: CommitOutcome; runUrl: string; now: Date };
 
 function prSection({ answer, commit, runUrl, now }: SectionArgs): string {
   const stamp = now.toISOString().slice(0, 16).replace("T", " ");
@@ -162,8 +170,6 @@ function prSection({ answer, commit, runUrl, now }: SectionArgs): string {
     ...notCommitted,
   ].join("\n");
 }
-
-type SectionArgs = { answer: FixAnswer; commit: CommitOutcome; runUrl: string; now: Date };
 
 const PR_INTRO = `Friction reports fixed by \`.github/workflows/friction-fix.yml\` (Sonnet). Each run adds a commit and a section below while this PR is open. Closing it without merging rejects them: the next run starts again from \`dev\`.
 
@@ -219,20 +225,21 @@ export async function publishFix(
   if (notLanded === null && commit?.status === "committed") {
     try {
       const pulls = await github.pullRequests({ head: branch, base: baseBranch });
-      pushed = await push(pulls);
-      try {
-        const section = prSection({ answer, commit, runUrl, now });
-        const open = pulls.find(({ state }) => state === "open");
-        if (open) {
-          if (!dryRun)
-            await github.editPullRequest({
-              number: open.number,
-              body: `${open.body}\n\n${section}`,
-            });
-          pullRequest = { number: open.number, url: open.url, created: false };
-        } else if (dryRun) {
-          pullRequest = { number: null, url: null, created: true };
-        } else {
+      pushed = await push({ pulls, base: commit.base });
+      const section = prSection({ answer, commit, runUrl, now });
+      const open = pulls.find(({ state }) => state === "open");
+      if (open) {
+        // The commit is in the open PR already: a failed edit loses only its section.
+        pullRequest = { number: open.number, url: open.url, created: false };
+        if (!dryRun) {
+          await github
+            .editPullRequest({ number: open.number, body: `${open.body}\n\n${section}` })
+            .catch((error: unknown) => errors.push(publishError({ step: "pull_request", error })));
+        }
+      } else if (dryRun) {
+        pullRequest = { number: null, url: null, created: true };
+      } else {
+        try {
           const created = await github.createPullRequest({
             head: branch,
             base: baseBranch,
@@ -240,11 +247,11 @@ export async function publishFix(
             body: `${PR_INTRO}\n\n${section}`,
           });
           pullRequest = { ...created, created: true };
+        } catch (error) {
+          const failed = publishError({ step: "pull_request", error });
+          errors.push(failed);
+          notLanded = `The fix is on \`${branch}\` (${pushed.commit.slice(0, 7)}), but its PR couldn't be opened: ${failed.message}. Open one from the branch; the next fix run will too.`;
         }
-      } catch (error) {
-        const failed = publishError({ step: "pull_request", error });
-        errors.push(failed);
-        notLanded = `The fix is on \`${branch}\` (${pushed.commit.slice(0, 7)}), but its PR couldn't be opened: ${failed.message}. Open one from the branch; the next fix run will too.`;
       }
     } catch (error) {
       const failed = publishError({ step: "push", error });
@@ -253,7 +260,7 @@ export async function publishFix(
     }
   }
 
-  const where = pullRequest?.number ? `#${pullRequest.number}` : "the bot's PR";
+  const prName = pullRequest?.number ? `#${pullRequest.number}` : "the bot's PR";
   const toHuman = (text: string) => ({
     outcome: "handed_back" as const,
     labels: { add: [HUMAN], remove: [READY] },
@@ -271,7 +278,7 @@ export async function publishFix(
       number,
       outcome: "fixed",
       labels: { add: [], remove: [READY] },
-      comment: `Fixed in ${where}: ${fixed.summary}${footer(runUrl)}`,
+      comment: `Fixed in ${prName}: ${fixed.summary}${footer(runUrl)}`,
     };
   });
   if (!dryRun) {
@@ -292,11 +299,13 @@ export async function publishFix(
 type HandBackArgs = { numbers: number[]; runUrl: string; dryRun: boolean };
 
 /**
- * Hands the reports a run picked to a human when the run stopped before `publishFix` labelled
- * them: only those still open and `ready-for-agent`, so no report is picked again every run and
- * none `publishFix` already labelled is touched.
+ * Hands the reports a run picked to a human: only those still open and `ready-for-agent`, so no
+ * report is picked again every run and none `publishFix` already labelled is touched. A report
+ * whose fix landed but whose label didn't change is among them, so the default comment sends a
+ * person to the run and the PR first.
  */
 export async function handBack(github: GitHub, { numbers, runUrl, dryRun }: HandBackArgs) {
+  const reason = `The automated fix run stopped before it labelled this report ([run](${runUrl})). Check the run and the bot's PR before labelling it again.`;
   const issues = await Promise.all(numbers.map((number) => github.view(number)));
   const waiting = issues.filter(({ state, labels }) => state === "open" && labels.includes(READY));
   if (!dryRun) {
@@ -306,7 +315,7 @@ export async function handBack(github: GitHub, { numbers, runUrl, dryRun }: Hand
       // oxlint-disable-next-line no-await-in-loop -- a handful of reports, one at a time
       await github.comment({
         number,
-        body: `The automated fix didn't finish ([run](${runUrl})), so this needs a human.${footer(runUrl)}`,
+        body: `${reason}${footer(runUrl)}`,
       });
     }
   }
