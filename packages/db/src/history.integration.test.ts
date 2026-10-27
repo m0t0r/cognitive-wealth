@@ -146,6 +146,19 @@ describe("history", () => {
     },
   );
 
+  // So a forgotten `setActor` fails the first time its code runs, not the first time data changes.
+  firm(
+    "refuses app's update with no actor even when it changes nothing",
+    async ({ orm, firm: f }) => {
+      await expect(
+        withFirm(orm, {
+          firmId: f.id,
+          query: (tx) => tx.update(security).set({ name: "Total Market" }),
+        }),
+      ).rejects.toMatchObject(ACTOR_NOT_SET);
+    },
+  );
+
   firm(
     "writes nothing for an update that changes nothing but updated_at",
     async ({ migratorOrm, firm: { fund } }) => {
