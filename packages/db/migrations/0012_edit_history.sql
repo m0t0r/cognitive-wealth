@@ -63,7 +63,9 @@ CREATE POLICY "firm_isolation" ON "security_history" AS PERMISSIVE FOR ALL TO "a
 -- `migrator` in `pnpm db:studio` or a data migration) is recorded by its name. The role is the one
 -- the session set, or else the one it signed in as, since in here `current_user` is `migrator`.
 --
--- An update that changes no column but `updated_at` writes nothing.
+-- An update that changes no column but `updated_at` writes nothing, though as `app` it still needs
+-- an actor. `valid_until` is `now()`, the changing transaction's start, as every row of a Delivery
+-- shares its `arrived_at`; two changes to a row in one transaction share it too, in `id` order.
 create function record_history() returns trigger
 language plpgsql
 security definer

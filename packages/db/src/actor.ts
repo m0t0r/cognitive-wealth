@@ -18,16 +18,22 @@ export type Actor = { userId: number } | { deliveryId: number } | { system: stri
  * Separate from `withFirm`, since Ingestion's actor is a Delivery it inserts in the transaction.
  */
 export async function setActor(tx: Database, actor: Actor): Promise<void> {
-  const userId = "userId" in actor ? positiveId(actor.userId) : "";
-  const deliveryId = "deliveryId" in actor ? positiveId(actor.deliveryId) : "";
-  const system = "system" in actor ? actor.system.trim() : "";
-  if ("system" in actor && system === "") throw new Error("setActor needs a system's name");
+  const { userId = "", deliveryId = "", system = "" } = settings(actor);
   await tx.execute(sql`
     select
       pg_catalog.set_config('app.actor_user_id', ${userId}, true),
       pg_catalog.set_config('app.actor_delivery_id', ${deliveryId}, true),
       pg_catalog.set_config('app.actor_system', ${system}, true)
   `);
+}
+
+/** The one setting `actor` fills, checked; the other two stay empty. */
+function settings(actor: Actor): { userId?: string; deliveryId?: string; system?: string } {
+  if ("userId" in actor) return { userId: positiveId(actor.userId) };
+  if ("deliveryId" in actor) return { deliveryId: positiveId(actor.deliveryId) };
+  const system = actor.system.trim();
+  if (system === "") throw new Error("setActor needs a system's name");
+  return { system };
 }
 
 function positiveId(id: number): string {

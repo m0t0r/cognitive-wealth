@@ -30,8 +30,6 @@ import { custodialAccountColumns } from "./households";
 
 export const HISTORY_OPERATIONS = ["update", "delete"] as const;
 
-export type HistoryOperation = (typeof HISTORY_OPERATIONS)[number];
-
 /** What every history table adds to the copy: the change, when it happened and who made it. */
 const change = () => ({
   operation: text("operation", { enum: HISTORY_OPERATIONS }).notNull(),
@@ -50,10 +48,13 @@ const change = () => ({
  * The history table `name`, holding `copied` (a table's columns besides `id` and `public_id`,
  * from its factory) with the copy's `record_id` and `public_id`, and the change.
  */
-const historyTable = <Copied extends Record<string, PgColumnBuilderBase> & { firmId: unknown }>(
-  name: string,
-  copied: Copied,
-) =>
+const historyTable = <Copied extends Record<string, PgColumnBuilderBase> & { firmId: unknown }>({
+  name,
+  copied,
+}: {
+  name: string;
+  copied: Copied;
+}) =>
   pgTable(
     name,
     {
@@ -81,10 +82,13 @@ const historyTable = <Copied extends Record<string, PgColumnBuilderBase> & { fir
   );
 
 /** `custodial_account`'s earlier versions. */
-export const custodialAccountHistory = historyTable(
-  "custodial_account_history",
-  custodialAccountColumns(),
-);
+export const custodialAccountHistory = historyTable({
+  name: "custodial_account_history",
+  copied: custodialAccountColumns(),
+});
 
 /** `security`'s earlier versions. */
-export const securityHistory = historyTable("security_history", securityColumns());
+export const securityHistory = historyTable({
+  name: "security_history",
+  copied: securityColumns(),
+});
