@@ -85,6 +85,13 @@
       "when": 1793048200102,
       "tag": "0011_session_removal_notice",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793102248862,
+      "tag": "0012_edit_history",
+      "breakpoints": true
     }
   ]
 }

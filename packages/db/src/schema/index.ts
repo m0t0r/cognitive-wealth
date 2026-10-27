@@ -2,5 +2,6 @@
 export * from "./audit";
 export * from "./auth";
 export * from "./custodian-feed";
+export * from "./history";
 export * from "./households";
 export * from "./organization";

@@ -127,6 +127,21 @@ export const householdMember = pgTable(
 );
 
 /**
+ * `custodial_account`'s columns besides `id` and `public_id`, which `custodial_account_history`
+ * (history.ts) copies too, so a column added here is added to both (ADR 0025). Keep constraints
+ * that would hold one version only, such as a unique one, in the table's extra config.
+ */
+export const custodialAccountColumns = () => ({
+  firmId: firmId(),
+  accountNumber: text("account_number").notNull(),
+  // Both null until the Custodian feed is ingested.
+  registrationType: text("registration_type", { enum: REGISTRATION_TYPES }),
+  openedOn: date("opened_on", { mode: "string" }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/**
  * An Account at the Custodian, known by its account number (GLOSSARY.md, "Account"). Named
  * `custodial_account` because Better Auth already owns `account` (a User's sign-in method).
  *
@@ -136,17 +151,7 @@ export const householdMember = pgTable(
  */
 export const custodialAccount = pgTable(
   "custodial_account",
-  {
-    id: id(),
-    publicId: publicId(),
-    firmId: firmId(),
-    accountNumber: text("account_number").notNull(),
-    // Both null until the Custodian feed is ingested.
-    registrationType: text("registration_type", { enum: REGISTRATION_TYPES }),
-    openedOn: date("opened_on", { mode: "string" }),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
+  { id: id(), publicId: publicId(), ...custodialAccountColumns() },
   (t) => [
     firmIsolation(),
     unique("custodial_account_firm_id_id_unique").on(t.firmId, t.id),

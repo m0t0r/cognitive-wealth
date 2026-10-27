@@ -16,6 +16,8 @@ export type TablePrivileges = {
 const BETTER_AUTH: TablePrivileges = { onTable: ["select", "insert", "update", "delete"] };
 // Facts: rows are added and read, never changed or removed (`audit_event`, the Custodian feed).
 const APPEND_ONLY: TablePrivileges = { onTable: ["select", "insert"] };
+// Earlier versions, which only the `record_history()` trigger writes (ADR 0025).
+const HISTORY: TablePrivileges = { onTable: ["select"] };
 
 export const APP_PRIVILEGES: Record<string, TablePrivileges> = {
   account: BETTER_AUTH,
@@ -38,7 +40,8 @@ export const APP_PRIVILEGES: Record<string, TablePrivileges> = {
   household_member: APPEND_ONLY,
   person: APPEND_ONLY,
 
-  // Ingestion brings these up to date from each Delivery (#126), but never their identifiers.
+  // Ingestion brings these up to date from each Delivery (#126), but never their identifiers, and
+  // each change keeps the old version in the table's history (ADR 0025).
   custodial_account: {
     onTable: ["select", "insert"],
     columns: { update: ["registration_type", "opened_on", "updated_at"] },
@@ -47,6 +50,8 @@ export const APP_PRIVILEGES: Record<string, TablePrivileges> = {
     onTable: ["select", "insert"],
     columns: { update: ["name", "kind", "updated_at"] },
   },
+  custodial_account_history: HISTORY,
+  security_history: HISTORY,
   // The seed's record of the world file it last loaded, replaced on each changed file.
   world_seed: {
     onTable: ["select", "insert"],

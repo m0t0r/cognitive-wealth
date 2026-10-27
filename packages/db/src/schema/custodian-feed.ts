@@ -66,21 +66,26 @@ export const custodianDelivery = pgTable(
 );
 
 /**
+ * `security`'s columns besides `id` and `public_id`, which `security_history` (history.ts) copies
+ * too, so a column added here is added to both (ADR 0025). Keep constraints that would hold one
+ * version only, such as a unique one, in the table's extra config.
+ */
+export const securityColumns = () => ({
+  firmId: firmId(),
+  identifier: text("identifier").notNull(),
+  name: text("name").notNull(),
+  kind: text("kind", { enum: SECURITY_KINDS }).notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/**
  * A Security from the Security master (GLOSSARY.md), found again by its identifier. Every Delivery
  * sends the whole master, so Ingestion adds the new ones and brings the rest up to date.
  */
 export const security = pgTable(
   "security",
-  {
-    id: id(),
-    publicId: publicId(),
-    firmId: firmId(),
-    identifier: text("identifier").notNull(),
-    name: text("name").notNull(),
-    kind: text("kind", { enum: SECURITY_KINDS }).notNull(),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
+  { id: id(), publicId: publicId(), ...securityColumns() },
   (t) => [
     firmIsolation(),
     unique("security_firm_id_id_unique").on(t.firmId, t.id),
