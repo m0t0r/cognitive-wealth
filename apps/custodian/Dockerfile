@@ -10,11 +10,11 @@
 # Python image ships Debian's Python, which is older than the 3.15 the custodian pins.
 
 # --- uv: only its binary is used, by the build stage
-FROM ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff AS uv
+FROM ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0 AS uv
 
 # --- python: the interpreter both stages share. The virtualenv's `python` is a symlink to this
 # image's interpreter, so the build and runtime stages must start from the same one.
-FROM python:3.15.1-slim-trixie@sha256:533b0b2f9b5d46fd097091cf826f27902f1d6c3bca714b6dc74551356aa97a51 AS python
+FROM python:3.15.2-slim-trixie@sha256:197f6622a70b727a4e61bdac13a73b4e2b914b896aa5a729ceb1f45a09bde5fa AS python
 
 # --- build: the locked runtime dependencies and the custodian, in a virtualenv
 FROM python AS build
