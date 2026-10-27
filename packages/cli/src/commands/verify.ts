@@ -123,6 +123,13 @@ const traceOutput = z.object({
     })
     .optional()
     .describe("What DevTools' trace engine read; absent with --dry-run"),
+  browserApi: z
+    .object({ lcpMs: z.number().nullable(), cls: z.number() })
+    .optional()
+    .describe(
+      "A page load's own Web Performance API readings, apart from the trace: they should match " +
+        "summary.lcp (within the API's ~4 ms rounding) and summary.cls; a mismatch is a bug",
+    ),
   dryRun: z.boolean().describe("true when nothing was recorded"),
 });
 
