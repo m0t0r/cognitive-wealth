@@ -19,6 +19,8 @@ def test_without_a_database_it_says_no_database(capsys: pytest.CaptureFixture[st
     assert error["code"] == "no_database"
     assert error["retryable"] is False
     assert "DATABASE_URL" in error["message"]
+    # A worktree has the example Deliveries instead, which cw ingests into its own database.
+    assert "pnpm cw custodian ingest <date> --root apps/custodian/fixtures/feed" in error["message"]
 
 
 def test_without_json_the_error_is_toon_as_in_cw(capsys: pytest.CaptureFixture[str]) -> None:
