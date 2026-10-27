@@ -48,7 +48,10 @@ const rule: Rule = {
   create(context) {
     const option = context.options[0];
     const max =
-      option && typeof option === "object" && "max" in option && typeof option.max === "number"
+      typeof option === "object" &&
+      option !== null &&
+      "max" in option &&
+      typeof option.max === "number"
         ? option.max
         : 3;
     return {

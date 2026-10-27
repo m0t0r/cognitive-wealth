@@ -19,7 +19,7 @@ export async function listen(
   }).listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Could not bind a port");
+  if (address === null || typeof address === "string") throw new Error("Could not bind a port");
   return {
     url: `http://127.0.0.1:${address.port}`,
     close: async () => {

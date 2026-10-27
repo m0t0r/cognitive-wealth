@@ -28,7 +28,7 @@ function checkout() {
 function fakeSystem({ running = ["db", "web"] }: { running?: string[] } = {}) {
   const calls: string[][] = [];
   const system: ComposeSystem = {
-    docker: vi.fn(({ argv: args }) => {
+    docker: vi.fn<ComposeSystem["docker"]>(({ argv: args }) => {
       calls.push(args.slice(args.indexOf("-f", args.indexOf("-f") + 1) + 2));
       return {
         status: 0,

@@ -264,7 +264,8 @@ export async function publishFix(
     }
   }
 
-  const prName = pullRequest?.number ? `#${pullRequest.number}` : "the bot's PR";
+  const prName =
+    pullRequest === null || pullRequest.number === null ? "the bot's PR" : `#${pullRequest.number}`;
   const toHuman = (text: string) => ({
     outcome: "handed_back" as const,
     labels: { add: [HUMAN], remove: [READY] },

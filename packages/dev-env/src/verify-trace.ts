@@ -527,7 +527,11 @@ async function traceLoad({
         params: { expression: BROWSER_API_READING, awaitPromise: true, returnByValue: true },
         sessionId,
       });
-      return { events, browserApi: reading.result.value, ...(cpuSlowdown && { cpuSlowdown }) };
+      return {
+        events,
+        browserApi: reading.result.value,
+        ...(cpuSlowdown === undefined ? {} : { cpuSlowdown }),
+      };
     },
   });
 }
@@ -727,7 +731,7 @@ export async function traceSession({
     file,
     summary,
     ...(browserApi && { browserApi }),
-    ...(cpuSlowdown && { cpuSlowdown }),
+    ...(cpuSlowdown === undefined ? {} : { cpuSlowdown }),
     attempts,
   };
 }

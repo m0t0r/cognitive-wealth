@@ -372,17 +372,18 @@ async function requireKnownAccounts(
       [...rows.accounts, ...rows.transactions, ...rows.positions].map((row) => row.accountNumber),
     ),
   ];
-  const found = numbers.length
-    ? await db
-        .select({ id: custodialAccount.id, accountNumber: custodialAccount.accountNumber })
-        .from(custodialAccount)
-        .where(
-          and(
-            eq(custodialAccount.firmId, firmId),
-            inArray(custodialAccount.accountNumber, numbers),
-          ),
-        )
-    : [];
+  const found =
+    numbers.length > 0
+      ? await db
+          .select({ id: custodialAccount.id, accountNumber: custodialAccount.accountNumber })
+          .from(custodialAccount)
+          .where(
+            and(
+              eq(custodialAccount.firmId, firmId),
+              inArray(custodialAccount.accountNumber, numbers),
+            ),
+          )
+      : [];
   const ids = new Map(found.map((row) => [row.accountNumber, row.id]));
   const unknown = numbers.filter((number) => !ids.has(number)).toSorted();
   if (unknown.length > 0) {
@@ -444,19 +445,25 @@ async function write(
 
   // The Security master and the Accounts are snapshots: new ones are added, changed ones updated,
   // and unchanged ones left alone, so only what changed counts as written.
-  const securities = rows.securities.length
-    ? await db
-        .insert(security)
-        .values(
-          rows.securities.map(({ identifier, name, kind }) => ({ firmId, identifier, name, kind })),
-        )
-        .onConflictDoUpdate({
-          target: [security.firmId, security.identifier],
-          set: { name: sql`excluded.name`, kind: sql`excluded.kind`, updatedAt: sql`now()` },
-          setWhere: sql`(${security.name}, ${security.kind}) is distinct from (excluded.name, excluded.kind)`,
-        })
-        .returning({ id: security.id })
-    : [];
+  const securities =
+    rows.securities.length > 0
+      ? await db
+          .insert(security)
+          .values(
+            rows.securities.map(({ identifier, name, kind }) => ({
+              firmId,
+              identifier,
+              name,
+              kind,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [security.firmId, security.identifier],
+            set: { name: sql`excluded.name`, kind: sql`excluded.kind`, updatedAt: sql`now()` },
+            setWhere: sql`(${security.name}, ${security.kind}) is distinct from (excluded.name, excluded.kind)`,
+          })
+          .returning({ id: security.id })
+      : [];
   const updatedAccounts = await Promise.all(
     rows.accounts.map((row) =>
       db
@@ -564,7 +571,7 @@ function utf8(bytes: Uint8Array): string {
 function describeIssues(error: z.ZodError): string {
   return error.issues
     .map((issue) =>
-      issue.path.length ? `${issue.path.join(".")}: ${issue.message}` : issue.message,
+      issue.path.length > 0 ? `${issue.path.join(".")}: ${issue.message}` : issue.message,
     )
     .join("; ");
 }

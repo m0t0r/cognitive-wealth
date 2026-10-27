@@ -20,7 +20,7 @@ async function freePort(): Promise<number> {
   const address = server.address();
   server.close();
   await once(server, "close");
-  if (!address || typeof address === "string") throw new Error("Could not reserve a port");
+  if (address === null || typeof address === "string") throw new Error("Could not reserve a port");
   return address.port;
 }
 

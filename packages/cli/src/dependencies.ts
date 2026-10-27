@@ -234,7 +234,7 @@ export const defaultDependencies: Dependencies = {
         const { FIX_MODEL } = await import("@repo/friction-bot/fix");
         const model = await modelFromKeyFile(FIX_MODEL);
         return await callingTheApi(() =>
-          fix({ ...args, root: args.root ?? ROOT, ...(model ? { model } : {}) }),
+          fix({ ...args, root: args.root ?? ROOT, ...(model === undefined ? {} : { model }) }),
         );
       },
     };

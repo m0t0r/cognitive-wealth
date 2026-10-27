@@ -134,11 +134,12 @@ async function overviewOf(
     .flatMap(({ personId, role, account }) =>
       isNamedOnRole(role) && !accountIds.includes(account.id) ? [{ personId, role, account }] : [],
     )
-    .toSorted(
-      (a, b) =>
-        a.account.accountNumber.localeCompare(b.account.accountNumber) ||
-        ACCOUNT_ROLES.indexOf(a.role) - ACCOUNT_ROLES.indexOf(b.role),
-    );
+    .toSorted((a, b) => {
+      const byNumber = a.account.accountNumber.localeCompare(b.account.accountNumber);
+      return byNumber === 0
+        ? ACCOUNT_ROLES.indexOf(a.role) - ACCOUNT_ROLES.indexOf(b.role)
+        : byNumber;
+    });
   const namedOnIds = [...new Set(namedOnRows.map((row) => row.account.id))];
   const [roles, positions, owners] = await Promise.all([
     accountIds.length === 0

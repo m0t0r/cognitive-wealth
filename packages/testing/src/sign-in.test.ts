@@ -37,7 +37,7 @@ async function startFakes(options: { signInStatus?: number } = {}) {
     response.setHeader("content-type", "application/json");
 
     if (request.method === "POST" && url.pathname === "/api/auth/sign-in/magic-link") {
-      if (options.signInStatus) {
+      if (options.signInStatus !== undefined) {
         response.statusCode = options.signInStatus;
         response.end(JSON.stringify({ error: "rate_limited" }));
         return;
