@@ -242,8 +242,8 @@ def _known(error: Exception) -> CliError:
                     " custodian-db (localhost:5434 with compose.dev.yaml, as"
                     " apps/custodian/README.md says). A git worktree has none of its own: its"
                     " database gets the example Deliveries instead (pnpm dev ingests them when it"
-                    " creates it, or run pnpm cw custodian ingest <date> --root"
-                    " apps/custodian/fixtures/feed for 2026-03-02 and 2026-03-06)"
+                    " creates it; for one created before, run pnpm cw custodian ingest <date>"
+                    " --root apps/custodian/fixtures/feed for each date folder there)"
                 ),
             )
         case FactorFileMismatch():

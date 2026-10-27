@@ -8,8 +8,15 @@ import { join } from "node:path";
 import type { Checkout } from "./checkout.ts";
 import { VERIFY_PORTS, worktreeEnvFile } from "./env-file.ts";
 import { worktreeResources } from "./names.ts";
-import { type DomainCalls, type Populated, populate } from "./populate.ts";
-import { type RunResult, checked, runCommand } from "./processes.ts";
+import {
+  type DomainCalls,
+  type Populated,
+  type RunArgs,
+  type RunResult,
+  migrate,
+  populate,
+  runPnpm,
+} from "./populate.ts";
 import { type WorktreeRecord, readRecord, writeRecord } from "./registry.ts";
 import {
   assertSecrets,
@@ -19,16 +26,14 @@ import {
   startServices,
 } from "./services.ts";
 
-type ExecArgs = { command: string; args: string[]; cwd: string; env: Record<string, string> };
-
 /** What setting a worktree up reaches outside itself for; a test hands in its own. */
 export type SetupSystem = {
   assertSecrets: typeof assertSecrets;
   startServices: typeof startServices;
   createDatabase: typeof createDatabase;
   dropDatabase: typeof dropDatabase;
-  /** Runs a command to its end, captured. */
-  exec: (args: ExecArgs) => RunResult;
+  /** Runs `pnpm <args>` to its end, captured. */
+  run: (args: RunArgs) => RunResult;
   populate: typeof populate;
 };
 
@@ -37,7 +42,7 @@ export const defaultSetupSystem: SetupSystem = {
   startServices,
   createDatabase,
   dropDatabase,
-  exec: runCommand,
+  run: runPnpm,
   populate,
 };
 
@@ -45,7 +50,7 @@ type SetUpWorktreeArgs = Checkout & {
   worktreeId: string;
   /** The seed and Ingestion as direct calls (`cw`'s own); without them, `pnpm cw … --json` runs. */
   domain?: DomainCalls | undefined;
-  system?: SetupSystem;
+  system?: SetupSystem | undefined;
 };
 
 /**
@@ -71,29 +76,25 @@ export async function setUpWorktree({
   system.startServices({ mainCheckout, top });
   const { database } = resources;
   const secrets = secretsDir(mainCheckout);
-  const url = (role: string) => `postgres://${role}@localhost:${VERIFY_PORTS.postgres}/${database}`;
+  const url = (role: "app" | "migrator") =>
+    `postgres://${role}@localhost:${VERIFY_PORTS.postgres}/${database}`;
   const created = await system.createDatabase({ mainCheckout, database });
   let ingested: Populated["ingested"] = [];
   try {
     // Only a new database is seeded and given the example Deliveries: a reseed after
     // world/v0.json changed would refuse (SeedConflict), and the rows this worktree added since
-    // are its own.
+    // are its own. `populate`'s notes are only for a `--ref` from before `cw`, never this checkout.
     if (created) {
-      ({ ingested } = await system.populate({ checkout: top, url, secrets, domain }));
-    } else {
-      checked({
-        result: system.exec({
-          command: "pnpm",
-          args: ["--silent", "--filter", "@repo/db", "db:migrate"],
-          cwd: top,
-          env: {
-            DATABASE_URL: url("migrator"),
-            DATABASE_PASSWORD_FILE: join(secrets, "db_migrator_password"),
-          },
-        }),
-        code: "migrate_failed",
-        what: `Migrating ${url("migrator")}`,
+      const populated = await system.populate({
+        checkout: top,
+        url,
+        secrets,
+        domain,
+        run: system.run,
       });
+      ingested = populated.ingested;
+    } else {
+      migrate({ checkout: top, url, secrets, run: system.run });
     }
   } catch (error) {
     // A half-set-up database would never be seeded again (the next run finds it exists).
