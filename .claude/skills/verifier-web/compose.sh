@@ -41,20 +41,24 @@ cw_json() {
 case "${1:-}" in
   up)
     shift
-    # `up --wait` fails on a one-shot service that already exited 0 (`container …-migrate-1
-    # exited (0)`), so a rerun naming `migrate` leaves it out once it has completed; the
-    # migrations still run below, from the host. With nothing else named, `db` is what's left.
-    services=()
+    # `up --wait` counts a one-shot service that has exited, even with 0, as a failure
+    # (`container …-migrate-1 exited (0)`), unless a service it starts waits on it
+    # (`service_completed_successfully`, as web does on migrate). So a one-shot named here runs on
+    # its own, with `run`, which starts its database first and exits with its exit code (#248).
+    # With no service named, `up` starts them all, dependents included.
+    services=() oneshots=()
     for service in "$@"; do
-      if [ "$service" = migrate ] && "${compose[@]}" ps --all --format json 2>/dev/null |
-        jq -es 'flatten | any(.Service == "migrate" and .State == "exited" and .ExitCode == 0)' >/dev/null; then
-        echo "migrate already completed (exit 0): not named again; migrations run below" >&2
-      else
-        services+=("$service")
-      fi
+      case "$service" in
+        migrate | custodian-migrate) oneshots+=("$service") ;;
+        *) services+=("$service") ;;
+      esac
     done
-    if [ $# -gt 0 ] && [ ${#services[@]} -eq 0 ]; then services=(db); fi
-    "${compose[@]}" up --build --detach --wait ${services[@]+"${services[@]}"}
+    if [ $# -eq 0 ] || [ ${#services[@]} -gt 0 ]; then
+      "${compose[@]}" up --build --detach --wait ${services[@]+"${services[@]}"}
+    fi
+    for oneshot in ${oneshots[@]+"${oneshots[@]}"}; do
+      "${compose[@]}" run --rm --build "$oneshot"
+    done
     # The same data as start-app.sh's servers: migrations (idempotent, in case `migrate` wasn't
     # named), the seed (users, Firms, the world's CRM half; idempotent) and the example Deliveries,
     # so `owner@` signs in to Larkspur. From the host, through compose.db.yaml's published port.
