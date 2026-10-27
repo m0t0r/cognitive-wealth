@@ -34,7 +34,12 @@ export type TraceSummary = {
   insights: TraceInsight[];
 };
 
-type TraceEvent = { name?: string; cat?: string };
+/** A trace event's string field, or undefined: events come from Chrome unchecked. */
+function fieldOf({ event, key }: { event: unknown; key: "name" | "cat" }): string | undefined {
+  const value: unknown =
+    typeof event === "object" && event !== null ? Reflect.get(event, key) : undefined;
+  return typeof value === "string" ? value : undefined;
+}
 
 /** The engine reads layout shift rectangles into `DOMRect`s, which Node lacks. */
 function polyfillDOMRect() {
@@ -44,6 +49,7 @@ function polyfillDOMRect() {
     y: number;
     width: number;
     height: number;
+    // oxlint-disable-next-line max-params -- DOMRect's own constructor, which the engine calls
     constructor(x = 0, y = 0, width = 0, height = 0) {
       this.x = x;
       this.y = y;
@@ -77,12 +83,14 @@ const toMs = (micro: number) => Math.round(micro) / 1000;
  */
 function textOf(localized: unknown): string {
   if (typeof localized === "string") return localized;
-  if (typeof localized !== "object" || localized === null || !("i18nId" in localized)) {
-    return String(localized);
-  }
-  const { i18nId, values } = localized as { i18nId: string; values?: Record<string, unknown> };
+  if (typeof localized !== "object" || localized === null) return String(localized);
+  const i18nId: unknown = Reflect.get(localized, "i18nId");
+  if (typeof i18nId !== "string") return JSON.stringify(localized);
+  const values: unknown = Reflect.get(localized, "values");
   return i18nId.replaceAll(/\{(\w+)\}/g, (whole, key: string) =>
-    values && key in values ? String(values[key]) : whole,
+    typeof values === "object" && values !== null && key in values
+      ? String(Reflect.get(values, key))
+      : whole,
   );
 }
 
@@ -104,13 +112,17 @@ export async function summarizeTrace({
   }
   // Layout shifts and LCP candidates are both `loading` events: without any, the categories that
   // record them were off, and CLS would read 0.
-  if (!events.some((event) => (event as TraceEvent).cat?.split(",").includes("loading"))) {
+  if (!events.some((event) => fieldOf({ event, key: "cat" })?.split(",").includes("loading"))) {
     throw refuse({
       code: "incomplete_trace",
-      message: "The trace recorded no `loading` events (layout shifts, LCP): its categories were wrong.",
+      message:
+        "The trace recorded no `loading` events (layout shifts, LCP): its categories were wrong.",
     });
   }
-  if (mode === "interaction" && !events.some((event) => (event as TraceEvent).name === "EventTiming")) {
+  if (
+    mode === "interaction" &&
+    !events.some((event) => fieldOf({ event, key: "name" }) === "EventTiming")
+  ) {
     throw refuse(NO_INTERACTION);
   }
   polyfillDOMRect();
@@ -118,6 +130,7 @@ export async function summarizeTrace({
   const model = Trace.TraceModel.Model.createWithAllHandlers();
   let insightSets: NonNullable<ReturnType<typeof model.parsedTrace>>["insights"];
   try {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Chrome's trace events, the engine's own input
     await model.parse(events as Parameters<typeof model.parse>[0]);
     insightSets = model.parsedTrace()?.insights ?? null;
   } catch (error) {
@@ -127,7 +140,10 @@ export async function summarizeTrace({
     });
   }
   if (!insightSets || insightSets.size === 0) {
-    throw refuse({ code: "unreadable_trace", message: "DevTools' trace engine found no page in the trace." });
+    throw refuse({
+      code: "unreadable_trace",
+      message: "DevTools' trace engine found no page in the trace.",
+    });
   }
   const { Common } = Trace.Insights;
   const sets = [...insightSets.values()];

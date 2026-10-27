@@ -1,17 +1,21 @@
-// `cw verify trace`: a performance trace of this checkout's agent-browser session, in the session's
-// own Chrome (`cw verify browser start`), over a CDP connection held for the whole trace, so
-// throttling stays on exactly as long as the trace runs. It records what the chrome-devtools MCP
-// records, the same way (#144): DevTools' trace categories, and for a page load `about:blank`, the
-// trace started, the page loaded, 5 s, the trace stopped, in a tab of its own. DevTools' trace engine reads the
-// metrics and insights from it (`trace-summary.ts`). Node runs the CLIs that import this directly
-// (type stripping), so relative imports keep their `.ts` extension.
-import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+// `cw verify trace`: a performance trace of this checkout's agent-browser session (#144), over a CDP
+// connection held for the whole trace, so throttling stays on exactly as long as the trace runs. It
+// records what the chrome-devtools MCP records, the same way: DevTools' trace categories, and for a
+// page load the page, `about:blank`, the trace started, the page loaded, 5 s, the trace stopped.
+// A page load is traced in a headless Chrome of its own with the session's cookies, never in
+// agent-browser's: agent-browser makes any new tab in its browser its active one. Steps (for INP)
+// run in agent-browser's tab, which they need. Throttling is measured, not assumed: Chrome doesn't
+// always apply it (the MCP's "4x CPU" traces did the unthrottled amount of work). DevTools' trace
+// engine reads the metrics and insights (`trace-summary.ts`). Node runs the CLIs that import this
+// directly (type stripping), so relative imports keep their `.ts` extension.
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { gzipSync } from "node:zlib";
 import { CliError } from "@repo/db/cli/cli-error";
-import { type Cdp, type CdpEvent, connectCdp } from "./cdp.ts";
+import { type Cdp, type CdpEvent, type SendArgs, connectCdp } from "./cdp.ts";
 import type { Checkout } from "./checkout.ts";
 import { verifyResources } from "./names.ts";
 import type { TraceMode, TraceSummary, summarizeTrace } from "./trace-summary.ts";
@@ -51,15 +55,25 @@ export const TRACE_VIEWPORT = { width: 1280, height: 800 };
 const SETTLE_MS = 5000;
 /**
  * How long any one step gets: a Chrome command's answer, a page's load event, the trace's last
- * events, an agent-browser command. Throttled to Slow 4G, the app's pages load in about 1 s.
+ * events, an agent-browser command. Throttled to 4x CPU and Slow 4G, the app's pages load in 1-2 s.
  */
-const STEP_TIMEOUT_MS = 60_000;
+const STEP_TIMEOUT_MS = 30_000;
+/**
+ * How many Chromes a page-load trace gets. With CPU throttling and DevTools' categories, Chrome
+ * sometimes stalls a load for good: committed, its renderer idle, no load event (Chrome 147: 4 in
+ * 10; 156: 2 in 12). That isn't a measurement, so a fresh Chrome tries again.
+ */
+const ATTEMPTS = 3;
+/** The least slowdown that counts as the 4x CPU throttling applied. */
+const MIN_CPU_SLOWDOWN = 3;
 
 /** What tracing reaches outside itself for; a test hands in its own. */
 export type TraceSystem = {
   /** Runs agent-browser and returns its trimmed output. */
   agentBrowser: (args: string[]) => string;
   connect: (url: string) => Promise<Cdp>;
+  /** Starts a headless Chrome with a throwaway profile; `stop` ends it and deletes the profile. */
+  launchChrome: () => Promise<LaunchedChrome>;
   summarize: typeof summarizeTrace;
   sleep: (ms: number) => Promise<void>;
   /** How long any one step may take before the trace is refused as `trace_timeout`. */
@@ -85,9 +99,95 @@ function agentBrowser(args: string[]): string {
   }
 }
 
+export type LaunchedChrome = { endpoint: string; stop: () => Promise<void> };
+
+/** agent-browser's newest Chrome for Testing, which `agent-browser install` downloads. */
+function chromeBinary(): string {
+  const browsers = join(homedir(), ".agent-browser/browsers");
+  const [newest] = (existsSync(browsers) ? readdirSync(browsers) : [])
+    .filter((name) => name.startsWith("chrome-"))
+    .toSorted((a, b) => b.localeCompare(a, "en", { numeric: true }));
+  const binary =
+    newest &&
+    join(
+      browsers,
+      newest,
+      "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
+    );
+  if (!binary || !existsSync(binary)) {
+    throw new CliError({
+      code: "no_chrome",
+      message: `No Chrome for Testing in ${browsers}; install it with agent-browser install.`,
+    });
+  }
+  return binary;
+}
+
+/**
+ * The flags lab tools launch Chrome with (agent-browser's, plus Puppeteer's renderer and timer
+ * ones): no background work of Chrome's own competing with the page, and a headless tab never
+ * treated as hidden or idle.
+ */
+const LAB_FLAGS = [
+  "--no-first-run",
+  "--no-default-browser-check",
+  "--disable-background-networking",
+  "--disable-background-timer-throttling",
+  "--disable-backgrounding-occluded-windows",
+  "--disable-renderer-backgrounding",
+  "--disable-component-update",
+  "--disable-default-apps",
+  "--disable-sync",
+  "--disable-hang-monitor",
+  "--disable-popup-blocking",
+  "--disable-prompt-on-repost",
+  "--disable-features=Translate",
+  "--metrics-recording-only",
+  "--password-store=basic",
+  "--use-mock-keychain",
+  "--hide-scrollbars",
+];
+
+/** A headless Chrome on a port the system picks, once it prints its DevTools endpoint. */
+async function launchChrome(): Promise<LaunchedChrome> {
+  const profile = mkdtempSync(join(tmpdir(), "cw-trace-chrome-"));
+  const child = spawn(
+    chromeBinary(),
+    ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, ...LAB_FLAGS],
+    { stdio: ["ignore", "ignore", "pipe"] },
+  );
+  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  const stop = async () => {
+    // A stalled renderer can keep a polite exit waiting: this Chrome is thrown away anyway.
+    child.kill("SIGKILL");
+    await within({ promise: exited, what: "Stopping the trace's Chrome", ms: STEP_TIMEOUT_MS });
+    rmSync(profile, { recursive: true, force: true });
+  };
+  try {
+    const endpoint = await within({
+      what: "Starting the trace's Chrome",
+      ms: STEP_TIMEOUT_MS,
+      promise: new Promise<string>((resolve, reject) => {
+        let stderr = "";
+        child.stderr.on("data", (chunk: Buffer) => {
+          stderr += chunk.toString();
+          const listening = /DevTools listening on (ws:\/\/\S+)/.exec(stderr);
+          if (listening?.[1]) resolve(listening[1]);
+        });
+        child.once("exit", () => reject(new Error(`Chrome exited before listening: ${stderr}`)));
+      }),
+    });
+    return { endpoint, stop };
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+}
+
 export const defaultTraceSystem: TraceSystem = {
   agentBrowser,
   connect: connectCdp,
+  launchChrome,
   summarize: async (args) => (await import("./trace-summary.ts")).summarizeTrace(args),
   sleep: (ms) => sleep(ms),
   stepTimeoutMs: STEP_TIMEOUT_MS,
@@ -109,6 +209,9 @@ export type TraceSessionArgs = {
   system?: TraceSystem | undefined;
 };
 
+/** The browser's own Web Performance API readings of a page load, beside the trace's. */
+export type BrowserApiReading = { lcpMs: number | null; cls: number };
+
 export type TracedSession = {
   session: string;
   /** The page traced. */
@@ -121,12 +224,16 @@ export type TracedSession = {
   summary: TraceSummary;
   /** A page load's browser API readings, which should match `summary.lcp` and `summary.cls`. */
   browserApi?: BrowserApiReading;
+  /** With throttling, how much slower the page did a fixed piece of work: about 4. */
+  cpuSlowdown?: number;
+  /** How many Chromes the trace took: more than 1 when Chrome stalled a load. */
+  attempts: number;
 };
 
 const timedOut = ({ what, ms }: { what: string; ms: number }) =>
   new CliError({
     code: "trace_timeout",
-    message: `${what} took over ${ms / 1000} s, so the trace was abandoned and its tab closed.`,
+    message: `${what} took over ${ms / 1000} s, so the trace was abandoned.`,
   });
 
 /** `promise`, or a `trace_timeout` refusal naming `what` once `ms` pass. */
@@ -144,22 +251,21 @@ function within<T>({ promise, what, ms }: { promise: Promise<T>; what: string; m
 function withDeadlines({ cdp, ms }: { cdp: Cdp; ms: number }): Cdp {
   return {
     ...cdp,
-    send: (args) => within({ promise: cdp.send(args), what: `Chrome's answer to ${args.method}`, ms }),
+    send: <T>(args: SendArgs) =>
+      within({ promise: cdp.send<T>(args), what: `Chrome's answer to ${args.method}`, ms }),
   };
 }
 
-/** Resolves on the first event `match` accepts, or refuses as `trace_timeout` after `ms`. */
-function nextEvent({
-  cdp,
-  match,
-  what,
-  ms,
-}: {
+type NextEventArgs = {
   cdp: Cdp;
   match: (event: CdpEvent) => boolean;
+  /** What's awaited, for the refusal's message. */
   what: string;
   ms: number;
-}): Promise<CdpEvent> {
+};
+
+/** Resolves on the first event `match` accepts, or refuses as `trace_timeout` after `ms`. */
+function nextEvent({ cdp, match, what, ms }: NextEventArgs): Promise<CdpEvent> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       off();
@@ -194,6 +300,40 @@ async function setThrottling({ cdp, sessionId, on }: Tab & { on: boolean }) {
   });
 }
 
+/** A fixed piece of CPU work, timed in the page: it takes about 4x as long under 4x throttling. */
+const TIMED_WORK =
+  "(() => { const start = performance.now(); let sum = 0; " +
+  "for (let i = 0; i < 2e7; i++) sum += i % 7; return performance.now() - start; })()";
+
+/** How long the page takes for the timed work, the faster of two runs, so its JIT has settled. */
+async function workTime({ cdp, sessionId }: Tab): Promise<number> {
+  const run = async () =>
+    (
+      await cdp.send<{ result: { value: number } }>({
+        method: "Runtime.evaluate",
+        params: { expression: TIMED_WORK, returnByValue: true },
+        sessionId,
+      })
+    ).result.value;
+  const first = await run();
+  return Math.min(first, await run());
+}
+
+/** The slowdown the throttling caused, refused as `throttle_not_applied` when there was none. */
+function checkSlowdown({ before, after }: { before: number; after: number }): number {
+  const slowdown = Math.round((after / before) * 10) / 10;
+  if (slowdown < MIN_CPU_SLOWDOWN) {
+    throw new CliError({
+      code: "throttle_not_applied",
+      message:
+        `Chrome was asked for 4× CPU throttling, but the page did the same work only ${slowdown}× ` +
+        `slower (${Math.round(before)} ms, then ${Math.round(after)} ms), so the numbers would be ` +
+        "unthrottled ones. Trace again.",
+    });
+  }
+  return slowdown;
+}
+
 /** Splits an agent-browser command into its arguments, keeping "quoted text" as one. */
 export function argumentsOf(step: string): string[] {
   return [...step.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map(
@@ -204,21 +344,38 @@ export function argumentsOf(step: string): string[] {
 /** How long an interaction's event timing gets to reach the trace after the last step. */
 const INTERACTION_SETTLE_MS = 1000;
 
-type RecordArgs = Tab & { throttle: boolean; during: () => Promise<void>; ms: number };
-
 /**
- * Records a trace of the tab while `during` runs, throttled throughout when asked and turned back
- * off however it ends, and returns its events.
+ * Runs `work`, then `cleanUp` however it ended. When `work` failed, its error is the one thrown,
+ * even if `cleanUp` fails too: a cleanup step timing out after a load did would otherwise hide why.
  */
-async function record({ cdp, sessionId, throttle, during, ms }: RecordArgs): Promise<unknown[]> {
-  if (throttle) await setThrottling({ cdp, sessionId, on: true });
+async function thenCleanUp<T>({
+  work,
+  cleanUp,
+}: {
+  work: () => Promise<T>;
+  cleanUp: () => Promise<void>;
+}): Promise<T> {
+  let result: T;
   try {
-    const collected: unknown[] = [];
-    const off = cdp.on((event) => {
-      if (event.method === "Tracing.dataCollected") {
-        collected.push(...(event.params.value as unknown[]));
-      }
-    });
+    result = await work();
+  } catch (error) {
+    await cleanUp().catch(() => {});
+    throw error;
+  }
+  await cleanUp();
+  return result;
+}
+
+type RecordArgs = Tab & { during: () => Promise<void>; ms: number };
+
+/** Records a trace of the tab while `during` runs, and returns its events. */
+async function record({ cdp, sessionId, during, ms }: RecordArgs): Promise<unknown[]> {
+  const collected: unknown[] = [];
+  const off = cdp.on((event) => {
+    const { value } = event.params;
+    if (event.method === "Tracing.dataCollected" && Array.isArray(value)) collected.push(...value);
+  });
+  try {
     await cdp.send({
       method: "Tracing.start",
       params: {
@@ -235,17 +392,13 @@ async function record({ cdp, sessionId, throttle, during, ms }: RecordArgs): Pro
       ms,
     });
     await Promise.all([cdp.send({ method: "Tracing.end", sessionId }), complete]);
-    off();
     return collected;
   } finally {
-    if (throttle) await setThrottling({ cdp, sessionId, on: false });
+    off();
   }
 }
 
 type Page = { targetId: string; browserContextId: string; sessionId: string };
-
-/** The browser's own Web Performance API readings of a page load, beside the trace's. */
-export type BrowserApiReading = { lcpMs: number | null; cls: number };
 
 /**
  * Reads the loaded page's buffered `largest-contentful-paint` and `layout-shift` entries: the
@@ -264,75 +417,133 @@ const BROWSER_API_READING = `new Promise((resolve) => {
   setTimeout(() => resolve(reading), 200);
 })`;
 
+/** A cookie as `Storage.getCookies` gives it, which `Storage.setCookies` takes back. */
+type Cookie = Record<string, unknown> & { session?: boolean; expires?: number; size?: number };
+
+/** A session cookie keeps no `expires`: -1 there would set it already expired. */
+function toCookieParam({ session, expires, size: _size, ...cookie }: Cookie) {
+  return session ? cookie : { ...cookie, expires };
+}
+
 type TraceLoadArgs = {
-  cdp: Cdp;
-  page: Page;
+  cookies: Cookie[];
   url: string;
   deviceScaleFactor: number;
   throttle: boolean;
   system: TraceSystem;
 };
 
+type TracedLoad = { events: unknown[]; browserApi: BrowserApiReading; cpuSlowdown?: number };
+
 /**
- * A page load of `url` in a tab of its own, in the session's browser context (its cookies, so
- * signed in), at the trace window size, then closed. agent-browser's tab is never navigated: a
- * navigation it didn't make leaves it waiting on a tab it thinks is stuck, until it swaps in a blank
- * one. The tab opens on about:blank, so this is the MCP's sequence: about:blank, the trace started,
- * the page loaded, 5 s, the trace stopped.
+ * A page load of `url` in a headless Chrome of its own, signed in with the session's cookies, at
+ * the trace window size and the session's pixel ratio, then thrown away (so throttling is never
+ * turned off in it). Its tab starts where the MCP's does, on the page, then follows its sequence:
+ * about:blank, the trace started, the page loaded, 5 s, the trace stopped.
  */
-async function traceLoad({ cdp, page, url, deviceScaleFactor, throttle, system }: TraceLoadArgs) {
-  const { targetId } = (await cdp.send({
-    method: "Target.createTarget",
-    params: { url: "about:blank", browserContextId: page.browserContextId },
-  })) as { targetId: string };
-  try {
-    const { sessionId } = (await cdp.send({
-      method: "Target.attachToTarget",
-      params: { targetId, flatten: true },
-    })) as { sessionId: string };
-    await cdp.send({
-      method: "Emulation.setDeviceMetricsOverride",
-      params: { ...TRACE_VIEWPORT, deviceScaleFactor, mobile: false },
-      sessionId,
-    });
-    await cdp.send({ method: "Page.enable", sessionId });
-    await cdp.send({ method: "Page.bringToFront", sessionId });
-    const { result } = (await cdp.send({
-      method: "Runtime.evaluate",
-      params: { expression: "document.visibilityState", returnByValue: true },
-      sessionId,
-    })) as { result: { value: string } };
-    if (result.value !== "visible") {
-      throw new CliError({
-        code: "hidden_tab",
-        message: `The trace's tab is ${result.value}, and Chrome records no LCP for a hidden page.`,
+async function traceLoad({
+  cookies,
+  url,
+  deviceScaleFactor,
+  throttle,
+  system,
+}: TraceLoadArgs): Promise<TracedLoad> {
+  const chrome = await system.launchChrome();
+  let connected: Cdp | undefined;
+  return thenCleanUp({
+    cleanUp: async () => {
+      connected?.close();
+      await chrome.stop();
+    },
+    work: async () => {
+      const cdp = withDeadlines({
+        cdp: await system.connect(chrome.endpoint),
+        ms: system.stepTimeoutMs,
       });
-    }
-    const events = await record({
-      cdp,
-      sessionId,
-      throttle,
-      ms: system.stepTimeoutMs,
-      async during() {
+      connected = cdp;
+      await cdp.send({
+        method: "Storage.setCookies",
+        params: { cookies: cookies.map(toCookieParam) },
+      });
+      const { targetId } = await cdp.send<{ targetId: string }>({
+        method: "Target.createTarget",
+        params: { url: "about:blank" },
+      });
+      const { sessionId } = await cdp.send<{ sessionId: string }>({
+        method: "Target.attachToTarget",
+        params: { targetId, flatten: true },
+      });
+      await cdp.send({
+        method: "Emulation.setDeviceMetricsOverride",
+        params: { ...TRACE_VIEWPORT, deviceScaleFactor, mobile: false },
+        sessionId,
+      });
+      await cdp.send({ method: "Page.enable", sessionId });
+      await cdp.send({ method: "Page.bringToFront", sessionId });
+      const { result } = await cdp.send<{ result: { value: string } }>({
+        method: "Runtime.evaluate",
+        params: { expression: "document.visibilityState", returnByValue: true },
+        sessionId,
+      });
+      if (result.value !== "visible") {
+        throw new CliError({
+          code: "hidden_tab",
+          message: `The trace's tab is ${result.value}, and Chrome records no LCP for a hidden page.`,
+        });
+      }
+      const load = async (to: string) => {
         const loaded = nextEvent({
           cdp,
           match: (event) => event.method === "Page.loadEventFired" && event.sessionId === sessionId,
-          what: `Loading ${url}`,
+          what: `Loading ${to}`,
           ms: system.stepTimeoutMs,
         });
-        await Promise.all([cdp.send({ method: "Page.navigate", params: { url }, sessionId }), loaded]);
-        await system.sleep(SETTLE_MS);
-      },
-    });
-    const reading = (await cdp.send({
-      method: "Runtime.evaluate",
-      params: { expression: BROWSER_API_READING, awaitPromise: true, returnByValue: true },
-      sessionId,
-    })) as { result: { value: BrowserApiReading } };
-    return { events, browserApi: reading.result.value };
-  } finally {
-    await cdp.send({ method: "Target.closeTarget", params: { targetId } });
-    await cdp.send({ method: "Page.bringToFront", sessionId: page.sessionId });
+        await Promise.all([
+          cdp.send({ method: "Page.navigate", params: { url: to }, sessionId }),
+          loaded,
+        ]);
+      };
+      await load(url);
+      const before = throttle ? await workTime({ cdp, sessionId }) : 0;
+      await load("about:blank");
+      if (throttle) await setThrottling({ cdp, sessionId, on: true });
+      const events = await record({
+        cdp,
+        sessionId,
+        ms: system.stepTimeoutMs,
+        async during() {
+          await load(url);
+          await system.sleep(SETTLE_MS);
+        },
+      });
+      const cpuSlowdown = throttle
+        ? checkSlowdown({ before, after: await workTime({ cdp, sessionId }) })
+        : undefined;
+      const reading = await cdp.send<{ result: { value: BrowserApiReading } }>({
+        method: "Runtime.evaluate",
+        params: { expression: BROWSER_API_READING, awaitPromise: true, returnByValue: true },
+        sessionId,
+      });
+      return { events, browserApi: reading.result.value, ...(cpuSlowdown && { cpuSlowdown }) };
+    },
+  });
+}
+
+/** `traceLoad`, in a fresh Chrome each time Chrome stalls the load, up to `ATTEMPTS` Chromes. */
+async function traceLoadRetrying(args: TraceLoadArgs): Promise<TracedLoad & { attempts: number }> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- one Chrome at a time, until one doesn't stall
+      return { ...(await traceLoad(args)), attempts: attempt };
+    } catch (error) {
+      if (!(error instanceof CliError) || error.code !== "trace_timeout") throw error;
+      if (attempt === ATTEMPTS) {
+        throw new CliError({
+          code: "trace_timeout",
+          message: `${error.message} Chrome stalled the load in ${ATTEMPTS} tries, each in a fresh Chrome.`,
+        });
+      }
+    }
   }
 }
 
@@ -346,8 +557,19 @@ type TraceStepsArgs = {
   system: TraceSystem;
 };
 
-/** `steps` run by agent-browser in its own tab while recording, without reloading it. */
-async function traceSteps({ cdp, page, viewport, steps, session, throttle, system }: TraceStepsArgs) {
+/**
+ * `steps` run by agent-browser in its own tab while recording, without reloading it; throttled
+ * throughout when asked, and turned back off however it ends, since the tab stays in use.
+ */
+async function traceSteps({
+  cdp,
+  page,
+  viewport,
+  steps,
+  session,
+  throttle,
+  system,
+}: TraceStepsArgs): Promise<{ events: unknown[]; cpuSlowdown?: number }> {
   if (viewport.width !== TRACE_VIEWPORT.width || viewport.height !== TRACE_VIEWPORT.height) {
     const { width, height } = TRACE_VIEWPORT;
     throw new CliError({
@@ -358,14 +580,26 @@ async function traceSteps({ cdp, page, viewport, steps, session, throttle, syste
         `${width} ${height}, then trace again.`,
     });
   }
-  return record({
-    cdp,
-    sessionId: page.sessionId,
-    throttle,
-    ms: system.stepTimeoutMs,
-    async during() {
-      for (const step of steps) system.agentBrowser(["--session", session, ...argumentsOf(step)]);
-      await system.sleep(INTERACTION_SETTLE_MS);
+  const tab = { cdp, sessionId: page.sessionId };
+  const before = throttle ? await workTime(tab) : 0;
+  if (throttle) await setThrottling({ ...tab, on: true });
+  return thenCleanUp({
+    cleanUp: async () => {
+      if (throttle) await setThrottling({ ...tab, on: false });
+    },
+    work: async () => {
+      const events = await record({
+        ...tab,
+        ms: system.stepTimeoutMs,
+        async during() {
+          for (const step of steps) {
+            system.agentBrowser(["--session", session, ...argumentsOf(step)]);
+          }
+          await system.sleep(INTERACTION_SETTLE_MS);
+        },
+      });
+      if (!throttle) return { events };
+      return { events, cpuSlowdown: checkSlowdown({ before, after: await workTime(tab) }) };
     },
   });
 }
@@ -383,13 +617,17 @@ export async function traceSession({
   const endpoint = system.agentBrowser(["--session", session, "get", "cdp-url"]);
   const cdp = withDeadlines({ cdp: await system.connect(endpoint), ms: system.stepTimeoutMs });
   const mode: TraceMode = steps.length > 0 ? "interaction" : "load";
-  let events: unknown[];
-  let viewport: { width: number; height: number };
-  let browserApi: BrowserApiReading | undefined;
+  let traced: { events: unknown[]; browserApi?: BrowserApiReading; cpuSlowdown?: number } = {
+    events: [],
+  };
+  let viewport: { width: number; height: number } = TRACE_VIEWPORT;
+  let cookies: Cookie[] = [];
+  let deviceScaleFactor = 1;
+  let attempts = 1;
   try {
-    const { targetInfos } = (await cdp.send({ method: "Target.getTargets" })) as {
+    const { targetInfos } = await cdp.send<{
       targetInfos: Array<{ targetId: string; type: string; url: string; browserContextId: string }>;
-    };
+    }>({ method: "Target.getTargets" });
     const target = targetInfos.find(({ type, url: at }) => type === "page" && at === url);
     if (!target) {
       throw new CliError({
@@ -397,35 +635,48 @@ export async function traceSession({
         message: `The session ${session}'s browser has no page at ${url}; open it with agent-browser first.`,
       });
     }
-    const { sessionId } = (await cdp.send({
+    const { sessionId } = await cdp.send<{ sessionId: string }>({
       method: "Target.attachToTarget",
       params: { targetId: target.targetId, flatten: true },
-    })) as { sessionId: string };
-    const page = { targetId: target.targetId, browserContextId: target.browserContextId, sessionId };
-    const { result } = (await cdp.send({
+    });
+    const page = {
+      targetId: target.targetId,
+      browserContextId: target.browserContextId,
+      sessionId,
+    };
+    const { result } = await cdp.send<{ result: { value: [number, number, number] } }>({
       method: "Runtime.evaluate",
       params: { expression: "[innerWidth, innerHeight, devicePixelRatio]", returnByValue: true },
       sessionId,
-    })) as { result: { value: [number, number, number] } };
-    const [width, height, deviceScaleFactor] = result.value;
+    });
+    const [width, height, ratio] = result.value;
+    deviceScaleFactor = ratio;
     if (mode === "load") {
-      viewport = TRACE_VIEWPORT;
-      ({ events, browserApi } = await traceLoad({
-        cdp,
-        page,
-        url,
-        deviceScaleFactor,
-        throttle,
-        system,
+      // Chrome names only the contexts created in it: the default one, where agent-browser's own
+      // Chrome keeps its tab, is read by giving no id.
+      const { browserContextIds } = await cdp.send<{ browserContextIds: string[] }>({
+        method: "Target.getBrowserContexts",
+      });
+      ({ cookies } = await cdp.send<{ cookies: Cookie[] }>({
+        method: "Storage.getCookies",
+        params: browserContextIds.includes(page.browserContextId)
+          ? { browserContextId: page.browserContextId }
+          : {},
       }));
     } else {
       viewport = { width, height };
-      events = await traceSteps({ cdp, page, viewport, steps, session, throttle, system });
+      traced = await traceSteps({ cdp, page, viewport, steps, session, throttle, system });
     }
   } finally {
     cdp.close();
   }
+  if (mode === "load") {
+    const loaded = await traceLoadRetrying({ cookies, url, deviceScaleFactor, throttle, system });
+    ({ attempts } = loaded);
+    traced = loaded;
+  }
 
+  const { events, browserApi, cpuSlowdown } = traced;
   const file = join(checkout.top, ".dev/perf", `${name}.trace.json.gz`);
   mkdirSync(join(checkout.top, ".dev/perf"), { recursive: true });
   writeFileSync(file, gzipSync(JSON.stringify({ traceEvents: events })));
@@ -439,5 +690,7 @@ export async function traceSession({
     file,
     summary,
     ...(browserApi && { browserApi }),
+    ...(cpuSlowdown && { cpuSlowdown }),
+    attempts,
   };
 }

@@ -40,6 +40,7 @@ const TRACED = {
   throttled: false,
   viewport: { width: 1280, height: 800 },
   file: `${WORKTREE}/.dev/perf/households.trace.json.gz`,
+  attempts: 1,
   summary: {
     url: "http://localhost:3500/households",
     lcp: { ms: 412.5, subparts: { ttfb: 30.1, renderDelay: 382.4 } },
