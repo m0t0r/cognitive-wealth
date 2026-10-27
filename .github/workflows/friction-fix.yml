@@ -323,10 +323,11 @@ jobs:
       OUT_SUBDIR: friction-out
     steps:
       # dev's code, whichever ref the run started from: the steps below run `cw` with this token.
+      # Its credentials stay, since "Push the commit" pushes with them; this job uploads no artifact.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
-          fetch-depth: 0
+          fetch-depth: 0 # zizmor: ignore[artipacked]
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:

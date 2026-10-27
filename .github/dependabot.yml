@@ -32,6 +32,9 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # Dependabot's own default is 3 days; zizmor's dependabot-cooldown asks for 7, as for npm.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "build(docker)"
     groups:
@@ -60,12 +63,29 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
 
+  # The workflow linters `pnpm lint` runs (actionlint, its shellcheck, zizmor), pinned in uv.lock.
+  - package-ecosystem: uv
+    directory: /packages/workflow-lint
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      linters:
+        patterns: ["*"]
+
   # The custodian's base images and uv's, pinned the same way.
   - package-ecosystem: docker
     directory: /apps/custodian
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "build(docker)"
     groups:
@@ -85,6 +105,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "build(docker)"
 
@@ -107,6 +129,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "build(docker)"
     ignore:
