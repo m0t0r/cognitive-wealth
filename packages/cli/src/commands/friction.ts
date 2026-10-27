@@ -23,6 +23,8 @@ const summary = z.object({
   url: z.string(),
 });
 
+const triageDecision = z.enum(["ready-for-agent", "ready-for-human", "duplicate", "already-fixed"]);
+
 const triageAction = z.union([
   z.object({
     kind: z.literal("label"),
@@ -243,9 +245,11 @@ export function frictionCommands({
     })
     .command("triage", {
       description:
-        "Triage one friction report with Haiku: label it ready-for-agent or ready-for-human, or " +
-        "close it as a duplicate with a comment on the original. friction-triage.yml runs it",
-      hint: "Needs ANTHROPIC_API_KEY. A dry run still asks Haiku (well under a cent) but changes nothing on GitHub.",
+        "Triage one friction report with Haiku, which first reads and searches this checkout: " +
+        "label it ready-for-agent or ready-for-human, close it as a duplicate with a comment on " +
+        "the original, or close it as already fixed (wontfix), naming where the fix lives. " +
+        "friction-triage.yml runs it",
+      hint: "Needs ANTHROPIC_API_KEY. A dry run still asks Haiku (at most 8 steps and about $0.10) but changes nothing on GitHub.",
       args: z.object({ issue: issueNumber.describe("The report's issue number") }),
       options: z.object({
         retriage: z
@@ -257,7 +261,7 @@ export function frictionCommands({
       output: z.object({
         issue: z.number(),
         status: z.enum(["triaged", "already_triaged"]),
-        decision: z.enum(["ready-for-agent", "ready-for-human", "duplicate"]).optional(),
+        decision: triageDecision.optional(),
         duplicateOf: z.number().nullable().optional(),
         reason: z.string().optional(),
         labels: z.array(z.string()).optional().describe("Its triage labels, when already triaged"),
@@ -331,7 +335,7 @@ export function frictionCommands({
         triaged: z.array(
           z.object({
             issue: z.number(),
-            decision: z.enum(["ready-for-agent", "ready-for-human", "duplicate"]),
+            decision: triageDecision,
           }),
         ),
         failed: z.array(z.object({ issue: z.number(), code: z.string(), message: z.string() })),

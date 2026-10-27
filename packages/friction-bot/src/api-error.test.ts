@@ -28,7 +28,7 @@ describe("a triage the Anthropic API refuses", () => {
       }),
     );
 
-    const input = { issue: "{}", open: "[]", closed: "[]", guide: "", claudeMd: "" };
+    const input = { issue: "{}", open: "[]", closed: "[]", guide: "", claudeMd: "", root: "." };
     await expect(callingTheApi(() => triage(input))).rejects.toMatchObject({
       code: "anthropic_api_error",
       message: expect.stringContaining("400: Your credit balance is too low"),

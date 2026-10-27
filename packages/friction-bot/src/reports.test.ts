@@ -9,11 +9,19 @@ import {
 } from "./reports.ts";
 import { memoryGitHub, report } from "./testing/memory-github.ts";
 import type { TriageInput } from "./reports.ts";
-import type { Brief, Triage } from "./triage.ts";
+import type { Brief, Triage, TriageDecision } from "./triage.ts";
 
-// A brief only where a test checks it.
-const answer = (triage: Omit<Triage, "brief"> & Partial<Pick<Triage, "brief">>) =>
-  vi.fn(async (_input: TriageInput): Promise<Triage> => ({ brief: null, ...triage }));
+// A brief, fixed_in and checked list only where a test checks them.
+const answer = (
+  triage: Omit<Triage, "brief" | "fixed_in"> &
+    Partial<Pick<TriageDecision, "brief" | "fixed_in" | "checked">>,
+) =>
+  vi.fn(async (_input: TriageInput): Promise<TriageDecision> => ({
+    brief: null,
+    fixed_in: null,
+    checked: [],
+    ...triage,
+  }));
 
 const brief: Brief = {
   summary: "Say that a CTA can only name a cw command.",
@@ -198,6 +206,68 @@ describe("triageReport", () => {
     expect(writes[0]).toEqual({ kind: "label", number: 10, add: ["ready-for-human"], remove: [] });
   });
 
+  it("closes an already-fixed report as wontfix, naming where the fix lives and what was checked", async () => {
+    const { github, writes } = memoryGitHub(issues());
+    await triageReport(github, {
+      number: 10,
+      decide: answer({
+        decision: "already-fixed",
+        duplicate_of: null,
+        fixed_in: "CLAUDE.md, the packages/cli bullet",
+        reason: "It says a CTA names a cw command.",
+        checked: ["`CLAUDE.md`", "search for `CTA`"],
+      }),
+      retriage: false,
+      dryRun: false,
+    });
+    expect(writes).toEqual([
+      { kind: "label", number: 10, add: ["wontfix"], remove: [] },
+      {
+        kind: "close",
+        number: 10,
+        comment: expect.stringContaining(
+          "Already fixed in CLAUDE.md, the packages/cli bullet. It says a CTA names a cw command.\n\nChecked: `CLAUDE.md`, search for `CTA`.",
+        ),
+      },
+    ]);
+  });
+
+  it("hands an already-fixed report that names no fix to a human", async () => {
+    const { github, writes } = memoryGitHub(issues());
+    await triageReport(github, {
+      number: 10,
+      decide: answer({ decision: "already-fixed", duplicate_of: null, reason: "Gone." }),
+      retriage: false,
+      dryRun: false,
+    });
+    expect(writes).toMatchObject([
+      { kind: "label", number: 10, add: ["ready-for-human"], remove: [] },
+      { kind: "comment", body: expect.stringContaining("named no place it lives: Gone.") },
+    ]);
+  });
+
+  it("says what triage checked, before the brief", async () => {
+    const { github, writes } = memoryGitHub(issues());
+    await triageReport(github, {
+      number: 10,
+      decide: answer({
+        decision: "ready-for-agent",
+        duplicate_of: null,
+        reason: "A doc fix.",
+        brief,
+        checked: ["`CLAUDE.md`"],
+      }),
+      retriage: false,
+      dryRun: false,
+    });
+    const comment = writes[1];
+    const body = comment?.kind === "comment" ? comment.body : "";
+    expect(body).toContain(
+      "`ready-for-agent`: A doc fix.\n\nChecked: `CLAUDE.md`.\n\n## Agent Brief\n",
+    );
+    expect(triageBrief([workflow(body)])).toBe(briefMarkdown(brief));
+  });
+
   it("skips a triaged report without asking the model, unless retriage", async () => {
     const triaged = [report({ number: 10, labels: ["friction", "ready-for-human"] })];
     const decide = answer({ decision: "ready-for-agent", duplicate_of: null, reason: "Fixable." });
@@ -335,14 +405,16 @@ describe("triageBacklog", () => {
   });
 
   it("stops at the limit, and records a report it couldn't triage without stopping", async () => {
-    const decide = vi.fn(async (input: TriageInput): Promise<Triage> => {
+    const decide = vi.fn(async (input: TriageInput): Promise<TriageDecision> => {
       if (input.issue.includes('"number":1,'))
         throw Object.assign(new Error("Overloaded"), { code: "anthropic_api_error" });
       return {
         decision: "ready-for-human",
         duplicate_of: null,
+        fixed_in: null,
         reason: "Needs a human.",
         brief: null,
+        checked: [],
       };
     });
     const { github, writes } = memoryGitHub([

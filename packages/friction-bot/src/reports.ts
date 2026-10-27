@@ -2,7 +2,7 @@
 // from `triage.ts`, and gathering a batch for `fix.ts`. `cw friction …` (`@repo/cli`) runs these;
 // the rules and their tests live here.
 import type { Comment, GitHub, Issue, IssueSummary } from "./github.ts";
-import type { Brief, Triage, TriagePromptArgs } from "./triage.ts";
+import type { Brief, Triage, TriageDecision, TriagePromptArgs } from "./triage.ts";
 
 export const FRICTION = "friction";
 /** A report with one of these has been triaged, or set aside by a human. */
@@ -123,11 +123,14 @@ export type TriageInput = Omit<TriagePromptArgs, "guide" | "claudeMd">;
 type TriageReportArgs = {
   number: number;
   /** The model's call (`triage.ts`), handed the gathered report. */
-  decide: (input: TriageInput) => Promise<Triage>;
+  decide: (input: TriageInput) => Promise<TriageDecision>;
   /** Triage it again although it carries a triage label; the new label replaces the old. */
   retriage: boolean;
   dryRun: boolean;
 };
+
+/** One line, so the model's text can't pass for the brief block (`triageBrief`). */
+const oneLine = (text: string) => text.replaceAll(/\s+/g, " ").trim();
 
 /** The labels, comments and close that carry out `answer` for `issue`. */
 export function triageActions({
@@ -137,13 +140,36 @@ export function triageActions({
 }: {
   issue: Issue;
   open: IssueSummary[];
-  answer: Triage;
+  answer: TriageDecision;
 }): Action[] {
   const { number } = issue;
-  // One line, so a reason can't pass for the brief block (`triageBrief`).
-  const reason = answer.reason.replaceAll(/\s+/g, " ").trim();
+  const reason = oneLine(answer.reason);
+  // What the verdict rests on: the files triage read and the searches it ran.
+  const checked =
+    answer.checked.length > 0 ? `\n\nChecked: ${oneLine(answer.checked.join(", "))}.` : "";
   const stale = (keep?: string) =>
     TRIAGED.filter((label) => label !== keep && issue.labels.includes(label));
+  if (answer.decision === "already-fixed") {
+    const fixedIn = oneLine(answer.fixed_in ?? "");
+    if (!fixedIn) {
+      return [
+        { kind: "label", number, add: ["ready-for-human"], remove: stale("ready-for-human") },
+        {
+          kind: "comment",
+          number,
+          body: `${TRIAGE_HEADER}Triage called this already fixed but named no place it lives: ${reason}${checked}${TRIAGE_FOOTER}`,
+        },
+      ];
+    }
+    return [
+      { kind: "label", number, add: ["wontfix"], remove: stale("wontfix") },
+      {
+        kind: "close",
+        number,
+        comment: `${TRIAGE_HEADER}Already fixed in ${fixedIn}. ${reason}${checked}${TRIAGE_FOOTER}`,
+      },
+    ];
+  }
   if (answer.decision === "duplicate") {
     const original = answer.duplicate_of;
     // Only an open friction report other than this one counts.
@@ -176,7 +202,7 @@ export function triageActions({
     {
       kind: "comment",
       number,
-      body: `${TRIAGE_HEADER}\`${answer.decision}\`: ${reason}${brief}${TRIAGE_FOOTER}`,
+      body: `${TRIAGE_HEADER}\`${answer.decision}\`: ${reason}${checked}${brief}${TRIAGE_FOOTER}`,
     },
   ];
 }

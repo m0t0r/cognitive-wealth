@@ -13,7 +13,7 @@ import type { FixArgs, FixOutcome } from "@repo/friction-bot/fix";
 import type { GitHub } from "@repo/friction-bot/github";
 import type { Check, CheckResult } from "@repo/friction-bot/tools";
 import type { TriageInput } from "@repo/friction-bot/reports";
-import type { Triage } from "@repo/friction-bot/triage";
+import type { TriageDecision } from "@repo/friction-bot/triage";
 import { REPO_ROOT } from "./paths.ts";
 
 export type OpenedDatabase = {
@@ -65,8 +65,11 @@ export type Verify = import("@repo/dev-env/checkout").Checkout & {
 
 /** The Claude calls behind `cw friction`, each needing `ANTHROPIC_API_KEY`. */
 export type Claude = {
-  /** One triage decision (Haiku), given the gathered report; the repo's guides are added. */
-  triage: (input: TriageInput) => Promise<Triage>;
+  /**
+   * One triage decision (Haiku, which reads this checkout), given the gathered report; the repo's
+   * guides are added.
+   */
+  triage: (input: TriageInput) => Promise<TriageDecision>;
   /** The fixer's tool loop (Sonnet), in `root` or else the checkout `cw` runs from. */
   fix: (args: Omit<FixArgs, "root" | "model"> & { root?: string }) => Promise<FixOutcome>;
 };
@@ -219,7 +222,7 @@ export const defaultDependencies: Dependencies = {
           read("docs/agents/friction.md"),
           read("CLAUDE.md"),
         ]);
-        return await callingTheApi(() => triage({ ...input, guide, claudeMd }));
+        return await callingTheApi(() => triage({ ...input, guide, claudeMd, root: ROOT }));
       },
       fix: async (args) => {
         // friction-fix.yml hands the key over as a file, so the checks the fixer runs can't read
