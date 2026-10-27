@@ -55,7 +55,7 @@ MAILPIT_URL=http://127.0.0.1:8026 pnpm dev:sign-in owner@cognitive-wealth.test -
 
 The chrome-devtools MCP never launches a browser. It attaches to whatever is listening on `127.0.0.1:9222` (`--browserUrl`), so the script puts agent-browser's own Chrome for Testing there. It starts that Chrome headless with a throwaway profile, connects this checkout's agent-browser session to it, and loads the session cookies, which puts the perf trace in step 4 on the signed-in page. The session is `verify` in the main checkout and `verify-<token>` in a worktree; the script prints it as its last line, and the rest of this skill calls it `$SESSION`. If anything else holds 9222, often an everyday Chrome with remote debugging turned on, the script exits instead of tracing in a personal browser. Ask the user to quit that process; don't kill it yourself.
 
-There is one such Chrome for every worktree, and one worktree at a time holds it: sessions connected to one Chrome drive the same tab with the same cookies, and Chrome runs one trace at a time. The script records the holder in the main checkout's `.dev/verify/chrome.owner`. While another live worktree holds it, the script exits and names that worktree; wait for it to finish (its `stop-browser.sh` frees the Chrome) or ask the user. Once the holder's worktree is gone, or its Chrome has died, the next run takes over with a fresh Chrome. A second persona gets its own `dev:sign-in --ip 10.77.0.2` and a plain `agent-browser --session <name> --state … --headers …` session, as shown in docs/dev-sign-in.md.
+There is one such Chrome for every worktree, and one worktree at a time holds it: sessions connected to one Chrome drive the same tab with the same cookies, and Chrome runs one trace at a time. The script records the holder in the main checkout's `.dev/verify/chrome.owner`. While another live worktree holds it, the script exits and names that worktree; wait for it to finish (its `pnpm cw verify browser stop` frees the Chrome) or ask the user. Once the holder's worktree is gone, or its Chrome has died, the next run takes over with a fresh Chrome. A second persona gets its own `dev:sign-in --ip 10.77.0.2` and a plain `agent-browser --session <name> --state … --headers …` session, as shown in docs/dev-sign-in.md.
 
 ## 3. Drive the change
 
@@ -77,11 +77,11 @@ Do this for every change that renders. Run it on each route the change touches, 
 ## 5. Clean up
 
 ```sh
-.claude/skills/verifier-web/stop-browser.sh   # closes this checkout's session; stops and frees the Chrome if this checkout holds it
-.claude/skills/verifier-web/stop-app.sh       # stops this checkout's servers and removes its --ref checkouts
+pnpm cw verify browser stop   # closes this checkout's session; stops and frees the Chrome if this checkout holds it
+pnpm cw verify stop           # stops this checkout's servers and removes its --ref checkouts
 ```
 
-Both act only on what their own checkout started, found in the main checkout's `.dev/verify/<token>/`, `.dev/verify/chrome.*` and `.dev/worktrees/<token>-*`; other worktrees' servers, checkouts and Chrome stay. Run `stop-browser.sh` as soon as the browser work is done, so another worktree can take the Chrome. A worktree removed without them is cleaned up by its teardown.
+Both act only on what their own checkout started, with the same code a worktree's teardown runs; other worktrees' servers, checkouts and Chrome stay. Run `verify browser stop` as soon as the browser work is done, so another worktree can take the Chrome. What they found and did, `--dry-run` and a failure's `code` come from `pnpm cw verify --help`. A worktree removed without them is cleaned up by its teardown.
 
 The verify Compose project can keep running between tasks. `docker compose -f compose.yaml -f compose.verify.yaml down` throws all its data away.
 

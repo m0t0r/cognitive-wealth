@@ -8,8 +8,8 @@
 # worktree), and the script prints it. Launching agent-browser with --args
 # "--remote-debugging-port=9222" hangs its daemon, so Chrome starts first and agent-browser
 # connects to it. The Chrome's pid, profile and owner (this checkout's token and path) go to the
-# main checkout's .dev/verify/chrome.{pid,profile,owner}, so stop-browser.sh stops that one process
-# and nothing else.
+# main checkout's .dev/verify/chrome.{pid,profile,owner}, so `pnpm cw verify browser stop` stops that
+# one process and nothing else.
 #
 # One Chrome serves every worktree, and they can't share it: agent-browser sessions connected to one
 # Chrome drive the same tab with the same cookies, and Chrome traces one page at a time. So the
@@ -56,7 +56,7 @@ if [ -n "$listener" ]; then
   fi
   # A Chrome an older start-browser.sh started has no owner: someone may still be tracing in it.
   if [ ! -f "$VERIFY_CHROME_OWNER" ]; then
-    echo "The Chrome on 9222 (pid $listener) was started by an older start-browser.sh, which recorded no owner. Stop it with that checkout's stop-browser.sh, or ask the user." >&2
+    echo "The Chrome on 9222 (pid $listener) was started by an older start-browser.sh, which recorded no owner. Stop it with pnpm cw verify browser stop from that checkout, or ask the user." >&2
     exit 1
   fi
   owner=$(sed -n 1p "$VERIFY_CHROME_OWNER")
@@ -64,7 +64,7 @@ if [ -n "$listener" ]; then
   if [ "$owner" != "$VERIFY_TOKEN" ]; then
     # Alive while git lists it and its directory is there (a deleted one awaits `git worktree prune`).
     if [ -d "$owner_path" ] && git -C "$main" worktree list --porcelain | grep -qxF "worktree $owner_path"; then
-      echo "The shared Chrome on 9222 is in use by $owner_path. Wait until its verification is done (its stop-browser.sh frees it), or ask the user." >&2
+      echo "The shared Chrome on 9222 is in use by $owner_path. Wait until its verification is done (its pnpm cw verify browser stop frees it), or ask the user." >&2
       exit 1
     fi
     # Its owner is gone: start over, so none of its cookies (shared by every localhost port) stay.
