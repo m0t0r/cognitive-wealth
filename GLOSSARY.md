@@ -68,7 +68,7 @@ _Avoid_: Account, login
 ## Households
 
 **Household**:
-The group of people a Firm serves together, and the unit of service, billing and planning.
+The group of people a Firm serves together, and the unit of service, billing and planning. A Person who leaves it (a death, a divorce, a Dependent who starts their own) has their membership ended on the day they left, not deleted, so the Household's past still shows who was in it.
 _Avoid_: Client (as an entity), family, relationship
 
 **Person**:
@@ -88,7 +88,7 @@ A Person in a Household who is supported by its Primary or Co-client, usually a 
 Where a Household stands with the Firm: Prospect, Client or Former client.
 
 **Prospect**:
-A Household the Firm is trying to win, before an Advisory agreement is signed.
+A Household the Firm is trying to win, before an Advisory agreement is signed. A Prospect who never signs is kept like any other Household, never deleted (#189). Rule 204-2 doesn't require the Household itself, but what the Firm sent them about advice it proposed is a record ((a)(7), [research](docs/research/crm-end-dates.md#q3-is-a-prospect-who-never-became-a-client-a-record-under-rule-204-2)).
 _Avoid_: Lead
 
 **Client**:
@@ -112,7 +112,8 @@ A custodial account at a Custodian, identified by the Custodian's account number
 _Avoid_: Portfolio, login
 
 **Account role**:
-A dated link between a Person and an Account that says how the Person is involved: owner, joint owner, custodian for a minor, beneficiary, or power of attorney.
+A dated link between a Person and an Account that says how the Person is involved: owner, joint owner, custodian for a minor, beneficiary, or power of attorney. It holds from its start date until its end date, the day of the event that ends it (a death, a revoked power of attorney, a minor reaching the state's age, a changed beneficiary), which is a Valid time; when the Firm recorded the end is kept separately. An ended role is kept, never deleted ([research](docs/research/crm-end-dates.md)).
+_Avoid_: Removing a role (it's ended)
 
 **Named-on Account**:
 An Account a Person holds a role on that gives no ownership (Beneficiary, custodian for a minor, power of attorney) and that their Household doesn't own. It's listed under the Person, with the role and the owning Household, and never counted in the Household's Accounts, AUM, Billable value or Net worth ([research](docs/research/household-accounts.md), [platforms](docs/research/related-accounts-on-platforms.md)).
