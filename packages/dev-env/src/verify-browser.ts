@@ -3,33 +3,18 @@
 // once never share a tab, cookies or a trace (#144). `cw verify trace` reaches that Chrome through
 // the session's own CDP endpoint. Node runs the CLIs that import this directly (type stripping), so
 // relative imports keep their `.ts` extension.
-import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { CliError } from "@repo/db/cli/cli-error";
 import type { Checkout } from "./checkout.ts";
 import { verifyResources } from "./names.ts";
-import { TRACE_VIEWPORT } from "./verify-trace.ts";
+import { agentBrowser } from "./agent-browser.ts";
+import { TRACE_VIEWPORT, type Viewport } from "./trace-viewport.ts";
 
 /** What starting the browser reaches outside itself for; a test hands in its own. */
 export type BrowserSystem = {
   agentBrowser: (args: string[]) => void;
 };
-
-function agentBrowser(args: string[]) {
-  try {
-    execFileSync("agent-browser", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  } catch (error) {
-    const stderr =
-      error instanceof Error && "stderr" in error && typeof error.stderr === "string"
-        ? error.stderr.trim()
-        : "";
-    throw new CliError({
-      code: "agent_browser_failed",
-      message: `agent-browser ${args.join(" ")} failed${stderr ? `: ${stderr}` : ""}`,
-    });
-  }
-}
 
 export const defaultBrowserSystem: BrowserSystem = { agentBrowser };
 
@@ -50,7 +35,7 @@ export type StartedBrowser = {
   /** The session file loaded. */
   statePath: string;
   /** The window size, the one `cw verify trace` measures at. */
-  viewport: { width: number; height: number };
+  viewport: Viewport;
 };
 
 /**

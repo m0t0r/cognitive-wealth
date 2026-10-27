@@ -8,16 +8,18 @@
 // always apply it (the MCP's "4x CPU" traces did the unthrottled amount of work). DevTools' trace
 // engine reads the metrics and insights (`trace-summary.ts`). Node runs the CLIs that import this
 // directly (type stripping), so relative imports keep their `.ts` extension.
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { gzipSync } from "node:zlib";
 import { CliError } from "@repo/db/cli/cli-error";
+import { agentBrowser } from "./agent-browser.ts";
 import { type Cdp, type CdpEvent, type SendArgs, connectCdp } from "./cdp.ts";
 import type { Checkout } from "./checkout.ts";
 import { verifyResources } from "./names.ts";
+import { TRACE_VIEWPORT, type Viewport } from "./trace-viewport.ts";
 import type { TraceMode, TraceSummary, summarizeTrace } from "./trace-summary.ts";
 
 /**
@@ -48,9 +50,6 @@ export const TRACE_CATEGORIES = [
   "disabled-by-default-devtools.screenshot",
 ];
 
-/** The window every trace is taken at: CLS is a share of the viewport, so it moves with the size. */
-export const TRACE_VIEWPORT = { width: 1280, height: 800 };
-
 /** How long the MCP keeps recording after a page's load event, for late shifts and paints. */
 const SETTLE_MS = 5000;
 /**
@@ -79,25 +78,6 @@ export type TraceSystem = {
   /** How long any one step may take before the trace is refused as `trace_timeout`. */
   stepTimeoutMs: number;
 };
-
-function agentBrowser(args: string[]): string {
-  try {
-    return execFileSync("agent-browser", args, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: STEP_TIMEOUT_MS,
-    }).trim();
-  } catch (error) {
-    const stderr =
-      error instanceof Error && "stderr" in error && typeof error.stderr === "string"
-        ? error.stderr.trim()
-        : "";
-    throw new CliError({
-      code: "agent_browser_failed",
-      message: `agent-browser ${args.join(" ")} failed${stderr ? `: ${stderr}` : ""}`,
-    });
-  }
-}
 
 export type LaunchedChrome = { endpoint: string; stop: () => Promise<void> };
 
@@ -188,6 +168,7 @@ export const defaultTraceSystem: TraceSystem = {
   agentBrowser,
   connect: connectCdp,
   launchChrome,
+  // Loaded on first use: DevTools' trace engine is large, and --dry-run never needs it.
   summarize: async (args) => (await import("./trace-summary.ts")).summarizeTrace(args),
   sleep: (ms) => sleep(ms),
   stepTimeoutMs: STEP_TIMEOUT_MS,
@@ -212,13 +193,21 @@ export type TraceSessionArgs = {
 /** The browser's own Web Performance API readings of a page load, beside the trace's. */
 export type BrowserApiReading = { lcpMs: number | null; cls: number };
 
+/** `load` without steps, `interaction` with them. */
+export const traceModeOf = (steps: string[]): TraceMode =>
+  steps.length > 0 ? "interaction" : "load";
+
+/** Where a trace named `name` is saved in the checkout at `top`. */
+export const traceFileOf = ({ top, name }: { top: string; name: string }) =>
+  join(top, ".dev/perf", `${name}.trace.json.gz`);
+
 export type TracedSession = {
   session: string;
   /** The page traced. */
   url: string;
   mode: TraceMode;
   throttled: boolean;
-  viewport: { width: number; height: number };
+  viewport: Viewport;
   /** The saved trace, which DevTools' Performance panel opens. */
   file: string;
   summary: TraceSummary;
@@ -427,6 +416,8 @@ function toCookieParam({ session, expires, size: _size, ...cookie }: Cookie) {
 
 type TraceLoadArgs = {
   cookies: Cookie[];
+  /** The session page's localStorage, as `[key, value]` pairs. */
+  storage: Array<[string, string]>;
   url: string;
   deviceScaleFactor: number;
   throttle: boolean;
@@ -443,6 +434,7 @@ type TracedLoad = { events: unknown[]; browserApi: BrowserApiReading; cpuSlowdow
  */
 async function traceLoad({
   cookies,
+  storage,
   url,
   deviceScaleFactor,
   throttle,
@@ -504,6 +496,17 @@ async function traceLoad({
         ]);
       };
       await load(url);
+      // The app keeps settings such as the theme in localStorage: the traced load sees the
+      // session's, as the session's own tab would.
+      if (storage.length > 0) {
+        await cdp.send({
+          method: "Runtime.evaluate",
+          params: {
+            expression: `(${JSON.stringify(storage)}).forEach(([key, value]) => localStorage.setItem(key, value))`,
+          },
+          sessionId,
+        });
+      }
       const before = throttle ? await workTime({ cdp, sessionId }) : 0;
       await load("about:blank");
       if (throttle) await setThrottling({ cdp, sessionId, on: true });
@@ -550,7 +553,7 @@ async function traceLoadRetrying(args: TraceLoadArgs): Promise<TracedLoad & { at
 type TraceStepsArgs = {
   cdp: Cdp;
   page: Page;
-  viewport: { width: number; height: number };
+  viewport: Viewport;
   steps: string[];
   session: string;
   throttle: boolean;
@@ -613,15 +616,33 @@ export async function traceSession({
   system = defaultTraceSystem,
 }: TraceSessionArgs): Promise<TracedSession> {
   const session = chosen ?? verifyResources(checkout.worktreeId).session;
-  const url = system.agentBrowser(["--session", session, "get", "url"]);
+  let url: string;
+  try {
+    url = system.agentBrowser(["--session", session, "get", "url"]);
+  } catch {
+    throw new CliError({
+      code: "no_browser",
+      message: `The session ${session} has no browser open; start it with pnpm cw verify browser start.`,
+    });
+  }
+  // agent-browser opens a fresh browser on about:blank for a session it doesn't know.
+  if (!/^https?:/.test(url)) {
+    throw new CliError({
+      code: "no_page",
+      message:
+        `The session ${session} is on ${url}, not a page of the app: start it with pnpm cw ` +
+        `verify browser start, or open the page with agent-browser --session ${session} open <url>.`,
+    });
+  }
   const endpoint = system.agentBrowser(["--session", session, "get", "cdp-url"]);
   const cdp = withDeadlines({ cdp: await system.connect(endpoint), ms: system.stepTimeoutMs });
-  const mode: TraceMode = steps.length > 0 ? "interaction" : "load";
+  const mode = traceModeOf(steps);
   let traced: { events: unknown[]; browserApi?: BrowserApiReading; cpuSlowdown?: number } = {
     events: [],
   };
-  let viewport: { width: number; height: number } = TRACE_VIEWPORT;
+  let viewport: Viewport = TRACE_VIEWPORT;
   let cookies: Cookie[] = [];
+  let storage: Array<[string, string]> = [];
   let deviceScaleFactor = 1;
   let attempts = 1;
   try {
@@ -657,6 +678,15 @@ export async function traceSession({
       const { browserContextIds } = await cdp.send<{ browserContextIds: string[] }>({
         method: "Target.getBrowserContexts",
       });
+      // A page without storage access throws, and the answer then has no value.
+      const { result: read } = await cdp.send<{
+        result: { value?: Array<[string, string]> };
+      }>({
+        method: "Runtime.evaluate",
+        params: { expression: "Object.entries(localStorage)", returnByValue: true },
+        sessionId,
+      });
+      storage = read.value ?? [];
       ({ cookies } = await cdp.send<{ cookies: Cookie[] }>({
         method: "Storage.getCookies",
         params: browserContextIds.includes(page.browserContextId)
@@ -671,13 +701,20 @@ export async function traceSession({
     cdp.close();
   }
   if (mode === "load") {
-    const loaded = await traceLoadRetrying({ cookies, url, deviceScaleFactor, throttle, system });
+    const loaded = await traceLoadRetrying({
+      cookies,
+      storage,
+      url,
+      deviceScaleFactor,
+      throttle,
+      system,
+    });
     ({ attempts } = loaded);
     traced = loaded;
   }
 
   const { events, browserApi, cpuSlowdown } = traced;
-  const file = join(checkout.top, ".dev/perf", `${name}.trace.json.gz`);
+  const file = traceFileOf({ top: checkout.top, name });
   mkdirSync(join(checkout.top, ".dev/perf"), { recursive: true });
   writeFileSync(file, gzipSync(JSON.stringify({ traceEvents: events })));
   const summary = await system.summarize({ events, mode });
