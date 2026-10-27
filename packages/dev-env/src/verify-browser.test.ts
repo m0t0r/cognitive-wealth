@@ -1,12 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { verifyResources } from "./names.ts";
 import { type BrowserSystem, startBrowser } from "./verify-browser.ts";
-import { chromeFiles, verifyDir } from "./verify.ts";
 
 const ID = "feat-x";
-const { token: TOKEN, session: SESSION } = verifyResources(ID);
+const { session: SESSION } = verifyResources(ID);
 const EMAIL = "owner@cognitive-wealth.test";
 const APP = "http://localhost:3100";
 
@@ -23,48 +22,18 @@ function checkouts({ signedIn = "worktree" }: { signedIn?: "worktree" | "main" |
   return { mainCheckout: main, top, worktreeId: ID };
 }
 
-/** Records the shared Chrome as `owner`'s (a token and its checkout's path), with pid 9000. */
-function recordChrome({ main, owner }: { main: string; owner?: [string, string] }) {
-  const files = chromeFiles(main);
-  mkdirSync(verifyDir(main), { recursive: true });
-  writeFileSync(files.pid, "9000\n");
-  writeFileSync(files.profile, "/tmp/chrome-profile\n");
-  if (owner) writeFileSync(files.owner, `${owner.join("\n")}\n`);
-}
-
-type FakeArgs = {
-  listener?: number;
-  live?: string[];
-  /** Whether `stopChrome` frees 9222; false when the pid is no longer the recorded Chrome. */
-  stopsChrome?: boolean;
-};
-
-function fakeSystem({ listener, live = [], stopsChrome = true }: FakeArgs = {}) {
+function fakeSystem() {
   const calls: string[] = [];
-  let listening = listener;
   const system: BrowserSystem = {
-    listenerOn: () => listening,
-    commandOf: (pid) => `/Applications/Thing --pid ${pid}`,
-    liveCheckouts: () => live,
-    stopChrome: vi.fn(async () => {
-      calls.push("stop chrome");
-      if (stopsChrome) listening = undefined;
-      return "stopped the shared Chrome (pid 9000)";
-    }),
-    launchChrome: vi.fn(async () => {
-      calls.push("launch chrome");
-      return { pid: 9100, profile: "/tmp/new-profile" };
-    }),
     agentBrowser: vi.fn((args: string[]) => {
       calls.push(`agent-browser ${args.join(" ")}`);
     }),
-    sleep: async () => {},
   };
   return { system, calls };
 }
 
 describe("startBrowser", () => {
-  it("starts the shared Chrome, records this checkout as its holder, and opens the app signed in", async () => {
+  it("opens the app signed in, in the session's own Chrome, at the trace window size", async () => {
     const checkout = checkouts();
     const { system, calls } = fakeSystem();
     const statePath = join(checkout.top, `.dev/auth/${EMAIL}.json`);
@@ -77,18 +46,30 @@ describe("startBrowser", () => {
       system,
     });
 
-    expect(started).toEqual({ session: SESSION, statePath, chrome: { pid: 9100, started: true } });
+    expect(started).toEqual({
+      session: SESSION,
+      statePath,
+      viewport: { width: 1280, height: 800 },
+    });
+    // A fresh session each time: --state on a running one leaves it blank (#225). No --cdp, so
+    // agent-browser launches a Chrome of the session's own.
     expect(calls).toEqual([
-      "launch chrome",
-      `agent-browser --session ${SESSION} connect 9222`,
-      `agent-browser --session ${SESSION} state load ${statePath}`,
-      `agent-browser --session ${SESSION} --headers {"x-forwarded-for":"10.77.0.1"} open ${APP}`,
+      `agent-browser --session ${SESSION} close`,
+      `agent-browser --session ${SESSION} --state ${statePath} --headers {"x-forwarded-for":"10.77.0.1"} open ${APP}`,
+      `agent-browser --session ${SESSION} set viewport 1280 800`,
     ]);
-    const files = chromeFiles(checkout.mainCheckout);
-    expect(readFileSync(files.pid, "utf8").trim()).toBe("9100");
-    expect(readFileSync(files.profile, "utf8").trim()).toBe("/tmp/new-profile");
-    expect(readFileSync(files.owner, "utf8")).toBe(`${TOKEN}\n${checkout.top}\n`);
-    expect(existsSync(join(verifyDir(checkout.mainCheckout), "chrome.starting"))).toBe(false);
+  });
+
+  it("starts even when the session wasn't running", async () => {
+    const { system, calls } = fakeSystem();
+    system.agentBrowser = vi.fn((args: string[]) => {
+      if (args.includes("close")) throw new Error("no such session");
+      calls.push(args.at(-2) ?? "");
+    });
+
+    await startBrowser({ checkout: checkouts(), email: EMAIL, app: APP, ip: "10.77.0.1", system });
+
+    expect(calls).toEqual(["open", "1280"]);
   });
 
   it("falls back to the main checkout's session file, and takes a --session", async () => {
@@ -122,120 +103,6 @@ describe("startBrowser", () => {
         system,
       }),
     ).rejects.toMatchObject({ code: "no_session" });
-    expect(system.launchChrome).not.toHaveBeenCalled();
-  });
-
-  it("reuses the Chrome this checkout holds", async () => {
-    const checkout = checkouts();
-    recordChrome({ main: checkout.mainCheckout, owner: [TOKEN, checkout.top] });
-    const { system, calls } = fakeSystem({ listener: 9000 });
-
-    const started = await startBrowser({
-      checkout,
-      email: EMAIL,
-      app: APP,
-      ip: "10.77.0.1",
-      system,
-    });
-
-    expect(started.chrome).toEqual({ pid: 9000, started: false });
-    expect(calls[0]).toBe(`agent-browser --session ${SESSION} connect 9222`);
-  });
-
-  it("refuses as port_9222_taken when a Chrome it didn't start listens there", async () => {
-    const checkout = checkouts();
-    const { system } = fakeSystem({ listener: 555 });
-
-    await expect(
-      startBrowser({ checkout, email: EMAIL, app: APP, ip: "10.77.0.1", system }),
-    ).rejects.toMatchObject({
-      code: "port_9222_taken",
-      message: expect.stringContaining("pid 555: /Applications/Thing --pid 555"),
-    });
-    expect(system.launchChrome).not.toHaveBeenCalled();
-    expect(existsSync(join(verifyDir(checkout.mainCheckout), "chrome.starting"))).toBe(false);
-  });
-
-  it("refuses as chrome_held, naming the holder, while another live checkout holds it", async () => {
-    const checkout = checkouts();
-    const other = join(checkout.mainCheckout, ".claude/worktrees/other");
-    recordChrome({ main: checkout.mainCheckout, owner: ["other_12345678", other] });
-    const { system } = fakeSystem({ listener: 9000, live: [checkout.mainCheckout, other] });
-
-    await expect(
-      startBrowser({ checkout, email: EMAIL, app: APP, ip: "10.77.0.1", system }),
-    ).rejects.toMatchObject({ code: "chrome_held", message: expect.stringContaining(other) });
-    expect(system.stopChrome).not.toHaveBeenCalled();
-  });
-
-  it("refuses as chrome_held when the Chrome has no recorded holder", async () => {
-    const checkout = checkouts();
-    recordChrome({ main: checkout.mainCheckout });
-    const { system } = fakeSystem({ listener: 9000 });
-
-    await expect(
-      startBrowser({ checkout, email: EMAIL, app: APP, ip: "10.77.0.1", system }),
-    ).rejects.toMatchObject({ code: "chrome_held" });
-  });
-
-  it("takes over from a holder that's gone, with a fresh Chrome", async () => {
-    const checkout = checkouts();
-    const gone = join(checkout.mainCheckout, ".claude/worktrees/gone");
-    recordChrome({ main: checkout.mainCheckout, owner: ["gone_12345678", gone] });
-    const { system, calls } = fakeSystem({ listener: 9000, live: [checkout.mainCheckout] });
-
-    const started = await startBrowser({
-      checkout,
-      email: EMAIL,
-      app: APP,
-      ip: "10.77.0.1",
-      system,
-    });
-
-    expect(calls.slice(0, 2)).toEqual(["stop chrome", "launch chrome"]);
-    expect(started.chrome).toEqual({ pid: 9100, started: true, tookOverFrom: gone });
-  });
-
-  it("refuses as port_9222_taken when a gone holder's Chrome won't stop", async () => {
-    const checkout = checkouts();
-    const gone = join(checkout.mainCheckout, ".claude/worktrees/gone");
-    recordChrome({ main: checkout.mainCheckout, owner: ["gone_12345678", gone] });
-    // Still listening after stopChrome: the pid was reused by something it rightly left alone.
-    const { system } = fakeSystem({
-      listener: 9000,
-      live: [checkout.mainCheckout],
-      stopsChrome: false,
-    });
-
-    await expect(
-      startBrowser({ checkout, email: EMAIL, app: APP, ip: "10.77.0.1", system }),
-    ).rejects.toMatchObject({ code: "port_9222_taken", message: expect.stringContaining(gone) });
-    expect(system.launchChrome).not.toHaveBeenCalled();
-  });
-
-  it("waits for another start to finish, then refuses as chrome_starting", async () => {
-    const checkout = checkouts();
-    mkdirSync(join(verifyDir(checkout.mainCheckout), "chrome.starting"), { recursive: true });
-    const { system } = fakeSystem();
-
-    await expect(
-      startBrowser({ checkout, email: EMAIL, app: APP, ip: "10.77.0.1", system }),
-    ).rejects.toMatchObject({ code: "chrome_starting" });
-    expect(system.launchChrome).not.toHaveBeenCalled();
-    // Another start's lock: never this one's to remove.
-    expect(existsSync(join(verifyDir(checkout.mainCheckout), "chrome.starting"))).toBe(true);
-  });
-
-  it("frees the lock when a step fails", async () => {
-    const checkout = checkouts();
-    const { system } = fakeSystem();
-    system.agentBrowser = () => {
-      throw new Error("no such command");
-    };
-
-    await expect(
-      startBrowser({ checkout, email: EMAIL, app: APP, ip: "10.77.0.1", system }),
-    ).rejects.toThrow("no such command");
-    expect(existsSync(join(verifyDir(checkout.mainCheckout), "chrome.starting"))).toBe(false);
+    expect(system.agentBrowser).not.toHaveBeenCalled();
   });
 });

@@ -53,6 +53,7 @@ export type Verify = import("@repo/dev-env/checkout").Checkout & {
   startVerifyServer: typeof import("@repo/dev-env/verify-server").startVerifyServer;
   sessionFileOf: typeof import("@repo/dev-env/verify-browser").sessionFileOf;
   startBrowser: typeof import("@repo/dev-env/verify-browser").startBrowser;
+  traceSession: typeof import("@repo/dev-env/verify-trace").traceSession;
   composeUp: typeof import("@repo/dev-env/verify-compose").composeUp;
   removeComposeProject: typeof import("@repo/dev-env/verify").removeComposeProject;
   verifyServersOf: typeof import("@repo/dev-env/verify").verifyServersOf;
@@ -186,12 +187,14 @@ export const defaultDependencies: Dependencies = {
     const { planVerifyServer, startVerifyServer } = await import("@repo/dev-env/verify-server");
     const { sessionFileOf, startBrowser } = await import("@repo/dev-env/verify-browser");
     const { composeUp } = await import("@repo/dev-env/verify-compose");
+    const { traceSession } = await import("@repo/dev-env/verify-trace");
     return {
       ...checkoutAt(process.cwd()),
       planVerifyServer,
       startVerifyServer,
       sessionFileOf,
       startBrowser,
+      traceSession,
       composeUp,
       removeComposeProject: verify.removeComposeProject,
       verifyServersOf: verify.verifyServersOf,

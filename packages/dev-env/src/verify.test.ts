@@ -108,7 +108,7 @@ describe("chromeHolder and releaseChrome", () => {
     expect(chromeHolder(main)).toBe("other_12345678");
     expect(
       await releaseChrome({ mainCheckout: main, token: TOKEN, session: "cw-verify-test-none" }),
-    ).toBe("didn't hold the shared Chrome");
+    ).toBe("held no shared Chrome");
     expect(chromeHolder(main)).toBe("other_12345678");
   });
 

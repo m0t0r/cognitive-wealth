@@ -1,8 +1,9 @@
 // What the verifier-web skill leaves behind for one checkout, and how `cw verify stop`,
 // `cw verify browser stop` and teardown remove it: the production servers `cw verify start`
 // runs (pidfiles under the main checkout's `.dev/verify/<token>/`, which outlive the worktree),
-// the `--ref` checkouts it builds (`.dev/worktrees/<token>-<sha>`) and the shared headless Chrome
-// while this checkout holds it (`.dev/verify/chrome.*`), and the Compose project
+// the `--ref` checkouts it builds (`.dev/worktrees/<token>-<sha>`), its agent-browser session (and
+// the shared headless Chrome on 9222 from before #144, while this checkout holds it,
+// `.dev/verify/chrome.*`), and the Compose project
 // `cw verify compose up` runs. Its databases are dropped with the worktree's own (`teardown.ts`).
 // Node runs the CLIs that import this directly (type stripping), so relative imports keep their
 // `.ts` extension.
@@ -162,7 +163,11 @@ export function removeComposeProject(project: string): string {
   return `removed the Compose project ${project}`;
 }
 
-/** The shared Chrome's files: its pid, its throwaway profile and the checkout holding it. */
+/**
+ * The files of the shared Chrome on 9222 that `cw verify browser start` ran before #144 gave each
+ * session its own: its pid, its throwaway profile and the checkout holding it. Nothing writes them
+ * now; they're read so a Chrome a checkout still holds from then is stopped with it.
+ */
 export const chromeFiles = (mainCheckout: string) => ({
   pid: join(verifyDir(mainCheckout), "chrome.pid"),
   profile: join(verifyDir(mainCheckout), "chrome.profile"),
@@ -176,7 +181,7 @@ export function chromeHolder(mainCheckout: string): string | undefined {
   return read(chromeFiles(mainCheckout).owner).split("\n")[0] || undefined;
 }
 
-/** Closes `session` and, when `token` holds the shared Chrome, stops it (`stopChrome`). */
+/** Closes `session` (and its Chrome) and, when `token` holds the old shared Chrome, stops it. */
 export async function releaseChrome({
   mainCheckout,
   token,
@@ -191,7 +196,7 @@ export async function releaseChrome({
   } catch {
     // No such session, or no agent-browser here: nothing to close.
   }
-  if (chromeHolder(mainCheckout) !== token) return "didn't hold the shared Chrome";
+  if (chromeHolder(mainCheckout) !== token) return "held no shared Chrome";
   return stopChrome(mainCheckout);
 }
 

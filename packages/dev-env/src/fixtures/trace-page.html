@@ -1,0 +1,40 @@
+<!doctype html>
+<!-- The page behind trace-summary.test.ts's traces (`cw verify trace` against it, served locally):
+     a text LCP, one layout shift 300 ms after load, and a click that blocks the main thread for
+     250 ms, so each metric has something to measure. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Trace fixture</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 2rem;
+      }
+      #big {
+        font-size: 48px;
+      }
+      #shift {
+        height: 0;
+        background: #ccc;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="shift"></div>
+    <h1 id="big">Largest contentful text block for the trace fixture</h1>
+    <p>Some paragraph text.</p>
+    <button id="btn">Do slow work</button>
+    <p id="out"></p>
+    <script>
+      setTimeout(() => {
+        document.getElementById("shift").style.height = "120px";
+      }, 300);
+      document.getElementById("btn").addEventListener("click", () => {
+        const end = performance.now() + 250;
+        while (performance.now() < end) {}
+        document.getElementById("out").textContent = "done";
+      });
+    </script>
+  </body>
+</html>

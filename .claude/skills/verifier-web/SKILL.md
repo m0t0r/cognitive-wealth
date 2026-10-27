@@ -1,6 +1,6 @@
 ---
 name: verifier-web
-description: Verify a change that reaches `apps/web` (a page, flow, component, or a package it renders) in the running production build, with agent-browser and a chrome-devtools perf trace. Use before reporting web or UI work as done, and when `/verify` or a PR needs runtime evidence.
+description: Verify a change that reaches `apps/web` (a page, flow, component, or a package it renders) in the running production build, with agent-browser and a perf trace (`cw verify trace`). Use before reporting web or UI work as done, and when `/verify` or a PR needs runtime evidence.
 ---
 
 # Verifying a web change
@@ -33,7 +33,7 @@ Use the Docker build only when one of these holds:
 
 Run it with `pnpm cw verify compose up [<service> ...]` and `pnpm cw verify compose down`, never a plain `docker compose up`, which starts the dev stack's project (`cognitive-wealth`) and its volumes. Its project is the checkout's own (`cw-compose-<token>`), with host ports offset from the checkout's pair; a worktree gets throwaway secrets in its own `.secrets/`. Whenever `db` runs, `up` gives it the same data as `verify start`'s servers. Sign in with `pnpm cw dev sign-in <email> --app <urls.web> --mailpit <urls.mailpit>`. Use `docker compose -p <project> ps|logs|exec` for anything else. A worktree's teardown removes the project with its volumes.
 
-## 2. Sign in and start the shared browser
+## 2. Sign in and open the browser
 
 One persona per client IP:
 
@@ -42,9 +42,9 @@ pnpm cw dev sign-in owner@cognitive-wealth.test --app $APP --ip 10.77.0.1 --mail
 pnpm cw verify browser start owner@cognitive-wealth.test --app $APP --ip 10.77.0.1
 ```
 
-`verify start`'s output names both commands with `$APP` filled in. The chrome-devtools MCP never launches a browser. It attaches to whatever listens on `127.0.0.1:9222` (`--browserUrl`), so `browser start` puts agent-browser's own Chrome for Testing there, headless, with a throwaway profile. It connects this checkout's agent-browser session, loads the session cookies and opens `$APP`, so the perf trace in step 4 runs on the signed-in page. The output's `session` is `$SESSION` for the rest of this skill. A refusal names its cause: `port_9222_taken` means something else holds the port, often an everyday Chrome with remote debugging on. Ask the user to quit it; don't kill it yourself.
+`verify start`'s output names both commands with `$APP` filled in. `browser start` opens `$APP` signed in, in this checkout's agent-browser session, in a headless Chrome the session launches for itself, and sets the window to 1280×800, the size `cw verify trace` measures at. The output's `session` is `$SESSION` for the rest of this skill. Each worktree's session has its own Chrome, so verifications in several worktrees run at once without waiting for each other.
 
-One Chrome serves every worktree, and one checkout at a time holds it: sessions connected to one Chrome drive the same tab with the same cookies, and Chrome runs one trace at a time. While another live checkout holds it, `browser start` refuses as `chrome_held` and names it; wait for its `verify browser stop`, or ask the user. Once the holder's worktree is gone, the next start takes over with a fresh Chrome. A second persona gets its own `dev sign-in --ip 10.77.0.2` and a plain session of its own, opened once with `agent-browser --session <name> --state … --headers … open <url>` and driven afterwards with `--session <name>` alone, as docs/dev-sign-in.md shows.
+A second persona gets its own `dev sign-in --ip 10.77.0.2` and a plain session of its own, opened once with `agent-browser --session <name> --state … --headers … open <url>` and driven afterwards with `--session <name>` alone, as docs/dev-sign-in.md shows.
 
 ## 3. Drive the change
 
@@ -59,29 +59,34 @@ Choose the depth by the size of the change:
 
 Do this for every change that renders. Run it on each route the change touches, after `agent-browser --session $SESSION open <url>`:
 
-1. `list_pages` (page ids change whenever the browser restarts), then `performance_start_trace` with `reload: true`, `autoStop: true`, `filePath: <repo>/.dev/perf/<route>.trace.json.gz`. This records LCP and CLS for a page load.
-2. When the change adds or alters an interaction, also run `performance_start_trace` with `reload: false` and `autoStop: false`. Drive the interaction with agent-browser, then call `performance_stop_trace` with a `filePath`. This records INP.
-3. Compare the numbers with these budgets: LCP ≤ 2.5 s, CLS ≤ 0.1, INP ≤ 200 ms. For every insight with estimated savings, call `performance_analyze_insight` and record what it says. Put the numbers in the report even when they're within budget, so later runs have a baseline.
+1. `pnpm cw verify trace <route>` traces a page load of the session's current page and returns its LCP (with subparts), CLS and DevTools' insights. It records exactly what the chrome-devtools MCP did (DevTools' own trace categories; `about:blank`, then the page loaded again, then 5 s) and reads it with DevTools' own trace engine. The trace is saved as `.dev/perf/<route>.trace.json.gz`, which DevTools' Performance panel opens.
+2. When the change adds or alters an interaction, take a snapshot, then `pnpm cw verify trace <route>-<what> --step "click @e3" [--step "…"]`: it runs those agent-browser commands while recording, without reloading, and returns INP.
+3. Compare the numbers with these budgets: LCP ≤ 2.5 s, CLS ≤ 0.1, INP ≤ 200 ms. Record every insight whose `state` is `fail` or `informative`, with its `description` and `savings`. Put the numbers in the report even when they're within budget, so later runs have a baseline.
+
+One trace is one sample. A number near a budget, or a before/after comparison, needs at least three runs of each, reported as their median and range.
+
+A trace that lacks what a number needs is refused with a code, never reported as 0: `incomplete_trace` (no layout-shift or LCP events were recorded), `no_navigation`, `no_lcp`, `no_interaction` (the steps produced nothing Chrome times as an interaction: use a click, tap or key press), `wrong_viewport` (the window isn't 1280×800: CLS is a share of the window, so a number at any other size can't be compared; run the `set viewport` the message names).
 
 ## 5. Clean up
 
 ```sh
-pnpm cw verify browser stop   # closes this checkout's session; stops and frees the Chrome if this checkout holds it
+pnpm cw verify browser stop   # closes this checkout's session and its Chrome
 pnpm cw verify stop           # stops this checkout's servers and removes its --ref checkouts
 ```
 
-Both act only on what their own checkout started, with the same code a worktree's teardown runs; other worktrees' servers, checkouts and Chrome stay. Run `verify browser stop` as soon as the browser work is done, so another worktree can take the Chrome. What they found and did, `--dry-run` and a failure's `code` come from `pnpm cw verify --help`. A worktree removed without them is cleaned up by its teardown.
+Both act only on what their own checkout started, with the same code a worktree's teardown runs; other worktrees' servers, checkouts and sessions stay. What they found and did, `--dry-run` and a failure's `code` come from `pnpm cw verify --help`. A worktree removed without them is cleaned up by its teardown.
 
 The verify Compose project can keep running between tasks. `docker compose -f compose.yaml -f compose.verify.yaml down` throws all its data away.
 
 ## Gotchas
 
-- Don't launch agent-browser with `--args "--remote-debugging-port=9222"`: its daemon hangs and keeps relaunching Chrome, and only `kill -9` on the `agent-browser-darwin-arm64` daemon stops it. Use `pnpm cw verify browser start`, which starts Chrome first and connects to it.
+- Don't launch agent-browser with `--args "--remote-debugging-port=…"`: its daemon hangs and keeps relaunching Chrome, and only `kill -9` on the `agent-browser-darwin-arm64` daemon stops it. `cw verify trace` reaches the session's Chrome through `agent-browser get cdp-url` instead.
+- Don't use `agent-browser vitals`, `agent-browser trace` or `agent-browser profiler` (with its default categories) as evidence: in #144's tests `vitals` missed a 250 ms interaction, `trace` records no INP, and `profiler`'s defaults record no layout shifts, so CLS reads 0.
 - `screenshot .dev/x.png` reads the path as a CSS selector and saves the image to a temporary directory. Pass an absolute path.
 - At phone width, `screenshot --full` can crop the right edge by the scrollbar's width (about 15 px), so a page that fits looks clipped. Judge overflow from a plain viewport screenshot, or measure: `document.documentElement.scrollWidth` greater than `clientWidth` is real overflow.
-- The MCP's `filePath` must be inside the repo (its workspace root). A path in `/tmp` or the scratchpad is refused.
 - `dev sign-in` reads Mailpit at `--mailpit`, then `MAILPIT_URL`, which defaults to the dev stack's `:8025`. Without `--mailpit http://127.0.0.1:8026` it waits for an email that never arrives. Every server, from every worktree, has the same seeded users and shares one Mailpit, so sign in one persona at a time.
 - `dev:sign-in` saves `.dev/auth/<email>.json` in the checkout it runs from, and `verify browser start` loads that one first, falling back to the main checkout's. Each server has its own database, so a session works only on the server it signed in to: signing the same email in to the `--ref` server after the working tree's replaces the file, so load the working tree's session before that, or save the other with `--state`.
 - `--state` on a session that's already running leaves it on `about:blank` without an error: the `open` before it printed the right title, and now `snapshot` says "(empty page)" (#225). Pass `--state` and `--headers` only on the `open` that starts a session, never through a wrapper that adds them to every call, and `close` the session before loading another state.
 - Rate limits reset on every `verify start`, because each run gets a new Redis prefix. Within a run, give each persona its own `--ip`.
-- The traces run with no CPU or network throttling on a fast Mac, so the numbers are optimistic. For a change where performance matters, trace again after calling `emulate` with `cpuThrottlingRate: 4` and `networkConditions: "Slow 4G"`. Then call `emulate` with neither set to turn throttling off.
+- The traces run with no CPU or network throttling on a fast Mac, so the numbers are optimistic. For a change where performance matters, trace again with `--throttle` (4× CPU and Slow 4G, held for that trace only and turned off afterwards).
+- A browser's first page load after it starts is slower than the rest (a cold cache and a cold process): trace a route after the page has loaded once, never as the first thing a new session does.
