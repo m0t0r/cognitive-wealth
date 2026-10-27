@@ -131,6 +131,17 @@ const traceOutput = z.object({
       "A page load's own Web Performance API readings, apart from the trace: they should match " +
         "summary.lcp (within the API's ~4 ms rounding) and summary.cls; a mismatch is a bug",
     ),
+  cpuSlowdown: z
+    .number()
+    .optional()
+    .describe(
+      "With --throttle, how much slower the page did a fixed piece of work: about 4; " +
+        "under 3 is refused (throttle_not_applied)",
+    ),
+  attempts: z
+    .number()
+    .optional()
+    .describe("How many fresh Chromes a page load took: Chrome sometimes stalls a throttled one"),
   dryRun: z.boolean().describe("true when nothing was recorded"),
 });
 
@@ -234,10 +245,7 @@ export function verifyCommands({
           .string()
           .optional()
           .describe("The session; `verify` in the main checkout, `verify-<token>` in a worktree"),
-        dryRun: z
-          .boolean()
-          .default(false)
-          .describe("Find the session file, and stop"),
+        dryRun: z.boolean().default(false).describe("Find the session file, and stop"),
       }),
       output: browserStartOutput,
       mcp: false,

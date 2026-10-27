@@ -9,11 +9,18 @@ import { summarizeTrace } from "./trace-summary.ts";
 // 272 ms. A trace engine upgrade that reads them differently fails here.
 function fixture(name: string): unknown[] {
   const file = join(import.meta.dirname, "fixtures", `${name}.trace.json.gz`);
-  return (JSON.parse(gunzipSync(readFileSync(file)).toString()) as { traceEvents: unknown[] })
-    .traceEvents;
+  const trace: unknown = JSON.parse(gunzipSync(readFileSync(file)).toString());
+  const events: unknown =
+    typeof trace === "object" && trace !== null ? Reflect.get(trace, "traceEvents") : undefined;
+  if (!Array.isArray(events)) throw new Error(`${file} holds no traceEvents`);
+  return events;
 }
 
 type Event = { name?: string; cat?: string; args?: { data?: { interactionId?: number } } };
+
+/** A fixture's event, as written by Chrome. */
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- fixtures Chrome recorded
+const asEvent = (event: unknown) => event as Event;
 
 describe("summarizeTrace", () => {
   it("reads a page load's LCP, CLS and insights", async () => {
@@ -46,13 +53,15 @@ describe("summarizeTrace", () => {
     const summary = await summarizeTrace({ events: fixture("click"), mode: "interaction" });
 
     expect(summary.inp?.ms).toBeCloseTo(271.726, 2);
-    expect(summary.insights.filter(({ state }) => state === "fail").map(({ name }) => name)).toEqual([
-      "INPBreakdown",
-    ]);
+    expect(
+      summary.insights.filter(({ state }) => state === "fail").map(({ name }) => name),
+    ).toEqual(["INPBreakdown"]);
   });
 
   it("refuses as incomplete_trace when the trace has no loading events, rather than CLS 0", async () => {
-    const events = fixture("load").filter((event) => !(event as Event).cat?.split(",").includes("loading"));
+    const events = fixture("load").filter(
+      (event) => !asEvent(event).cat?.split(",").includes("loading"),
+    );
 
     await expect(summarizeTrace({ events, mode: "load" })).rejects.toMatchObject({
       code: "incomplete_trace",
@@ -67,7 +76,7 @@ describe("summarizeTrace", () => {
 
   it("refuses as no_interaction when the steps produced no interaction", async () => {
     const events = fixture("click").filter(
-      (event) => !(event as Event).args?.data?.interactionId && (event as Event).name !== "EventTiming",
+      (event) => !asEvent(event).args?.data?.interactionId && asEvent(event).name !== "EventTiming",
     );
 
     await expect(summarizeTrace({ events, mode: "interaction" })).rejects.toMatchObject({
