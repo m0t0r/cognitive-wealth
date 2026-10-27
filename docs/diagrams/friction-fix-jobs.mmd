@@ -1,0 +1,7 @@
+flowchart LR
+  key["api-key<br/>is the key usable?"] --> backlog["triage-backlog<br/>cw friction triage-backlog<br/>issues: write"]
+  backlog --> prepare["prepare<br/>pick ready-for-agent reports,<br/>cw friction refresh<br/>contents, pull-requests: write"]
+  prepare --> fix["fix (read-only token)<br/>cw friction start,<br/>fix, commit"]
+  fix -->|bundle and answer<br/>as an artifact| publish["publish<br/>cw friction publish<br/>push, PR, relabel"]
+  publish --> back["hand-back<br/>cw friction hand-back<br/>for reports nobody labelled"]
+  fix -.->|stopped early| back

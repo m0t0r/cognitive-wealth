@@ -1,0 +1,12 @@
+flowchart TB
+  agent(["An agent session ends<br/>pnpm cw friction report"]) --> filed["Issue labelled friction"]
+  filed -->|label lands| triage["friction-triage.yml<br/>cw friction triage<br/>Haiku reads the checkout"]
+  hourly["friction-fix.yml, hourly<br/>cw friction triage-backlog"] -.->|reports no triage run labelled| triage
+  triage --> dup["duplicate<br/>comment on the original,<br/>close"]
+  triage --> fixed["already-fixed<br/>wontfix, close with<br/>where the fix lives"]
+  triage --> human["ready-for-human<br/>agent brief for a person"]
+  triage --> ready["ready-for-agent<br/>agent brief"]
+  ready -->|triage dispatches it| fix["friction-fix.yml<br/>Sonnet fixes, checks pass,<br/>one commit"]
+  fix --> pr["chore/friction-autofix PR<br/>report labelled fixed in it"]
+  fix -->|passed on, failed a check,<br/>couldn't push| human
+  pr --> approve(["A person approves the checks,<br/>reviews and merges"])
