@@ -5,31 +5,19 @@
 // `@repo/cli`, which this package can't import); a `--ref` checkout runs its own `cw … --json`
 // instead, since its schema is the ref's and only its own code fits it. Node runs the CLIs that
 // import this directly (type stripping), so relative imports keep their `.ts` extension.
-import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { CliError } from "@repo/db/cli/cli-error";
+import { type RunResult, checked, runCommand, tail } from "./processes.ts";
 
+export type { RunResult } from "./processes.ts";
 export type RunArgs = { cwd: string; args: string[]; env: Record<string, string> };
-export type RunResult = { status: number | null; stdout: string; stderr: string };
 
-/** `pnpm <args>` in `cwd`, with `env` on top of this process's environment, captured. */
-export function runPnpm({ cwd, args, env }: RunArgs): RunResult {
-  const { status, stdout, stderr } = spawnSync("pnpm", args, {
-    cwd,
-    env: { ...process.env, ...env },
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  return { status, stdout, stderr };
-}
-
-/** The end of a failed step's output, enough to see why without flooding the error. */
-export const tail = (text: string) => text.trim().split("\n").slice(-20).join("\n");
+/** `pnpm <args>` in `cwd`, captured. */
+export const runPnpm = ({ cwd, args, env }: RunArgs) =>
+  runCommand({ command: "pnpm", args, cwd, env });
 
 export type Populated = {
-  /** Rows the seed added; undefined for a checkout from before `cw`, whose seed prints none. */
-  seeded: { users: number; households: number } | undefined;
   ingested: Array<{ asOf: string; status: "ingested" | "already_ingested" }>;
   /** What this checkout couldn't do, for a `--ref` from before `cw` or Ingestion. */
   notes: string[];
@@ -40,29 +28,13 @@ export type DatabaseTarget = { url: string; passwordFile: string };
 
 /** `cw db seed` and `cw custodian ingest`, each a call that throws a `CliError` on refusal. */
 export type DomainCalls = {
-  seed: (target: DatabaseTarget) => Promise<{ users: number; households: number }>;
+  seed: (target: DatabaseTarget) => Promise<void>;
   ingest: (args: {
     target: DatabaseTarget;
     asOf: string;
     root: string;
   }) => Promise<"ingested" | "already_ingested">;
 };
-
-/** What `cw db seed --json` says it added, or a refusal when it printed something else. */
-function addedBy(output: Record<string, unknown>) {
-  const { added } = output;
-  if (
-    typeof added === "object" &&
-    added !== null &&
-    "users" in added &&
-    "households" in added &&
-    typeof added.users === "number" &&
-    typeof added.households === "number"
-  ) {
-    return { users: added.users, households: added.households };
-  }
-  throw new CliError({ code: "populate_failed", message: "cw db seed printed no counts." });
-}
 
 /** The status `cw custodian ingest --json` reports, or a refusal when it printed another. */
 function statusOf(output: Record<string, unknown>) {
@@ -108,7 +80,9 @@ function subprocessCalls({ checkout, run, env }: SubprocessCallsArgs): Partial<D
   const commands = join(checkout, "packages/cli/src/commands");
   return {
     ...(existsSync(join(commands, "db.ts")) && {
-      seed: async () => addedBy(cw(["db", "seed"])),
+      seed: async () => {
+        cw(["db", "seed"]);
+      },
     }),
     ...(existsSync(join(commands, "custodian.ts")) && {
       ingest: async ({ asOf, root }) => statusOf(cw(["custodian", "ingest", asOf, "--root", root])),
@@ -144,33 +118,28 @@ export async function populate({
   });
   const notes: string[] = [];
 
-  const migrated = run({
-    cwd: checkout,
-    args: ["--silent", "--filter", "@repo/db", "db:migrate"],
-    env: as("migrator"),
+  checked({
+    result: run({
+      cwd: checkout,
+      args: ["--silent", "--filter", "@repo/db", "db:migrate"],
+      env: as("migrator"),
+    }),
+    code: "migrate_failed",
+    what: `Migrating ${url("migrator")}`,
   });
-  if (migrated.status !== 0) {
-    throw new CliError({
-      code: "migrate_failed",
-      message: `Migrating ${url("migrator")} failed:\n${tail(migrated.stderr || migrated.stdout)}`,
-    });
-  }
 
   const app = { url: url("app"), passwordFile: join(secrets, "db_app_password") };
   const calls = domain ?? subprocessCalls({ checkout, run, env: as("app") });
 
-  let seeded: Populated["seeded"];
   if (calls.seed) {
-    seeded = await calls.seed(app);
+    await calls.seed(app);
   } else {
     // A checkout from before `cw` has only the seed's script.
-    const legacy = run({ cwd: checkout, args: ["--silent", "db:seed"], env: as("app") });
-    if (legacy.status !== 0) {
-      throw new CliError({
-        code: "seed_failed",
-        message: `pnpm db:seed failed:\n${tail(legacy.stderr || legacy.stdout)}`,
-      });
-    }
+    checked({
+      result: run({ cwd: checkout, args: ["--silent", "db:seed"], env: as("app") }),
+      code: "seed_failed",
+      what: "pnpm db:seed",
+    });
     notes.push("seeded with this checkout's pnpm db:seed, which predates cw");
   }
 
@@ -187,5 +156,5 @@ export async function populate({
       ingested.push({ asOf, status });
     }
   }
-  return { seeded, ingested, notes };
+  return { ingested, notes };
 }

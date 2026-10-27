@@ -15,6 +15,7 @@
 import { isIP } from "node:net";
 import { Cli, z } from "incur";
 import { CliError } from "@repo/db/cli/cli-error";
+import type { Checkout } from "@repo/dev-env/checkout";
 import type { DomainCalls } from "@repo/dev-env/populate";
 import type { Dependencies } from "../dependencies.ts";
 import { fromInvocation } from "../paths.ts";
@@ -129,21 +130,19 @@ function stopFailed({ error, retry }: { error: unknown; retry: string }) {
  */
 async function domainCalls(openDatabase: Dependencies["openDatabase"]): Promise<DomainCalls> {
   const { WORLD_FILE, seed } = await import("./db.ts");
-  const { ingest } = await import("./custodian.ts");
+  const { WORLD_FIRM, ingest } = await import("./custodian.ts");
   return {
     async seed(target) {
-      const { devData, crm } = await seed({
+      await seed({
         world: WORLD_FILE,
         dryRun: false,
         openDatabase: () => openDatabase({ target }),
       });
-      return { users: devData.added.users, households: crm.added.households };
     },
     async ingest({ target, asOf, root }) {
       const { result } = await ingest({
         asOf,
-        // WORLD_FIRM_SLUG, as `custodian ingest`'s default.
-        firm: "larkspur",
+        firm: WORLD_FIRM,
         root,
         dryRun: false,
         openDatabase: () => openDatabase({ target }),
@@ -158,6 +157,13 @@ async function domainCalls(openDatabase: Dependencies["openDatabase"]): Promise<
     },
   };
 }
+
+/** Only the checkout's own fields of `verify()`'s answer, for the calls that take a checkout. */
+const checkoutOf = ({ mainCheckout, top, worktreeId }: Checkout): Checkout => ({
+  mainCheckout,
+  top,
+  worktreeId,
+});
 
 /** `<file>[:<export>]` with the file resolved against where the command was typed. */
 function seedTarget(seed: string) {
@@ -205,7 +211,7 @@ export function verifyCommands({
         const { app, ip, session, dryRun } = c.options;
         try {
           const env = await verify();
-          const { mainCheckout, top, worktreeId } = env;
+          const { mainCheckout, worktreeId } = env;
           const statePath = env.sessionFileOf({ checkout: env, email });
           if (!statePath) {
             return c.error({
@@ -235,7 +241,7 @@ export function verifyCommands({
             };
           }
           const started = await env.startBrowser({
-            checkout: { mainCheckout, top, worktreeId },
+            checkout: checkoutOf(env),
             email,
             app,
             ip,
@@ -330,24 +336,21 @@ export function verifyCommands({
       async run(c) {
         try {
           const env = await verify();
-          const { mainCheckout, top, worktreeId } = env;
+          const { worktreeId } = env;
           if (c.options.dryRun) {
             const { verifyResources } = await import("@repo/dev-env/names");
+            const { composeUrls } = await import("@repo/dev-env/verify-compose");
             const { project, ports } = verifyResources(worktreeId).compose;
             return {
               project,
-              urls: {
-                web: `http://localhost:${ports.web}`,
-                custodian: `http://127.0.0.1:${ports.custodian}`,
-                mailpit: `http://127.0.0.1:${ports.mailpit}`,
-              },
+              urls: composeUrls(ports),
               ingested: [],
               notes: [],
               dryRun: true,
             };
           }
           const up = await env.composeUp({
-            checkout: { mainCheckout, top, worktreeId },
+            checkout: checkoutOf(env),
             services: c.args.services ?? [],
             domain: await domainCalls(openDatabase),
           });
@@ -422,11 +425,7 @@ export function verifyCommands({
         const { ref, port, dryRun } = c.options;
         try {
           const env = await verify();
-          const checkout = {
-            mainCheckout: env.mainCheckout,
-            top: env.top,
-            worktreeId: env.worktreeId,
-          };
+          const checkout = checkoutOf(env);
           if (dryRun) {
             const plan = env.planVerifyServer({ checkout, ref, port });
             return {

@@ -59,7 +59,6 @@ describe("populate", () => {
     const populated = await populate({ checkout: dir, url, secrets: "/repo/.secrets", run });
 
     expect(populated).toEqual({
-      seeded: { users: 3, households: 4 },
       ingested: [
         { asOf: "2026-03-02", status: "ingested" },
         { asOf: "2026-03-06", status: "ingested" },
@@ -88,7 +87,7 @@ describe("populate", () => {
     const dir = checkout({ cw: false });
     const { ran, run } = runner();
     const domain = {
-      seed: vi.fn<DomainCalls["seed"]>(async () => ({ users: 3, households: 4 })),
+      seed: vi.fn<DomainCalls["seed"]>(async () => {}),
       ingest: vi.fn<DomainCalls["ingest"]>(async () => "already_ingested"),
     };
 
@@ -104,7 +103,6 @@ describe("populate", () => {
       { target, asOf: "2026-03-06", root: join(dir, "apps/custodian/fixtures/feed") },
     ]);
     expect(populated).toEqual({
-      seeded: { users: 3, households: 4 },
       ingested: [
         { asOf: "2026-03-02", status: "already_ingested" },
         { asOf: "2026-03-06", status: "already_ingested" },
@@ -151,7 +149,6 @@ describe("populate", () => {
 
     expect(ran.map(({ args }) => args).slice(1)).toEqual([["--silent", "db:seed"]]);
     expect(populated).toEqual({
-      seeded: undefined,
       ingested: [],
       notes: [
         "seeded with this checkout's pnpm db:seed, which predates cw",

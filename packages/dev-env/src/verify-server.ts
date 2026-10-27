@@ -11,7 +11,7 @@
 // Turbo restores an unchanged build from its cache, so a rerun costs seconds, not a rebuild.
 // Node runs the CLIs that import this directly (type stripping), so relative imports keep their
 // `.ts` extension.
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   cpSync,
   existsSync,
@@ -27,8 +27,16 @@ import { CliError } from "@repo/db/cli/cli-error";
 import type { Checkout } from "./checkout.ts";
 import { VERIFY_PORTS } from "./env-file.ts";
 import { verifyResources } from "./names.ts";
-import { type DomainCalls, type Populated, type RunResult, populate, tail } from "./populate.ts";
-import { commandOf, listenerOn, stop } from "./processes.ts";
+import { type DomainCalls, type Populated, populate } from "./populate.ts";
+import {
+  type RunResult,
+  checked,
+  commandOf,
+  listenerOn,
+  runCommand,
+  stop,
+  tail,
+} from "./processes.ts";
 import {
   assertSecrets,
   householdsIn,
@@ -36,7 +44,7 @@ import {
   secretsDir,
   startServices,
 } from "./services.ts";
-import { isWebServer, refCheckoutsDir, serverFilesOf } from "./verify.ts";
+import { type ServerRole, isWebServer, refCheckoutsDir, serverFilesOf } from "./verify.ts";
 
 type ExecArgs = { command: string; args: string[]; cwd: string; env?: Record<string, string> };
 
@@ -59,16 +67,6 @@ export type ServerSystem = {
   waitHealthy: (url: string) => Promise<boolean>;
   now: () => number;
 };
-
-function exec({ command, args, cwd, env }: ExecArgs): RunResult {
-  const { status, stdout, stderr } = spawnSync(command, args, {
-    cwd,
-    env: { ...process.env, ...env },
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  return { status, stdout, stderr };
-}
 
 /**
  * Lays the standalone server out as the Docker image does (and e2e's global setup): Next leaves the
@@ -127,7 +125,7 @@ export const defaultServerSystem: ServerSystem = {
   listenerOn,
   commandOf,
   stop,
-  exec,
+  exec: runCommand,
   startServices: (args) => {
     assertSecrets(args.mainCheckout);
     startServices(args);
@@ -156,7 +154,7 @@ export type StartServerArgs = {
 
 export type PlannedServer = {
   url: string;
-  role: "head" | "ref";
+  role: ServerRole;
   database: string;
   passwordFile: string;
   /** The checkout built and served. */
@@ -186,7 +184,12 @@ type Plan = PlannedServer & {
   pidfile: string;
 };
 
-function plan({ checkout, ref, port, system }: StartServerArgs & { system: ServerSystem }): Plan {
+function planServer({
+  checkout,
+  ref,
+  port,
+  system,
+}: StartServerArgs & { system: ServerSystem }): Plan {
   const { mainCheckout, top, worktreeId } = checkout;
   const { token, ports, databases } = verifyResources(worktreeId);
   const role = ref === undefined ? "head" : "ref";
@@ -246,19 +249,11 @@ export function planVerifyServer({
   system = defaultServerSystem,
   ...args
 }: StartServerArgs): PlannedServer {
-  const { url, role, database, passwordFile, checkout, log, replaces } = plan({ ...args, system });
+  const { url, role, database, passwordFile, checkout, log, replaces } = planServer({
+    ...args,
+    system,
+  });
   return { url, role, database, passwordFile, checkout, log, replaces };
-}
-
-/** A failed step, as a refusal with its output's end. */
-function check({ result, code, what }: { result: RunResult; code: string; what: string }) {
-  if (result.status !== 0) {
-    throw new CliError({
-      code,
-      message: `${what} failed:\n${tail(result.stderr || result.stdout)}`,
-    });
-  }
-  return result.stdout.trim();
 }
 
 /** Builds and starts the server, replacing this checkout's own for the role; never another's. */
@@ -266,47 +261,48 @@ export async function startVerifyServer({
   system = defaultServerSystem,
   ...args
 }: StartServerArgs): Promise<StartedServer> {
-  const p = plan({ ...args, system });
+  const planned = planServer({ ...args, system });
   const { mainCheckout, top } = args.checkout;
   const secrets = secretsDir(mainCheckout);
 
-  if (p.sha !== undefined) {
-    if (!existsSync(p.checkout)) {
-      check({
+  if (planned.sha !== undefined) {
+    if (!existsSync(planned.checkout)) {
+      checked({
         result: system.exec({
           command: "git",
-          args: ["-C", mainCheckout, "worktree", "add", "--detach", p.checkout, p.sha],
+          args: ["-C", mainCheckout, "worktree", "add", "--detach", planned.checkout, planned.sha],
           cwd: top,
         }),
         code: "checkout_failed",
         what: `Checking ${args.ref} out`,
       });
     }
-    check({
+    checked({
       result: system.exec({
         command: "pnpm",
         args: ["install", "--frozen-lockfile", "--prefer-offline", "--silent"],
-        cwd: p.checkout,
+        cwd: planned.checkout,
       }),
       code: "install_failed",
-      what: `Installing ${p.checkout}'s dependencies`,
+      what: `Installing ${planned.checkout}'s dependencies`,
     });
   }
 
   system.startServices({ mainCheckout, top });
-  await system.recreateDatabase({ mainCheckout, database: p.dbName });
-  const url = (role: string) => `postgres://${role}@localhost:${VERIFY_PORTS.postgres}/${p.dbName}`;
+  await system.recreateDatabase({ mainCheckout, database: planned.dbName });
+  const url = (role: string) =>
+    `postgres://${role}@localhost:${VERIFY_PORTS.postgres}/${planned.dbName}`;
   const populated = await system.populate({
-    checkout: p.checkout,
+    checkout: planned.checkout,
     url,
     secrets,
-    domain: p.sha === undefined ? args.domain : undefined,
+    domain: planned.sha === undefined ? args.domain : undefined,
   });
-  check({
+  checked({
     result: system.exec({
       command: "pnpm",
       args: ["exec", "turbo", "build", "--filter=web", "--output-logs=errors-only"],
-      cwd: p.checkout,
+      cwd: planned.checkout,
     }),
     code: "build_failed",
     what: "turbo build --filter=web",
@@ -315,7 +311,7 @@ export async function startVerifyServer({
   // From this checkout even with a ref, so before and after get the same data (#164).
   let seed: string | undefined;
   if (args.seed !== undefined) {
-    seed = check({
+    seed = checked({
       result: system.exec({
         command: "node",
         args: [join(top, "packages/db/src/cli/run-seed.ts"), args.seed],
@@ -327,34 +323,34 @@ export async function startVerifyServer({
     });
   }
   // Each run's ids are new, so the Households' publicIds are what URLs are built from.
-  const households = await system.householdsIn({ mainCheckout, database: p.dbName });
+  const households = await system.householdsIn({ mainCheckout, database: planned.dbName });
 
-  const web = join(p.checkout, "apps/web");
+  const web = join(planned.checkout, "apps/web");
   system.layOutStandalone(web);
-  if (p.replaces !== undefined && !(await system.stop(p.replaces))) {
+  if (planned.replaces !== undefined && !(await system.stop(planned.replaces))) {
     throw new CliError({
       code: "stop_failed",
-      message: `The last server (pid ${p.replaces}) won't exit.`,
+      message: `The last server (pid ${planned.replaces}) won't exit.`,
     });
   }
   // Again, since the build took a while: a server that took the port meanwhile would answer the
   // health check in place of ours.
-  const listener = system.listenerOn(p.port);
+  const listener = system.listenerOn(planned.port);
   if (listener !== undefined) {
     throw new CliError({
       code: "port_taken",
       message:
-        `Port ${p.port} was taken during the build (${describePid({ system, pid: listener })}); ` +
+        `Port ${planned.port} was taken during the build (${describePid({ system, pid: listener })}); ` +
         "pass --port with a free one.",
     });
   }
 
-  mkdirSync(dirname(p.pidfile), { recursive: true });
+  mkdirSync(dirname(planned.pidfile), { recursive: true });
   // The production container's environment (compose.yaml's `web`), on the verify services, and
   // nothing else of this process's.
   const pid = system.spawnServer({
     script: join(web, ".next/standalone/apps/web/server.js"),
-    log: p.log,
+    log: planned.log,
     env: {
       // The shell's, which a Turborepo task never reads: `cw` isn't one.
       // oxlint-disable-next-line turbo/no-undeclared-env-vars
@@ -363,39 +359,39 @@ export async function startVerifyServer({
       HOME: process.env.HOME ?? "",
       NODE_ENV: "production",
       HOSTNAME: "127.0.0.1",
-      PORT: String(p.port),
-      BETTER_AUTH_URL: p.url,
+      PORT: String(planned.port),
+      BETTER_AUTH_URL: planned.url,
       BETTER_AUTH_SECRET_FILE: join(secrets, "better_auth_secret"),
-      DATABASE_URL: p.database,
-      DATABASE_PASSWORD_FILE: p.passwordFile,
+      DATABASE_URL: planned.database,
+      DATABASE_PASSWORD_FILE: planned.passwordFile,
       REDIS_URL: `redis://app@localhost:${VERIFY_PORTS.redis}`,
       REDIS_PASSWORD_FILE: join(secrets, "redis_password"),
       // A new prefix per run, so rate limits start over.
-      REDIS_KEY_PREFIX: `cw:v:${p.token}:${p.role}:${Math.floor(system.now() / 1000)}:`,
+      REDIS_KEY_PREFIX: `cw:v:${planned.token}:${planned.role}:${Math.floor(system.now() / 1000)}:`,
       EMAIL_TRANSPORT: "smtp",
       SMTP_URL: `smtp://localhost:${VERIFY_PORTS.smtp}`,
       EMAIL_FROM: "Cognitive Wealth <no-reply@cognitive-wealth.localhost>",
       AUTH_TRUSTED_IP_HEADER: "x-forwarded-for",
     },
   });
-  writeFileSync(p.pidfile, `${pid}\n`);
-  if (!(await system.waitHealthy(p.url))) {
+  writeFileSync(planned.pidfile, `${pid}\n`);
+  if (!(await system.waitHealthy(planned.url))) {
     throw new CliError({
       code: "unhealthy",
-      message: `The server (pid ${pid}) didn't become healthy; see ${p.log}.`,
+      message: `The server (pid ${pid}) didn't become healthy; see ${planned.log}.`,
     });
   }
   return {
-    url: p.url,
-    role: p.role,
+    url: planned.url,
+    role: planned.role,
     pid,
-    database: p.database,
-    passwordFile: p.passwordFile,
+    database: planned.database,
+    passwordFile: planned.passwordFile,
     households,
     ingested: populated.ingested,
     notes: populated.notes,
-    checkout: p.checkout,
-    log: p.log,
+    checkout: planned.checkout,
+    log: planned.log,
     ...(seed !== undefined && { seed }),
   };
 }

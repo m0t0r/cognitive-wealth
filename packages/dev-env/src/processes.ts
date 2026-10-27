@@ -1,9 +1,44 @@
-// Stopping processes this package's setup (or the verifier-web skill) started, and only those: a
-// pid is checked against its command line first, since the system may have reused it. Node runs
-// the CLIs that import this directly (type stripping), so relative imports keep their `.ts`
-// extension.
-import { execFileSync } from "node:child_process";
+// Running commands, and stopping processes this package's setup (or `cw verify`) started, and only
+// those: a pid is checked against its command line first, since the system may have reused it.
+// Node runs the CLIs that import this directly (type stripping), so relative imports keep their
+// `.ts` extension.
+import { execFileSync, spawnSync } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
+import { CliError } from "@repo/db/cli/cli-error";
+
+export type RunResult = { status: number | null; stdout: string; stderr: string };
+
+type RunCommandArgs = {
+  command: string;
+  args: string[];
+  cwd?: string | undefined;
+  env?: Record<string, string> | undefined;
+};
+
+/** `command <args>` to its end, with `env` on top of this process's environment, captured. */
+export function runCommand({ command, args, cwd, env }: RunCommandArgs): RunResult {
+  const { status, stdout, stderr } = spawnSync(command, args, {
+    cwd,
+    env: { ...process.env, ...env },
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return { status, stdout, stderr };
+}
+
+/** The end of a failed step's output, enough to see why without flooding the error. */
+export const tail = (text: string) => text.trim().split("\n").slice(-20).join("\n");
+
+/** `result`'s stdout, or a refusal `code` saying `what` failed, with its output's end. */
+export function checked({ result, code, what }: { result: RunResult; code: string; what: string }) {
+  if (result.status !== 0) {
+    throw new CliError({
+      code,
+      message: `${what} failed:\n${tail(result.stderr || result.stdout)}`,
+    });
+  }
+  return result.stdout.trim();
+}
 
 const STOP_TIMEOUT_MS = 10_000;
 

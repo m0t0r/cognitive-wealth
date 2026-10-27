@@ -66,7 +66,7 @@ function chromeBinary(): string {
   return binary;
 }
 
-async function answers(): Promise<boolean> {
+async function chromeAnswers(): Promise<boolean> {
   try {
     return (await fetch(`http://127.0.0.1:${PORT}/json/version`)).ok;
   } catch {
@@ -93,7 +93,7 @@ async function launchChrome() {
     throw new CliError({ code: "chrome_failed", message: "Chrome didn't start." });
   for (let tries = 20; tries > 0; tries -= 1) {
     // oxlint-disable-next-line no-await-in-loop -- one try at a time, until Chrome answers
-    if (await answers()) return { pid, profile };
+    if (await chromeAnswers()) return { pid, profile };
     // oxlint-disable-next-line no-await-in-loop -- the wait between tries
     await sleep(500);
   }
@@ -250,8 +250,8 @@ export async function startBrowser({
           throw new CliError({
             code: "chrome_held",
             message:
-              `The Chrome on ${PORT} (pid ${listener}) has no recorded holder: start-browser.sh, ` +
-              "the script before this command, started it, and someone may still be tracing in it. " +
+              `The Chrome on ${PORT} (pid ${listener}) has no recorded holder: an older verifier-web ` +
+              "script started it, and someone may still be tracing in it. " +
               "Stop it with pnpm cw verify browser stop from that checkout, or ask the user.",
           });
         }
@@ -268,6 +268,16 @@ export async function startBrowser({
           // Its holder is gone: start over, so none of its cookies (shared by every localhost port)
           // stay.
           await system.stopChrome(mainCheckout);
+          // stopChrome leaves a process whose command line isn't the recorded Chrome's.
+          const still = system.listenerOn(PORT);
+          if (still !== undefined) {
+            throw new CliError({
+              code: "port_9222_taken",
+              message:
+                `Port ${PORT} is still held after taking over from ${holderPath} (pid ${still}: ` +
+                `${(system.commandOf(still) ?? "gone").slice(0, 120)}). Ask the user to quit it, then rerun.`,
+            });
+          }
           tookOverFrom = holderPath;
         }
       }

@@ -7,14 +7,13 @@
 // `.secrets/`; the main checkout's real ones are used there, in volumes of this project. Node runs
 // the CLIs that import this directly (type stripping), so relative imports keep their `.ts`
 // extension.
-import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CliError } from "@repo/db/cli/cli-error";
 import type { Checkout } from "./checkout.ts";
 import { verifyResources } from "./names.ts";
-import { type DomainCalls, type Populated, type RunResult, populate, tail } from "./populate.ts";
+import { type DomainCalls, type Populated, populate } from "./populate.ts";
+import { type RunResult, checked, runCommand } from "./processes.ts";
 
 /** The override that publishes the project's `db` on the checkout's own port (its header says why). */
 const DB_OVERRIDE = join(import.meta.dirname, "../compose.db.yaml");
@@ -24,20 +23,13 @@ const ONE_SHOTS = new Set(["migrate", "custodian-migrate"]);
 
 /** What `composeUp` reaches outside itself for; a test hands in its own. */
 export type ComposeSystem = {
-  /** `docker <args>` with `env` on top of this process's environment, captured. */
-  docker: (args: { args: string[]; env: Record<string, string> }) => RunResult;
+  /** `docker <argv>` with `env` on top of this process's environment, captured. */
+  docker: (args: { argv: string[]; env: Record<string, string> }) => RunResult;
   populate: typeof populate;
 };
 
 export const defaultComposeSystem: ComposeSystem = {
-  docker: ({ args, env }) => {
-    const { status, stdout, stderr } = spawnSync("docker", args, {
-      env: { ...process.env, ...env },
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    return { status, stdout, stderr };
-  },
+  docker: ({ argv, env }) => runCommand({ command: "docker", args: argv, env }),
   populate,
 };
 
@@ -74,9 +66,13 @@ export type ComposeUp = {
   notes: string[];
 };
 
-/** The project's name and its host ports, for `checkout`. */
-export function composeProjectOfCheckout(checkout: Checkout) {
-  return verifyResources(checkout.worktreeId).compose;
+/** Where the project's services answer on the host, from its ports (`verifyResources`). */
+export function composeUrls(ports: { web: number; custodian: number; mailpit: number }) {
+  return {
+    web: `http://localhost:${ports.web}`,
+    custodian: `http://127.0.0.1:${ports.custodian}`,
+    mailpit: `http://127.0.0.1:${ports.mailpit}`,
+  };
 }
 
 type ComposeUpArgs = {
@@ -85,7 +81,7 @@ type ComposeUpArgs = {
   services: string[];
   /** `cw`'s seed and Ingestion; without them, the checkout's own `cw … --json` runs. */
   domain?: DomainCalls | undefined;
-  system?: ComposeSystem;
+  system?: ComposeSystem | undefined;
 };
 
 export async function composeUp({
@@ -95,7 +91,7 @@ export async function composeUp({
   system = defaultComposeSystem,
 }: ComposeUpArgs): Promise<ComposeUp> {
   const { top } = checkout;
-  const { project, ports } = composeProjectOfCheckout(checkout);
+  const { project, ports } = verifyResources(checkout.worktreeId).compose;
   ensureSecrets(top);
   const env = {
     WEB_PORT: String(ports.web),
@@ -103,30 +99,26 @@ export async function composeUp({
     MAILPIT_PORT: String(ports.mailpit),
     DB_PORT: String(ports.db),
   };
-  const compose = (args: string[]) => {
-    const result = system.docker({
-      args: [
-        "compose",
-        "-p",
-        project,
-        "--project-directory",
-        top,
-        "-f",
-        join(top, "compose.yaml"),
-        "-f",
-        DB_OVERRIDE,
-        ...args,
-      ],
-      env,
+  const compose = (args: string[]) =>
+    checked({
+      result: system.docker({
+        argv: [
+          "compose",
+          "-p",
+          project,
+          "--project-directory",
+          top,
+          "-f",
+          join(top, "compose.yaml"),
+          "-f",
+          DB_OVERRIDE,
+          ...args,
+        ],
+        env,
+      }),
+      code: "compose_failed",
+      what: `docker compose ${args.join(" ")}`,
     });
-    if (result.status !== 0) {
-      throw new CliError({
-        code: "compose_failed",
-        message: `docker compose ${args.join(" ")} failed:\n${tail(result.stderr || result.stdout)}`,
-      });
-    }
-    return result.stdout;
-  };
 
   // A one-shot named here runs on its own, with `run`, which starts its database first and exits
   // with its exit code (#248). With none named, `up` starts them all, dependents included, and
@@ -137,11 +129,7 @@ export async function composeUp({
     compose(["up", "--build", "--detach", "--wait", ...rest]);
   for (const oneShot of oneShots) compose(["run", "--rm", "--build", oneShot]);
 
-  const urls = {
-    web: `http://localhost:${ports.web}`,
-    custodian: `http://127.0.0.1:${ports.custodian}`,
-    mailpit: `http://127.0.0.1:${ports.mailpit}`,
-  };
+  const urls = composeUrls(ports);
   const running = compose(["ps", "--status", "running", "--services"]).split("\n");
   if (!running.includes("db")) return { project, urls, ingested: [], notes: [] };
 
