@@ -41,7 +41,20 @@ cw_json() {
 case "${1:-}" in
   up)
     shift
-    "${compose[@]}" up --build --detach --wait "$@"
+    # `up --wait` fails on a one-shot service that already exited 0 (`container …-migrate-1
+    # exited (0)`), so a rerun naming `migrate` leaves it out once it has completed; the
+    # migrations still run below, from the host. With nothing else named, `db` is what's left.
+    services=()
+    for service in "$@"; do
+      if [ "$service" = migrate ] && "${compose[@]}" ps --all --format json 2>/dev/null |
+        jq -es 'flatten | any(.Service == "migrate" and .State == "exited" and .ExitCode == 0)' >/dev/null; then
+        echo "migrate already completed (exit 0): not named again; migrations run below" >&2
+      else
+        services+=("$service")
+      fi
+    done
+    if [ $# -gt 0 ] && [ ${#services[@]} -eq 0 ]; then services=(db); fi
+    "${compose[@]}" up --build --detach --wait ${services[@]+"${services[@]}"}
     # The same data as start-app.sh's servers: migrations (idempotent, in case `migrate` wasn't
     # named), the seed (users, Firms, the world's CRM half; idempotent) and the example Deliveries,
     # so `owner@` signs in to Larkspur. From the host, through compose.db.yaml's published port.

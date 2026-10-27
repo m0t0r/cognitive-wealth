@@ -204,8 +204,8 @@ export function orgCommands({ openDatabase }: Pick<Dependencies, "openDatabase">
       mcp: false,
       examples: [
         {
-          options: { name: "Acme", owner: "ceo@acme.test", dryRun: true },
-          description: "Check what it would do",
+          options: { name: "Acme", owner: "ceo@acme.test" },
+          description: "Add --dry-run to check what it would do",
         },
       ],
       async run(c) {
