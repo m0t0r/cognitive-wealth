@@ -9,7 +9,7 @@
 # Remote cache (optional): --build-arg TURBO_TEAM=<team> --secret id=turbo_token,env=TURBO_TOKEN
 
 # --- base: Node LTS + pnpm (version from the root package.json's `packageManager`)
-FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea AS base
+FROM node:24.22.1-trixie-slim@sha256:89c5244bc22a9bc3287d89ebc7e49b9cb5bb84cd40e6175ac3421d5a9f68b95a AS base
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
     NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
