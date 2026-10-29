@@ -9,7 +9,7 @@
 # Remote cache (optional): --build-arg TURBO_TEAM=<team> --secret id=turbo_token,env=TURBO_TOKEN
 
 # --- base: Node LTS + pnpm (version from the root package.json's `packageManager`)
-FROM node:24.22.1-trixie-slim@sha256:89c5244bc22a9bc3287d89ebc7e49b9cb5bb84cd40e6175ac3421d5a9f68b95a AS base
+FROM node:24.22.2-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS base
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
     NEXT_TELEMETRY_DISABLED=1
 WORKDIR /app
@@ -56,7 +56,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm --filter @repo/db deploy --prod --legacy --store-dir /pnpm/store /out/db
 
 # --- migrate: one-shot job, connects as the DDL-owning `migrator` role
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:cb606325b7ec4af55462cb0b424a53b452a5b4a894ffe841fcf1048d216fb9f8 AS migrate
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:a6c34457f6da4295807e051411c7783739c65b997a324fed14e4fa292615ae91 AS migrate
 WORKDIR /app
 ENV NODE_ENV=production
 # Owned by root and read-only to the `nonroot` (65532) user that runs it.
@@ -65,7 +65,7 @@ USER nonroot
 CMD ["src/migrate.ts"]
 
 # --- web: distroless (no shell or package manager), non-root, code not writable by the process
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:cb606325b7ec4af55462cb0b424a53b452a5b4a894ffe841fcf1048d216fb9f8 AS web
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:a6c34457f6da4295807e051411c7783739c65b997a324fed14e4fa292615ae91 AS web
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
