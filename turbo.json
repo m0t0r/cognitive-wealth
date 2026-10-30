@@ -48,7 +48,8 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/compose.yaml",
-        "$TURBO_ROOT$/docker/testcontainers/**"
+        "$TURBO_ROOT$/docker/testcontainers/**",
+        "$TURBO_ROOT$/world/**"
       ],
       "outputs": []
     },
@@ -59,7 +60,8 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/compose.yaml",
         "$TURBO_ROOT$/packages/db/docker/**",
-        "$TURBO_ROOT$/docker/testcontainers/**"
+        "$TURBO_ROOT$/docker/testcontainers/**",
+        "$TURBO_ROOT$/world/**"
       ],
       "outputs": []
     },
@@ -75,7 +77,12 @@
       "dependsOn": ["^build"],
       "passThroughEnv": ["CI", "PLAYWRIGHT_*", "DOCKER_*", "TESTCONTAINERS_*", "RYUK_*"],
       "outputs": ["playwright-report/**", "test-results/**"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/compose.yaml", "$TURBO_ROOT$/docker/**"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/compose.yaml",
+        "$TURBO_ROOT$/docker/**",
+        "$TURBO_ROOT$/world/**"
+      ]
     }
   }
 }
