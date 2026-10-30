@@ -2,6 +2,7 @@
 
 import json
 from collections import Counter
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -98,6 +99,36 @@ def test_every_dependent_is_at_least_eighteen_years_younger_than_both_adults(see
         for dependent in household.dependents:
             for parent in parents:
                 assert (dependent.born_on - parent.born_on).days >= 18 * 365
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_nobody_joins_a_household_before_they_were_born(seed: int) -> None:
+    for household in generate_world(seed).crm.households:
+        for _, person in household.people():
+            assert person.joined_on >= person.born_on
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_the_adults_join_together_within_the_worlds_five_years_of_history(seed: int) -> None:
+    # The latest date is a year before the day ages count from, 31 August 2026, and the earliest
+    # 5 x 365 days before it, so a Delivery from the last year of history sees every adult.
+    for household in generate_world(seed).crm.households:
+        joined = household.primary.joined_on
+        assert date(2021, 9, 1) <= joined <= date(2025, 8, 31)
+        if household.co_client is not None:
+            assert household.co_client.joined_on == joined
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_a_dependent_joins_with_the_household_or_when_born_if_that_is_later(seed: int) -> None:
+    world = generate_world(seed)
+    dependents = [(h.primary.joined_on, d) for h in world.crm.households for d in h.dependents]
+
+    for joined, dependent in dependents:
+        assert dependent.joined_on == max(joined, dependent.born_on)
+    # Both cases really happen, so the assertion above isn't only ever checking one of them.
+    assert any(dependent.joined_on == joined for joined, dependent in dependents)
+    assert any(dependent.joined_on == dependent.born_on for _, dependent in dependents)
 
 
 @pytest.mark.parametrize("seed", SEEDS)

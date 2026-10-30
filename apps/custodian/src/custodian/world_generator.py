@@ -12,7 +12,8 @@ Three rules keep one seed giving one world, byte for byte:
 - **Random numbers come from `sampling.py`**, whose helpers stay the same across Python versions.
 - **Each Household has its own stream.** Drawing more numbers for one Household, as #52 will for
   Accounts, leaves everyone else alone. That matters: the seed refuses a Person who changes
-  (`SeedConflict`), so People who shift by accident would stop a database reseeding.
+  (`SeedConflict`), so People who shift by accident would stop a database reseeding. The day a
+  Household's adults joined has a stream of its own too, so it moves nobody else's numbers.
 
 How many Households have each life stage and Relationship status is fixed, and only who gets which
 is random. Drawing each one separately could leave a seed with no Prospects at all.
@@ -83,6 +84,12 @@ _CO_CLIENT_MOST_YEARS_APART = 6
 _YOUNGEST_ADULT_AT_FIRST_CHILD = 20
 _OLDEST_DEPENDENT = 22
 """Old enough to be a student a parent still supports: this slice's simple choice, not a rule."""
+_JOINED_FEWEST_DAYS_BEFORE = 365
+_JOINED_MOST_DAYS_BEFORE = 5 * 365
+"""When a Household's adults joined it, counted back from `AGES_COUNT_FROM`. The earliest is the
+start of the world's five years of history (docs/product.md). The latest leaves a year, because a
+membership doesn't count before it starts: the overview would hide a Person from any As-of date
+before they joined. A simple range, like the ages, not a finding about real Households."""
 
 _FIRM = Firm(name="Larkspur Wealth Partners")
 """The Firm `cw db seed` makes, which refuses a world naming any other."""
@@ -131,6 +138,9 @@ def generate_world(seed: int) -> WorldFile:
             stage=stage,
             status=status,
             last_name=last_name,
+            # A stream of its own, not the Household's: one more draw there would change everyone
+            # drawn after it, and the seed refuses a Person who changes.
+            adults_joined_on=_adults_joined_on(stream(f"{seed}:household:{number}:joined")),
         )
         for number, (stage, status, last_name) in enumerate(
             zip(stages, statuses, last_names, strict=True), start=1
@@ -156,6 +166,7 @@ def _household(
     stage: _LifeStage,
     status: _RelationshipStatus,
     last_name: str,
+    adults_joined_on: date,
 ) -> Household:
     """One Household. `number` goes in every key: surnames can repeat among Co-clients and first
     names among Households, and the world file refuses a repeated key."""
@@ -165,11 +176,14 @@ def _household(
 
     def person(*, last: str, age: int) -> Person:
         first = first_names.pop()
+        born_on = _born_on(rng, age=age)
         return Person(
             key=f"{first}-{last}-{suffix}".lower(),
             first_name=first,
             last_name=last,
-            born_on=_born_on(rng, age=age),
+            born_on=born_on,
+            # Someone born after the Household's adults joined joins the day they're born.
+            joined_on=max(adults_joined_on, born_on),
         )
 
     primary_age = between(rng, low=stage.youngest, high=stage.oldest)
@@ -208,6 +222,13 @@ def _born_on(rng: random.Random, *, age: int) -> date:
     years back, or up to 364 days before that, since a year holds at least 365 days."""
     latest = AGES_COUNT_FROM.replace(year=AGES_COUNT_FROM.year - age)
     return latest - timedelta(days=between(rng, low=0, high=364))
+
+
+def _adults_joined_on(rng: random.Random) -> date:
+    """The day a Household's Primary and Co-client joined it, a fixed date like everything else
+    here: counted from `AGES_COUNT_FROM`, never today."""
+    days_before = between(rng, low=_JOINED_FEWEST_DAYS_BEFORE, high=_JOINED_MOST_DAYS_BEFORE)
+    return AGES_COUNT_FROM - timedelta(days=days_before)
 
 
 class WorldGenerateOptions(Options):
