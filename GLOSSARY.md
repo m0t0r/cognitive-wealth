@@ -169,7 +169,7 @@ The Custodian's own label for one Transaction, such as `TX-000000003`, sent with
 _Avoid_: Row number, sequence number
 
 **Corporate action**:
-An event decided by the company or fund behind a Security that changes what its holders own without them trading, such as a stock split or a merger.
+An event decided by the company or fund behind a Security that changes what its holders own without them trading, such as a dividend, a stock split or a merger. The world has one kind so far, the ordinary cash dividend.
 _Avoid_: Corp action, event
 
 **Ledger**:
@@ -230,12 +230,24 @@ Interest earned but not yet paid. It becomes an interest Transaction when it is 
 _Avoid_: Pending interest
 
 **Business day**:
-A weekday on which US markets are open.
+A weekday on which the New York Stock Exchange is open. The bond market and the banks keep other calendars, closing on Columbus Day and Veterans Day when the NYSE is open; the world uses this one calendar for everything, as a simplification ([research](docs/research/the-close.md)).
 _Avoid_: Trading day, working day
 
+**Market holiday**:
+A weekday on which the New York Stock Exchange is closed, so there is no Close and no Delivery.
+_Avoid_: Bank holiday (a different calendar)
+
 **Close**:
-The end of a Business day at the Custodian, which produces that day's prices, Transactions and Positions.
+The routine that finishes a Business day at the Custodian, in a set order: that day's prices, dividends, interest and Positions, then its Delivery. A day isn't closed until its Manifest exists.
 _Avoid_: End of day, batch
+
+**Catch-up**:
+What the simulated Custodian does on start: it runs each Close it missed, one at a time and in order, up to yesterday. Each gives the same numbers as if it had run on its own evening.
+_Avoid_: Replay, recovery; catch-up contribution (an IRA's or 401(k)'s extra limit from age 50, a different thing)
+
+**Backfill**:
+The Closes for the world's history, run on an empty database: a Catch-up that starts from the world's first day.
+_Avoid_: Seed, import
 
 **As-of date**:
 The Business day a figure describes, which is the latest Close it was computed from.
@@ -333,7 +345,7 @@ The address of a permanent copy of the Factor file and its Content hash, which f
 _Avoid_: Lock, version
 
 **Treasury yield**:
-What lending to the US government earns in a year, as a percentage, buying its debt at that day's price and holding it until it is repaid. Published by the US Treasury each Business day. When yields rise, bond prices fall.
+What lending to the US government earns in a year, as a percentage, buying its debt at that day's price and holding it until it is repaid. Published by the US Treasury on its own calendar, which isn't quite the Business days: none on Columbus Day or Veterans Day, and some on Good Friday. When yields rise, bond prices fall.
 _Avoid_: Interest rate (alone), risk-free rate
 
 **Declaration date**:

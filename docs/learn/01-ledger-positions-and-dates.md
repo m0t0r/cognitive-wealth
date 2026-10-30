@@ -27,7 +27,7 @@ The primer climbs in three levels. Each level uses only what the levels before i
 
 On a first read, it's fine to stop after Level 1, take a break, and come back. Level 3 makes most sense once Levels 1 and 2 feel familiar.
 
-Not covered here: Tax lots, Cost basis and Reconciliation (phase 2, though Part 6 previews Reconciliation), the Close, and the Custodian feed. Each gets its own primer.
+Not covered here: Tax lots, Cost basis and Reconciliation (phase 2, though Part 6 previews Reconciliation), [the Close](06-the-close.md), and [the Custodian feed](03-custodian-feed-and-ingestion.md). The last two have their own primers.
 
 ## Part 1: The basics (Level 1)
 
@@ -348,7 +348,7 @@ For a Transaction that isn't a trade, such as a dividend or a fee, the Trade dat
 
 After a trade is agreed, the buyer's cash and the seller's shares still have to move. A central clearing company (in the US, a company owned by the industry for exactly this job) sits between the two sides, checks that both can deliver, and swaps the cash and shares. That takes time, so the swap happens later, on the Settlement date.
 
-The gap is called the **Settlement cycle**. For most US share trades it is one **Business day**, written **T+1**: "Trade date plus one". A Business day is a weekday on which the markets are open, so weekends and market holidays don't count:
+The gap is called the **Settlement cycle**. For most US share trades it is one **Business day**, written **T+1**: "Trade date plus one". A Business day is a weekday on which the stock market is open, so weekends and market holidays don't count:
 
 | Trade date | Settlement date (T+1) |
 | ---------- | --------------------- |
@@ -632,7 +632,7 @@ Say the Custodian last closed on Friday 6 March and is next started on Monday 16
 
 The top row is when the laptop was on. The bottom row is when each Business day got its Close: on time, or late during the catch-up. The bottom row has no gaps except weekends.
 
-Each catch-up Close does what that evening's Close would have done: that day's prices, dividends, interest, and any money a Household puts in or takes out.
+Each catch-up Close does what that evening's Close would have done: that day's prices, dividends and interest. Money a Household puts in or takes out would come between the dividends and the interest, but no slice builds it yet ([the primer on the Close](06-the-close.md), Part 6).
 
 Four rules make those filled-in days as trustworthy as if they had happened on time:
 
@@ -641,9 +641,9 @@ Four rules make those filled-in days as trustworthy as if they had happened on t
 3. **Nothing asks "what day is it?" in the middle of a sum.** Every calculation is told which date it's for. That's why the code that works out Positions takes the As-of date as an input instead of reading today's date: it gives the same answer for 11 March whether it runs on 11 March or a week later.
 4. **Cognitive Wealth catches up the same way.** Each Close publishes that day's files, the **Custodian feed**. Cognitive Wealth reads them one Close at a time, in order, and ignores a file it has already read (Part 6, "How do real Custodians send corrections?"). It doesn't matter whether five days of files arrive at once or one each evening.
 
-This is also how real systems recover. A real Custodian doesn't stop, but an advisor's software does: an outage, a failed nightly job, a holiday. Real platforms recover the same way, by fetching the daily files they missed and reading them in order. So a week away from the project is a free rehearsal of recovering from an outage.
+An advisor's software can stop too: an outage, a failed nightly job. Reading the missed daily files in order is the natural way back, though no public source says how real platforms do it ([the primer on the Close](06-the-close.md), Part 6). So this design is the project's own.
 
-One wrinkle: the real market history that prices are built from ends on some date. For days after that, the simulation draws returns at random from the past, using the date itself as the seed, so those days are still the same every time, just not real. [The primer on prices](04-prices-dividends-and-the-cash-sweep.md) (Part 6) and the primer on the Close (#48) cover both. Catching up is built in #50, after a single day's Close in #49.
+One wrinkle: the real market history that prices are built from ends on some date. For days after that, the simulation draws returns at random from the past, using the date itself as the seed, so those days are still the same every time, just not real. [The primer on prices](04-prices-dividends-and-the-cash-sweep.md) (Part 6) and [the primer on the Close](06-the-close.md) (Part 6) cover both. Catching up is built in #50, after a single day's Close in #49.
 
 ## Recap
 

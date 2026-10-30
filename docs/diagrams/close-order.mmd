@@ -1,0 +1,22 @@
+flowchart LR
+  subgraph inputs["Fixed inputs"]
+    market["Factor file, Treasury yields,<br/>Security catalog"]
+    sched["Dividend schedule"]
+  end
+  subgraph closed["Already closed days"]
+    before["Ledger and prices<br/>up to the Business day before"]
+  end
+  subgraph close["One Close, for one As-of date"]
+    direction LR
+    p["1. Prices<br/>one per Security"]
+    d["2. Dividends<br/>the world's one Corporate action:<br/>a row on each Pay date"]
+    i["3. Interest<br/>builds up; a row once a month"]
+    pos["4. Positions<br/>worked out, not stored"]
+    f["5. Delivery<br/>five files, Manifest last"]
+    p --> d --> i --> pos --> f
+  end
+  market --> p
+  sched --> d
+  before --> p
+  before --> d
+  before --> i

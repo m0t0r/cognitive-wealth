@@ -1,0 +1,15 @@
+gantt
+  title Off over Good Friday: the catch-up closes every Business day and skips the rest
+  dateFormat YYYY-MM-DD
+  axisFormat %a %d %b
+  section The laptop
+    Running, closes each evening     :on1, 2026-03-30, 2d
+    Switched off                     :crit, off, 2026-04-01, 6d
+    Started again, catches up        :milestone, 2026-04-07, 0d
+    Running, closes each evening     :on2, 2026-04-07, 3d
+  section Business days closed
+    Closed on the evening itself     :c1, 2026-03-30, 2d
+    Closed on Tue 7 Apr, in order    :active, c2, 2026-04-01, 2d
+    No Close, not Business days      :done, none, 2026-04-03, 3d
+    Closed on Tue 7 Apr, in order    :active, c3, 2026-04-06, 1d
+    Closed on the evening itself     :c4, 2026-04-07, 3d
