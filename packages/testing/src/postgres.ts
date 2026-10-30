@@ -143,7 +143,8 @@ export type TestDatabase = { name: string; url: (role: Role) => string };
 
 /**
  * A `test` with a `database` fixture: a fresh copy of the package's migrated template (see
- * `postgresGlobalSetup`), dropped after the test whatever its outcome.
+ * `postgresGlobalSetup`), dropped after the test whatever its outcome. `unmigratedDatabase` is the
+ * same with no migrations applied, for a test that migrates it itself.
  */
 export function createPostgresTest() {
   return test
@@ -159,11 +160,10 @@ export function createPostgresTest() {
       onCleanup(() => admin.end());
       return admin;
     })
-    .extend(
-      "database",
-      async ({ postgresServer, postgresAdmin }, { onCleanup }): Promise<TestDatabase> => {
+    .extend("copyOf", ({ postgresServer, postgresAdmin }, { onCleanup }) => {
+      return async (template: string): Promise<TestDatabase> => {
         const name = `${postgresServer.databasePrefix}${randomUUID().replaceAll("-", "")}`;
-        await createDatabase(postgresAdmin, { name, template: postgresServer.template });
+        await createDatabase(postgresAdmin, { name, template });
         onCleanup(() => dropDatabase(postgresAdmin, { name }));
         return {
           name,
@@ -174,6 +174,8 @@ export function createPostgresTest() {
               user: { name: role, password: postgresServer.passwords[role] },
             }),
         };
-      },
-    );
+      };
+    })
+    .extend("database", ({ copyOf, postgresServer }) => copyOf(postgresServer.template))
+    .extend("unmigratedDatabase", ({ copyOf }) => copyOf(BASE_DATABASE));
 }
