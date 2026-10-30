@@ -35,6 +35,14 @@ describe("parseWorld", () => {
     expect(world.crm.households.map((h) => h.primary.key)).toEqual(["dana-reyes"]);
   });
 
+  it("accepts the generated world", () => {
+    const world = parseWorld(readJson("generated.json"));
+
+    expect(world.crm.firm.name).toBe("Larkspur Wealth Partners");
+    expect(world.crm.households).toHaveLength(60);
+    expect(world.custodian.accounts).toEqual([]);
+  });
+
   it.each(cases)("rejects $file, naming $field ($caught_by)", ({ file, field, caught_by }) => {
     // The committed schema on its own lets exactly the "rules" cases through.
     expect(schemaAlone(readJson(`invalid/${file}`))).toBe(caught_by === "rules");

@@ -1,0 +1,1457 @@
+{
+  "version": 0,
+  "custodian": {
+    "accounts": []
+  },
+  "crm": {
+    "firm": {
+      "name": "Larkspur Wealth Partners"
+    },
+    "households": [
+      {
+        "key": "weber-01",
+        "name": "The Weber Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "ruth-weber-01",
+          "first_name": "Ruth",
+          "last_name": "Weber",
+          "born_on": "1943-04-16",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "alice-weber-01",
+          "first_name": "Alice",
+          "last_name": "Weber",
+          "born_on": "1938-02-07",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "quinn-02",
+        "name": "The Quinn Household",
+        "relationship_status": "former_client",
+        "primary": {
+          "key": "emma-quinn-02",
+          "first_name": "Emma",
+          "last_name": "Quinn",
+          "born_on": "1936-06-07",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "yusuf-andersen-02",
+          "first_name": "Yusuf",
+          "last_name": "Andersen",
+          "born_on": "1931-06-01",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "nakamura-03",
+        "name": "The Nakamura Household",
+        "relationship_status": "prospect",
+        "primary": {
+          "key": "fiona-nakamura-03",
+          "first_name": "Fiona",
+          "last_name": "Nakamura",
+          "born_on": "1941-12-15",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "irene-nakamura-03",
+          "first_name": "Irene",
+          "last_name": "Nakamura",
+          "born_on": "1946-01-02",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "shapiro-04",
+        "name": "The Shapiro Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "elena-shapiro-04",
+          "first_name": "Elena",
+          "last_name": "Shapiro",
+          "born_on": "1964-08-22",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "grace-shapiro-04",
+          "first_name": "Grace",
+          "last_name": "Shapiro",
+          "born_on": "1962-01-21",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "cedric-shapiro-04",
+            "first_name": "Cedric",
+            "last_name": "Shapiro",
+            "born_on": "2004-06-22",
+            "account_roles": []
+          },
+          {
+            "key": "yusuf-shapiro-04",
+            "first_name": "Yusuf",
+            "last_name": "Shapiro",
+            "born_on": "2016-09-01",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "hayes-05",
+        "name": "The Hayes Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "vera-hayes-05",
+          "first_name": "Vera",
+          "last_name": "Hayes",
+          "born_on": "1985-11-24",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "diana-hayes-05",
+          "first_name": "Diana",
+          "last_name": "Hayes",
+          "born_on": "1989-11-09",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "mendoza-06",
+        "name": "The Mendoza Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "fiona-mendoza-06",
+          "first_name": "Fiona",
+          "last_name": "Mendoza",
+          "born_on": "1979-05-20",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "omar-tran-06",
+          "first_name": "Omar",
+          "last_name": "Tran",
+          "born_on": "1983-10-20",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "abara-07",
+        "name": "The Abara Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "zoe-abara-07",
+          "first_name": "Zoe",
+          "last_name": "Abara",
+          "born_on": "1950-01-19",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "helen-petrov-07",
+          "first_name": "Helen",
+          "last_name": "Petrov",
+          "born_on": "1951-11-10",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "mbeki-08",
+        "name": "The Mbeki Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "gabriel-mbeki-08",
+          "first_name": "Gabriel",
+          "last_name": "Mbeki",
+          "born_on": "1982-08-14",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": [
+          {
+            "key": "nina-mbeki-08",
+            "first_name": "Nina",
+            "last_name": "Mbeki",
+            "born_on": "2023-06-25",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "cohen-09",
+        "name": "The Cohen Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "wendy-cohen-09",
+          "first_name": "Wendy",
+          "last_name": "Cohen",
+          "born_on": "1966-09-24",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "adele-cohen-09",
+          "first_name": "Adele",
+          "last_name": "Cohen",
+          "born_on": "1960-10-11",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "elias-cohen-09",
+            "first_name": "Elias",
+            "last_name": "Cohen",
+            "born_on": "2005-12-06",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "andersen-10",
+        "name": "The Andersen Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "imani-andersen-10",
+          "first_name": "Imani",
+          "last_name": "Andersen",
+          "born_on": "1946-06-18",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "sofia-garcia-10",
+          "first_name": "Sofia",
+          "last_name": "Garcia",
+          "born_on": "1943-05-16",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "tanaka-11",
+        "name": "The Tanaka Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "kai-tanaka-11",
+          "first_name": "Kai",
+          "last_name": "Tanaka",
+          "born_on": "1952-08-03",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": []
+      },
+      {
+        "key": "nguyen-12",
+        "name": "The Nguyen Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "lucia-nguyen-12",
+          "first_name": "Lucia",
+          "last_name": "Nguyen",
+          "born_on": "1977-12-03",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": [
+          {
+            "key": "isaac-nguyen-12",
+            "first_name": "Isaac",
+            "last_name": "Nguyen",
+            "born_on": "2009-11-22",
+            "account_roles": []
+          },
+          {
+            "key": "james-nguyen-12",
+            "first_name": "James",
+            "last_name": "Nguyen",
+            "born_on": "2005-03-01",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "ahmed-13",
+        "name": "The Ahmed Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "adele-ahmed-13",
+          "first_name": "Adele",
+          "last_name": "Ahmed",
+          "born_on": "1993-11-25",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "helen-ahmed-13",
+          "first_name": "Helen",
+          "last_name": "Ahmed",
+          "born_on": "1987-09-17",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "victor-ahmed-13",
+            "first_name": "Victor",
+            "last_name": "Ahmed",
+            "born_on": "2026-06-20",
+            "account_roles": []
+          },
+          {
+            "key": "sofia-ahmed-13",
+            "first_name": "Sofia",
+            "last_name": "Ahmed",
+            "born_on": "2018-10-08",
+            "account_roles": []
+          },
+          {
+            "key": "laila-ahmed-13",
+            "first_name": "Laila",
+            "last_name": "Ahmed",
+            "born_on": "2016-10-22",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "rahman-14",
+        "name": "The Rahman Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "nadia-rahman-14",
+          "first_name": "Nadia",
+          "last_name": "Rahman",
+          "born_on": "1978-11-12",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": []
+      },
+      {
+        "key": "clarke-15",
+        "name": "The Clarke Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "daniel-clarke-15",
+          "first_name": "Daniel",
+          "last_name": "Clarke",
+          "born_on": "1966-04-21",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "laila-clarke-15",
+          "first_name": "Laila",
+          "last_name": "Clarke",
+          "born_on": "1967-11-23",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "uma-clarke-15",
+            "first_name": "Uma",
+            "last_name": "Clarke",
+            "born_on": "2009-11-08",
+            "account_roles": []
+          },
+          {
+            "key": "aaron-clarke-15",
+            "first_name": "Aaron",
+            "last_name": "Clarke",
+            "born_on": "2007-02-24",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "schmidt-16",
+        "name": "The Schmidt Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "leo-schmidt-16",
+          "first_name": "Leo",
+          "last_name": "Schmidt",
+          "born_on": "1972-02-17",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "uma-dunn-16",
+          "first_name": "Uma",
+          "last_name": "Dunn",
+          "born_on": "1976-02-20",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "herrera-17",
+        "name": "The Herrera Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "ruth-herrera-17",
+          "first_name": "Ruth",
+          "last_name": "Herrera",
+          "born_on": "1965-05-19",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "hannah-herrera-17",
+          "first_name": "Hannah",
+          "last_name": "Herrera",
+          "born_on": "1961-10-31",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "fiona-herrera-17",
+            "first_name": "Fiona",
+            "last_name": "Herrera",
+            "born_on": "2024-09-03",
+            "account_roles": []
+          },
+          {
+            "key": "diana-herrera-17",
+            "first_name": "Diana",
+            "last_name": "Herrera",
+            "born_on": "2017-05-10",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "singh-18",
+        "name": "The Singh Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "anita-singh-18",
+          "first_name": "Anita",
+          "last_name": "Singh",
+          "born_on": "1988-04-27",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "yusuf-singh-18",
+          "first_name": "Yusuf",
+          "last_name": "Singh",
+          "born_on": "1990-04-15",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "keller-19",
+        "name": "The Keller Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "andre-keller-19",
+          "first_name": "Andre",
+          "last_name": "Keller",
+          "born_on": "1971-05-22",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "victor-keller-19",
+          "first_name": "Victor",
+          "last_name": "Keller",
+          "born_on": "1968-01-17",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "greene-20",
+        "name": "The Greene Household",
+        "relationship_status": "former_client",
+        "primary": {
+          "key": "kenji-greene-20",
+          "first_name": "Kenji",
+          "last_name": "Greene",
+          "born_on": "1966-06-29",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "helen-greene-20",
+          "first_name": "Helen",
+          "last_name": "Greene",
+          "born_on": "1965-03-12",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "silva-21",
+        "name": "The Silva Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "samir-silva-21",
+          "first_name": "Samir",
+          "last_name": "Silva",
+          "born_on": "1993-10-20",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": [
+          {
+            "key": "daniel-silva-21",
+            "first_name": "Daniel",
+            "last_name": "Silva",
+            "born_on": "2018-05-08",
+            "account_roles": []
+          },
+          {
+            "key": "priya-silva-21",
+            "first_name": "Priya",
+            "last_name": "Silva",
+            "born_on": "2023-08-28",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "torres-22",
+        "name": "The Torres Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "zane-torres-22",
+          "first_name": "Zane",
+          "last_name": "Torres",
+          "born_on": "1950-02-13",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "noah-torres-22",
+          "first_name": "Noah",
+          "last_name": "Torres",
+          "born_on": "1945-11-12",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "larsen-23",
+        "name": "The Larsen Household",
+        "relationship_status": "former_client",
+        "primary": {
+          "key": "noah-larsen-23",
+          "first_name": "Noah",
+          "last_name": "Larsen",
+          "born_on": "1946-11-02",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": []
+      },
+      {
+        "key": "castillo-24",
+        "name": "The Castillo Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "lucia-castillo-24",
+          "first_name": "Lucia",
+          "last_name": "Castillo",
+          "born_on": "1994-12-05",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "adele-castillo-24",
+          "first_name": "Adele",
+          "last_name": "Castillo",
+          "born_on": "1991-06-29",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "quincy-castillo-24",
+            "first_name": "Quincy",
+            "last_name": "Castillo",
+            "born_on": "2016-12-07",
+            "account_roles": []
+          },
+          {
+            "key": "vera-castillo-24",
+            "first_name": "Vera",
+            "last_name": "Castillo",
+            "born_on": "2015-02-08",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "chen-25",
+        "name": "The Chen Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "karen-chen-25",
+          "first_name": "Karen",
+          "last_name": "Chen",
+          "born_on": "1969-10-03",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": []
+      },
+      {
+        "key": "lombardi-26",
+        "name": "The Lombardi Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "emma-lombardi-26",
+          "first_name": "Emma",
+          "last_name": "Lombardi",
+          "born_on": "1983-07-23",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "laila-lombardi-26",
+          "first_name": "Laila",
+          "last_name": "Lombardi",
+          "born_on": "1979-07-05",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "leo-lombardi-26",
+            "first_name": "Leo",
+            "last_name": "Lombardi",
+            "born_on": "2013-08-20",
+            "account_roles": []
+          },
+          {
+            "key": "hannah-lombardi-26",
+            "first_name": "Hannah",
+            "last_name": "Lombardi",
+            "born_on": "2007-12-27",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "murphy-27",
+        "name": "The Murphy Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "cedric-murphy-27",
+          "first_name": "Cedric",
+          "last_name": "Murphy",
+          "born_on": "1979-06-06",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "quincy-murphy-27",
+          "first_name": "Quincy",
+          "last_name": "Murphy",
+          "born_on": "1975-02-21",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "helen-murphy-27",
+            "first_name": "Helen",
+            "last_name": "Murphy",
+            "born_on": "2015-11-08",
+            "account_roles": []
+          },
+          {
+            "key": "maria-murphy-27",
+            "first_name": "Maria",
+            "last_name": "Murphy",
+            "born_on": "2015-11-21",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "dunn-28",
+        "name": "The Dunn Household",
+        "relationship_status": "prospect",
+        "primary": {
+          "key": "amara-dunn-28",
+          "first_name": "Amara",
+          "last_name": "Dunn",
+          "born_on": "1952-11-08",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "sofia-dunn-28",
+          "first_name": "Sofia",
+          "last_name": "Dunn",
+          "born_on": "1957-04-11",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "fraser-29",
+        "name": "The Fraser Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "carla-fraser-29",
+          "first_name": "Carla",
+          "last_name": "Fraser",
+          "born_on": "1981-08-17",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "farid-fraser-29",
+          "first_name": "Farid",
+          "last_name": "Fraser",
+          "born_on": "1978-02-17",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "naomi-fraser-29",
+            "first_name": "Naomi",
+            "last_name": "Fraser",
+            "born_on": "2019-07-24",
+            "account_roles": []
+          },
+          {
+            "key": "oscar-fraser-29",
+            "first_name": "Oscar",
+            "last_name": "Fraser",
+            "born_on": "2015-11-22",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "walsh-30",
+        "name": "The Walsh Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "hannah-walsh-30",
+          "first_name": "Hannah",
+          "last_name": "Walsh",
+          "born_on": "1993-12-06",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "theo-walsh-30",
+          "first_name": "Theo",
+          "last_name": "Walsh",
+          "born_on": "1999-07-28",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "wei-walsh-30",
+            "first_name": "Wei",
+            "last_name": "Walsh",
+            "born_on": "2026-03-12",
+            "account_roles": []
+          },
+          {
+            "key": "jade-walsh-30",
+            "first_name": "Jade",
+            "last_name": "Walsh",
+            "born_on": "2021-08-16",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "brooks-31",
+        "name": "The Brooks Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "maria-brooks-31",
+          "first_name": "Maria",
+          "last_name": "Brooks",
+          "born_on": "1938-06-22",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "wendy-brooks-31",
+          "first_name": "Wendy",
+          "last_name": "Brooks",
+          "born_on": "1938-01-15",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "fischer-32",
+        "name": "The Fischer Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "chloe-fischer-32",
+          "first_name": "Chloe",
+          "last_name": "Fischer",
+          "born_on": "1947-12-10",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "sara-fischer-32",
+          "first_name": "Sara",
+          "last_name": "Fischer",
+          "born_on": "1944-02-07",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "hansen-33",
+        "name": "The Hansen Household",
+        "relationship_status": "former_client",
+        "primary": {
+          "key": "kenji-hansen-33",
+          "first_name": "Kenji",
+          "last_name": "Hansen",
+          "born_on": "1953-03-31",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "fiona-hansen-33",
+          "first_name": "Fiona",
+          "last_name": "Hansen",
+          "born_on": "1947-12-06",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "jensen-34",
+        "name": "The Jensen Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "elena-jensen-34",
+          "first_name": "Elena",
+          "last_name": "Jensen",
+          "born_on": "1992-08-05",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "imani-jensen-34",
+          "first_name": "Imani",
+          "last_name": "Jensen",
+          "born_on": "1991-03-20",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "daniel-jensen-34",
+            "first_name": "Daniel",
+            "last_name": "Jensen",
+            "born_on": "2013-08-01",
+            "account_roles": []
+          },
+          {
+            "key": "grace-jensen-34",
+            "first_name": "Grace",
+            "last_name": "Jensen",
+            "born_on": "2025-11-15",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "garcia-35",
+        "name": "The Garcia Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "miles-garcia-35",
+          "first_name": "Miles",
+          "last_name": "Garcia",
+          "born_on": "1943-05-05",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "ruth-garcia-35",
+          "first_name": "Ruth",
+          "last_name": "Garcia",
+          "born_on": "1937-07-30",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "dubois-36",
+        "name": "The Dubois Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "leo-dubois-36",
+          "first_name": "Leo",
+          "last_name": "Dubois",
+          "born_on": "1987-10-04",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "oscar-dubois-36",
+          "first_name": "Oscar",
+          "last_name": "Dubois",
+          "born_on": "1991-01-01",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "noah-dubois-36",
+            "first_name": "Noah",
+            "last_name": "Dubois",
+            "born_on": "2012-02-07",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "farah-37",
+        "name": "The Farah Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "victor-farah-37",
+          "first_name": "Victor",
+          "last_name": "Farah",
+          "born_on": "1975-08-27",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": []
+      },
+      {
+        "key": "zhang-38",
+        "name": "The Zhang Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "alan-zhang-38",
+          "first_name": "Alan",
+          "last_name": "Zhang",
+          "born_on": "1995-03-01",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "quincy-dunn-38",
+          "first_name": "Quincy",
+          "last_name": "Dunn",
+          "born_on": "1996-06-14",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "nadia-zhang-38",
+            "first_name": "Nadia",
+            "last_name": "Zhang",
+            "born_on": "2022-09-24",
+            "account_roles": []
+          },
+          {
+            "key": "julia-zhang-38",
+            "first_name": "Julia",
+            "last_name": "Zhang",
+            "born_on": "2015-09-07",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "banerjee-39",
+        "name": "The Banerjee Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "bianca-banerjee-39",
+          "first_name": "Bianca",
+          "last_name": "Banerjee",
+          "born_on": "1991-10-25",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "quincy-kapoor-39",
+          "first_name": "Quincy",
+          "last_name": "Kapoor",
+          "born_on": "1989-05-27",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "sato-40",
+        "name": "The Sato Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "irene-sato-40",
+          "first_name": "Irene",
+          "last_name": "Sato",
+          "born_on": "1965-08-09",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "leo-sato-40",
+          "first_name": "Leo",
+          "last_name": "Sato",
+          "born_on": "1963-03-06",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "adeyemi-41",
+        "name": "The Adeyemi Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "hassan-adeyemi-41",
+          "first_name": "Hassan",
+          "last_name": "Adeyemi",
+          "born_on": "1937-03-18",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "aaron-adeyemi-41",
+          "first_name": "Aaron",
+          "last_name": "Adeyemi",
+          "born_on": "1941-05-21",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "oakes-42",
+        "name": "The Oakes Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "jade-oakes-42",
+          "first_name": "Jade",
+          "last_name": "Oakes",
+          "born_on": "1977-03-01",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "helen-oakes-42",
+          "first_name": "Helen",
+          "last_name": "Oakes",
+          "born_on": "1981-10-24",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "haddad-43",
+        "name": "The Haddad Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "aaron-haddad-43",
+          "first_name": "Aaron",
+          "last_name": "Haddad",
+          "born_on": "1939-02-18",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "emma-haddad-43",
+          "first_name": "Emma",
+          "last_name": "Haddad",
+          "born_on": "1935-04-16",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "delgado-44",
+        "name": "The Delgado Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "rafael-delgado-44",
+          "first_name": "Rafael",
+          "last_name": "Delgado",
+          "born_on": "1937-08-31",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": []
+      },
+      {
+        "key": "rossi-45",
+        "name": "The Rossi Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "miles-rossi-45",
+          "first_name": "Miles",
+          "last_name": "Rossi",
+          "born_on": "1974-04-09",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": []
+      },
+      {
+        "key": "fontaine-46",
+        "name": "The Fontaine Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "leo-fontaine-46",
+          "first_name": "Leo",
+          "last_name": "Fontaine",
+          "born_on": "1992-01-12",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "james-fontaine-46",
+          "first_name": "James",
+          "last_name": "Fontaine",
+          "born_on": "1996-04-21",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "felix-fontaine-46",
+            "first_name": "Felix",
+            "last_name": "Fontaine",
+            "born_on": "2025-02-13",
+            "account_roles": []
+          },
+          {
+            "key": "samir-fontaine-46",
+            "first_name": "Samir",
+            "last_name": "Fontaine",
+            "born_on": "2021-06-03",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "alvarez-47",
+        "name": "The Alvarez Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "yusuf-alvarez-47",
+          "first_name": "Yusuf",
+          "last_name": "Alvarez",
+          "born_on": "1997-05-26",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "kenji-alvarez-47",
+          "first_name": "Kenji",
+          "last_name": "Alvarez",
+          "born_on": "2001-05-16",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "bennett-48",
+        "name": "The Bennett Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "jade-bennett-48",
+          "first_name": "Jade",
+          "last_name": "Bennett",
+          "born_on": "1938-11-20",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "marcus-bennett-48",
+          "first_name": "Marcus",
+          "last_name": "Bennett",
+          "born_on": "1942-08-30",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "kim-49",
+        "name": "The Kim Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "victor-kim-49",
+          "first_name": "Victor",
+          "last_name": "Kim",
+          "born_on": "1952-12-16",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "hugo-kim-49",
+          "first_name": "Hugo",
+          "last_name": "Kim",
+          "born_on": "1947-04-06",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "horvat-50",
+        "name": "The Horvat Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "tara-horvat-50",
+          "first_name": "Tara",
+          "last_name": "Horvat",
+          "born_on": "1966-08-03",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "james-horvat-50",
+          "first_name": "James",
+          "last_name": "Horvat",
+          "born_on": "1965-10-23",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "yusuf-horvat-50",
+            "first_name": "Yusuf",
+            "last_name": "Horvat",
+            "born_on": "2010-06-10",
+            "account_roles": []
+          },
+          {
+            "key": "adele-horvat-50",
+            "first_name": "Adele",
+            "last_name": "Horvat",
+            "born_on": "2014-07-17",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "moreau-51",
+        "name": "The Moreau Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "aisha-moreau-51",
+          "first_name": "Aisha",
+          "last_name": "Moreau",
+          "born_on": "1991-06-03",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "vera-horvat-51",
+          "first_name": "Vera",
+          "last_name": "Horvat",
+          "born_on": "1993-03-03",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "samir-moreau-51",
+            "first_name": "Samir",
+            "last_name": "Moreau",
+            "born_on": "2015-08-13",
+            "account_roles": []
+          },
+          {
+            "key": "lucia-moreau-51",
+            "first_name": "Lucia",
+            "last_name": "Moreau",
+            "born_on": "2026-01-19",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "kowalski-52",
+        "name": "The Kowalski Household",
+        "relationship_status": "prospect",
+        "primary": {
+          "key": "hugo-kowalski-52",
+          "first_name": "Hugo",
+          "last_name": "Kowalski",
+          "born_on": "1989-05-07",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": [
+          {
+            "key": "sofia-kowalski-52",
+            "first_name": "Sofia",
+            "last_name": "Kowalski",
+            "born_on": "2026-02-26",
+            "account_roles": []
+          },
+          {
+            "key": "wei-kowalski-52",
+            "first_name": "Wei",
+            "last_name": "Kowalski",
+            "born_on": "2012-11-08",
+            "account_roles": []
+          },
+          {
+            "key": "alan-kowalski-52",
+            "first_name": "Alan",
+            "last_name": "Kowalski",
+            "born_on": "2022-10-07",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "barnes-53",
+        "name": "The Barnes Household",
+        "relationship_status": "prospect",
+        "primary": {
+          "key": "noah-barnes-53",
+          "first_name": "Noah",
+          "last_name": "Barnes",
+          "born_on": "1951-12-09",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "sofia-barnes-53",
+          "first_name": "Sofia",
+          "last_name": "Barnes",
+          "born_on": "1955-03-08",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "goldberg-54",
+        "name": "The Goldberg Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "zane-goldberg-54",
+          "first_name": "Zane",
+          "last_name": "Goldberg",
+          "born_on": "1941-06-25",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "sara-goldberg-54",
+          "first_name": "Sara",
+          "last_name": "Goldberg",
+          "born_on": "1946-09-08",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "petrov-55",
+        "name": "The Petrov Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "lucia-petrov-55",
+          "first_name": "Lucia",
+          "last_name": "Petrov",
+          "born_on": "1973-05-06",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "naomi-vargas-55",
+          "first_name": "Naomi",
+          "last_name": "Vargas",
+          "born_on": "1974-09-21",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "isaac-petrov-55",
+            "first_name": "Isaac",
+            "last_name": "Petrov",
+            "born_on": "2023-12-08",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "ivanov-56",
+        "name": "The Ivanov Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "aisha-ivanov-56",
+          "first_name": "Aisha",
+          "last_name": "Ivanov",
+          "born_on": "1967-10-17",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "carla-ivanov-56",
+          "first_name": "Carla",
+          "last_name": "Ivanov",
+          "born_on": "1963-08-16",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "osei-57",
+        "name": "The Osei Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "james-osei-57",
+          "first_name": "James",
+          "last_name": "Osei",
+          "born_on": "1941-01-16",
+          "account_roles": []
+        },
+        "co_client": null,
+        "dependents": []
+      },
+      {
+        "key": "sullivan-58",
+        "name": "The Sullivan Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "leo-sullivan-58",
+          "first_name": "Leo",
+          "last_name": "Sullivan",
+          "born_on": "1990-09-29",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "lucia-sullivan-58",
+          "first_name": "Lucia",
+          "last_name": "Sullivan",
+          "born_on": "1992-01-13",
+          "account_roles": []
+        },
+        "dependents": []
+      },
+      {
+        "key": "becker-59",
+        "name": "The Becker Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "chloe-becker-59",
+          "first_name": "Chloe",
+          "last_name": "Becker",
+          "born_on": "1984-05-31",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "irene-ibrahim-59",
+          "first_name": "Irene",
+          "last_name": "Ibrahim",
+          "born_on": "1980-12-15",
+          "account_roles": []
+        },
+        "dependents": [
+          {
+            "key": "simon-becker-59",
+            "first_name": "Simon",
+            "last_name": "Becker",
+            "born_on": "2025-01-12",
+            "account_roles": []
+          },
+          {
+            "key": "alice-becker-59",
+            "first_name": "Alice",
+            "last_name": "Becker",
+            "born_on": "2004-05-16",
+            "account_roles": []
+          }
+        ]
+      },
+      {
+        "key": "kaur-60",
+        "name": "The Kaur Household",
+        "relationship_status": "client",
+        "primary": {
+          "key": "alice-kaur-60",
+          "first_name": "Alice",
+          "last_name": "Kaur",
+          "born_on": "1942-07-06",
+          "account_roles": []
+        },
+        "co_client": {
+          "key": "noah-kaur-60",
+          "first_name": "Noah",
+          "last_name": "Kaur",
+          "born_on": "1941-07-15",
+          "account_roles": []
+        },
+        "dependents": []
+      }
+    ]
+  }
+}

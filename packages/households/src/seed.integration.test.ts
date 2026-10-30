@@ -15,7 +15,7 @@ import { test } from "@repo/db/testing";
 import { asc, eq } from "drizzle-orm";
 import { endAccountRole, endHouseholdMembership } from "./end";
 import { SeedConflict, seedDevWorld } from "./seed";
-import { InvalidWorldError, type World, parseWorld } from "./world";
+import { InvalidWorldError, type World, householdPeople, parseWorld } from "./world";
 
 const readWorld = (path = "v0.json"): unknown =>
   JSON.parse(readFileSync(new URL(`../../../world/${path}`, import.meta.url), "utf8"));
@@ -100,6 +100,28 @@ async function larkspurId(db: Database) {
 }
 
 describe("seedDevWorld", () => {
+  test("loads the generated world, which has no Accounts yet", async ({ orm, migratorOrm }) => {
+    const world = parseWorld(readWorld("generated.json"));
+    const members = world.crm.households.flatMap((home) => [...householdPeople(home)]);
+
+    expect((await seedDevWorld(orm, world)).crm).toEqual({
+      added: {
+        households: 60,
+        people: members.length,
+        householdMembers: members.length,
+        accounts: 0,
+        accountRoles: 0,
+      },
+    });
+
+    const { households, people, roles } = await crmRows(migratorOrm);
+    expect(households).toHaveLength(60);
+    expect(people).toHaveLength(members.length);
+    expect(roles).toEqual([]);
+    const statuses = new Set(households.map((row) => row.relationshipStatus));
+    expect(statuses).toEqual(new Set(["prospect", "client", "former_client"]));
+  });
+
   test("loads world v0's CRM half into Larkspur", async ({ orm, migratorOrm }) => {
     expect((await seedDevWorld(orm, readWorld())).crm).toEqual({
       added: { households: 1, people: 2, householdMembers: 2, accounts: 2, accountRoles: 4 },
