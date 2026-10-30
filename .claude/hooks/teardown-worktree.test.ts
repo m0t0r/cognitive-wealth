@@ -98,9 +98,11 @@ type Call = { args: string[]; cwd: string };
 
 function callsIn(file: string): Call[] {
   if (!existsSync(file)) return [];
+  // A detached sweep may still be writing: the file exists before its bytes do, so only a line
+  // that ends in a newline counts.
   return readFileSync(file, "utf8")
-    .trim()
     .split("\n")
+    .slice(0, -1)
     .map((line): Call => JSON.parse(line));
 }
 
@@ -268,12 +270,14 @@ describe("at the edges of a session", () => {
   test("records a failed background sweep for the next session", async ({ layout }) => {
     run({ layout, event: "SessionStart", fail: true });
     const recorded = join(layout.main, ".dev/worktree-env/sweep-failed.txt");
+    // The file exists before its bytes do, so wait for what it says, not for the file.
+    const recordedText = () => (existsSync(recorded) ? readFileSync(recorded, "utf8") : "");
     const deadline = Date.now() + 10_000;
-    while (!existsSync(recorded) && Date.now() < deadline) {
+    while (!recordedText().includes("permission denied") && Date.now() < deadline) {
       // oxlint-disable-next-line no-await-in-loop -- polling for the detached sweep
       await sleep(50);
     }
-    expect(readFileSync(recorded, "utf8")).toContain("permission denied");
+    expect(recordedText()).toContain("permission denied");
   });
 
   test("forgets a failure once a sweep succeeds", ({ layout }) => {
