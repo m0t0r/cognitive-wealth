@@ -88,7 +88,12 @@ const WITH_PROBE = {
 
 describe("every table app may update or delete", () => {
   test("keeps history on the migrated database", async ({ migratorOrm }) => {
-    expect(changeable(APP_PRIVILEGES).toSorted()).toEqual(["custodial_account", "security"]);
+    expect(changeable(APP_PRIVILEGES).toSorted()).toEqual([
+      "account_role",
+      "custodial_account",
+      "household_member",
+      "security",
+    ]);
     expect(await historyRuleBreaches(migratorOrm)).toEqual([]);
   });
 

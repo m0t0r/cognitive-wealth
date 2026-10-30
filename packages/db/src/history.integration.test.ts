@@ -198,7 +198,12 @@ describe("history", () => {
     expect(firms).toEqual([{ firmId: f.id }]);
   });
 
-  describe.for(["security_history", "custodial_account_history"])("%s", (table) => {
+  describe.for([
+    "security_history",
+    "custodial_account_history",
+    "account_role_history",
+    "household_member_history",
+  ])("%s", (table) => {
     firm.for([
       ["insert", sql`insert into ${sql.identifier(table)} default values`],
       ["update", sql`update ${sql.identifier(table)} set changed_by_system = 'app'`],

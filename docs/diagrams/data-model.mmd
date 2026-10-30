@@ -29,10 +29,14 @@ erDiagram
   security ||--o{ security_price : "is priced by"
   custodial_account ||--o{ custodial_account_history : "was (record_id)"
   security ||--o{ security_history : "was (record_id)"
+  household_member ||--o{ household_member_history : "was (record_id)"
+  account_role ||--o{ account_role_history : "was (record_id)"
   custodian_delivery |o--o{ custodial_account_history : "changed"
   custodian_delivery |o--o{ security_history : "changed"
   user |o--o{ custodial_account_history : "changed"
   user |o--o{ security_history : "changed"
+  user |o--o{ household_member_history : "changed"
+  user |o--o{ account_role_history : "changed"
 
   user {
     bigint id PK
@@ -114,9 +118,11 @@ erDiagram
     bigint id PK
     uuid public_id UK
     bigint firm_id FK
-    bigint household_id FK "same Firm"
-    bigint person_id FK "same Firm"
-    text role "one primary, at most one co_client"
+    bigint household_id FK "same Firm, restrict"
+    bigint person_id FK "same Firm, restrict"
+    text role "one current primary, at most one co_client"
+    date starts_on
+    date ends_on "null while it holds"
   }
   custodial_account {
     bigint id PK
@@ -130,10 +136,11 @@ erDiagram
     bigint id PK
     uuid public_id UK
     bigint firm_id FK
-    bigint person_id FK "same Firm"
-    bigint account_id FK "same Firm"
+    bigint person_id FK "same Firm, restrict"
+    bigint account_id FK "same Firm, restrict"
     text role "owner, joint_owner, ..."
     date starts_on
+    date ends_on "null while it holds"
   }
   world_seed {
     bigint id PK
@@ -198,6 +205,28 @@ erDiagram
     bigint firm_id FK
     text registration_type "as it was"
     date opened_on "as it was"
+    text operation "update or delete"
+    timestamptz valid_until "Record time"
+    bigint changed_by_user_id FK "exactly one of"
+    bigint changed_by_delivery_id FK "these three"
+    text changed_by_system
+  }
+  household_member_history {
+    bigint id PK
+    bigint record_id "the membership's id"
+    bigint firm_id FK
+    date ends_on "as it was"
+    text operation "update or delete"
+    timestamptz valid_until "Record time"
+    bigint changed_by_user_id FK "exactly one of"
+    bigint changed_by_delivery_id FK "these three"
+    text changed_by_system
+  }
+  account_role_history {
+    bigint id PK
+    bigint record_id "the Account role's id"
+    bigint firm_id FK
+    date ends_on "as it was"
     text operation "update or delete"
     timestamptz valid_until "Record time"
     bigint changed_by_user_id FK "exactly one of"

@@ -23,6 +23,7 @@ import {
  */
 export const FIRM_SCOPED_TABLES = [
   "account_role",
+  "account_role_history",
   "custodial_account",
   "custodial_account_history",
   "custodial_position",
@@ -30,6 +31,7 @@ export const FIRM_SCOPED_TABLES = [
   "custodian_delivery",
   "household",
   "household_member",
+  "household_member_history",
   "person",
   "security",
   "security_history",
@@ -49,9 +51,13 @@ export async function seedFirm(owner: Database, slug: string): Promise<number> {
     .insert(person)
     .values({ firmId, firstName: "Ada", lastName: slug, bornOn: "1980-01-01" })
     .returning();
-  await owner
-    .insert(householdMember)
-    .values({ firmId, householdId: home!.id, personId: someone!.id, role: "primary" });
+  await owner.insert(householdMember).values({
+    firmId,
+    householdId: home!.id,
+    personId: someone!.id,
+    role: "primary",
+    startsOn: "2026-01-01",
+  });
   const [account] = await owner
     .insert(custodialAccount)
     .values({ firmId, accountNumber: "CW-000001" })
@@ -78,6 +84,14 @@ export async function seedFirm(owner: Database, slug: string): Promise<number> {
     .set({ registrationType: "individual" })
     .where(eq(custodialAccount.id, account!.id));
   await owner.update(security).set({ name: "Total Stock Market" }).where(eq(security.id, fund!.id));
+  await owner
+    .update(householdMember)
+    .set({ endsOn: "2026-03-02" })
+    .where(eq(householdMember.firmId, firmId));
+  await owner
+    .update(accountRole)
+    .set({ endsOn: "2026-03-02" })
+    .where(eq(accountRole.firmId, firmId));
   const day = { firmId, deliveryId: delivery!.id, securityId: fund!.id };
   await owner.insert(custodialTransaction).values({
     ...day,

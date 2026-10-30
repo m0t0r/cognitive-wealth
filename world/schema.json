@@ -183,6 +183,11 @@
           "title": "Born On",
           "type": "string"
         },
+        "joined_on": {
+          "format": "date",
+          "title": "Joined On",
+          "type": "string"
+        },
         "account_roles": {
           "default": [],
           "items": {
@@ -196,7 +201,8 @@
         "key",
         "first_name",
         "last_name",
-        "born_on"
+        "born_on",
+        "joined_on"
       ],
       "title": "Person",
       "type": "object"

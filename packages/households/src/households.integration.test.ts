@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import type { Database } from "@repo/db";
-import { household, organization } from "@repo/db/schema";
+import { accountRole, household, householdMember, organization, person } from "@repo/db/schema";
 import { test } from "@repo/db/testing";
+import { asc, eq } from "drizzle-orm";
+import { endAccountRole, endHouseholdMembership } from "./end";
 import { listHouseholds } from "./households";
 import { z } from "zod";
 import { seedDevWorld } from "./seed";
@@ -70,6 +72,73 @@ describe("listHouseholds", () => {
     expect(jordan!.accountRoles.map((r) => r.account)).toEqual(
       dana!.accountRoles.map((r) => r.account),
     );
+  });
+
+  // The hold rule (#192), with today as its date: an end date is the first day a row doesn't hold.
+  test("shows only the memberships and Account roles that hold today", async ({
+    orm,
+    migratorOrm,
+  }) => {
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-04-15T12:00:00Z") });
+    // The shared config restores mocks, envs and globals, not timers.
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const { larkspur } = await seededFirms(orm);
+    const [home] = await migratorOrm.select().from(household);
+    const [dana, jordan] = await migratorOrm.select().from(person).orderBy(asc(person.id));
+    const roles = await migratorOrm
+      .select()
+      .from(accountRole)
+      .where(eq(accountRole.personId, dana!.id))
+      .orderBy(asc(accountRole.startsOn));
+    const actor = { system: "test" };
+    // Ended today, so it no longer holds; ended tomorrow, so it still does.
+    await endAccountRole(orm, {
+      firmId: larkspur,
+      actor,
+      publicId: roles[0]!.publicId,
+      endsOn: "2026-04-15",
+    });
+    await endAccountRole(orm, {
+      firmId: larkspur,
+      actor,
+      publicId: roles[1]!.publicId,
+      endsOn: "2026-04-16",
+    });
+    await endHouseholdMembership(orm, {
+      firmId: larkspur,
+      actor,
+      householdPublicId: home!.publicId,
+      personPublicId: jordan!.publicId,
+      endsOn: "2026-04-15",
+    });
+    // Joins, and takes a role, only tomorrow.
+    await migratorOrm.insert(householdMember).values({
+      firmId: larkspur,
+      householdId: home!.id,
+      personId: jordan!.id,
+      role: "dependent",
+      startsOn: "2026-04-16",
+    });
+    await migratorOrm.insert(accountRole).values({
+      firmId: larkspur,
+      personId: dana!.id,
+      accountId: roles[0]!.accountId,
+      role: "owner",
+      startsOn: "2026-04-16",
+    });
+
+    const [listed] = await listHouseholds(orm, larkspur);
+
+    expect(
+      listed?.people.map(({ firstName, accountRoles }) => ({
+        firstName,
+        roles: accountRoles.map((r) => r.role),
+      })),
+    ).toEqual([{ firstName: "Dana", roles: ["owner"] }]);
+    // The one left is the role ending tomorrow, on CW-000002.
+    expect(listed?.people[0]?.accountRoles[0]?.account.accountNumber).toBe("CW-000002");
   });
 
   test("leaves out other Firms' Households", async ({ orm, migratorOrm }) => {

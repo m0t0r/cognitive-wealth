@@ -26,7 +26,7 @@ import { firmIsolation, knownValue } from "./_domain";
 import { id, timestamptz } from "./_helpers";
 import { user } from "./auth";
 import { custodianDelivery, securityColumns } from "./custodian-feed";
-import { custodialAccountColumns } from "./households";
+import { accountRoleColumns, custodialAccountColumns, householdMemberColumns } from "./households";
 
 export const HISTORY_OPERATIONS = ["update", "delete"] as const;
 
@@ -85,6 +85,18 @@ const historyTable = <Copied extends Record<string, PgColumnBuilderBase> & { fir
 export const custodialAccountHistory = historyTable({
   name: "custodial_account_history",
   copied: custodialAccountColumns(),
+});
+
+/** `household_member`'s earlier versions. */
+export const householdMemberHistory = historyTable({
+  name: "household_member_history",
+  copied: householdMemberColumns(),
+});
+
+/** `account_role`'s earlier versions. */
+export const accountRoleHistory = historyTable({
+  name: "account_role_history",
+  copied: accountRoleColumns(),
 });
 
 /** `security`'s earlier versions. */

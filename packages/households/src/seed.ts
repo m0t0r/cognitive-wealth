@@ -197,6 +197,7 @@ async function loadCrmHalf(
         householdId: householdIds.get(householdKey)!,
         personId: personIds.get(worldPerson.key)!,
         role,
+        startsOn: worldPerson.joined_on,
       })),
     )
     .onConflictDoNothing()
@@ -255,10 +256,14 @@ type RefuseChangedRowsArgs = {
 
 /**
  * Throws a `SeedConflict` unless every seeded row the world file describes matches it: each
- * Household's and Person's details, who is in each Household in which role, and each Person's
- * Account roles. Called after the inserts, so a new row matches trivially and an old one that
- * differs is caught; the caller's transaction then rolls the whole run back. Rows the world file
- * doesn't name, such as a Household it no longer has, are left alone.
+ * Household's and Person's details, who is in each Household in which role since when, and each
+ * Person's Account roles. Called after the inserts, so a new row matches trivially and an old one
+ * that differs is caught; the caller's transaction then rolls the whole run back. Rows the world
+ * file doesn't name, such as a Household it no longer has, are left alone.
+ *
+ * A row the app has ended differs too, since the world file describes rows that hold. Uniqueness
+ * covers only current memberships, so the inserts above may have added a fresh one beside it, and
+ * this refusal is what takes that back: an end is never undone by a rerun.
  */
 async function refuseChangedRows(
   db: Database,
@@ -287,6 +292,8 @@ async function refuseChangedRows(
         householdKey: household.seedKey,
         personKey: person.seedKey,
         role: householdMember.role,
+        startsOn: householdMember.startsOn,
+        endsOn: householdMember.endsOn,
       })
       .from(householdMember)
       .innerJoin(household, eq(household.id, householdMember.householdId))
@@ -300,6 +307,7 @@ async function refuseChangedRows(
         accountNumber: custodialAccount.accountNumber,
         role: accountRole.role,
         startsOn: accountRole.startsOn,
+        endsOn: accountRole.endsOn,
       })
       .from(accountRole)
       .innerJoin(person, eq(person.id, accountRole.personId))
@@ -328,21 +336,21 @@ async function refuseChangedRows(
   for (const home of world.crm.households) {
     const wanted = people
       .filter((p) => p.householdKey === home.key)
-      .map((p) => `${p.worldPerson.key} ${p.role}`);
+      .map((p) => `${p.worldPerson.key} ${p.role} ${p.worldPerson.joined_on} null`);
     const loaded = members
       .filter((m) => m.householdKey === home.key)
-      .map((m) => `${m.personKey} ${m.role}`);
+      .map((m) => `${m.personKey} ${m.role} ${m.startsOn} ${m.endsOn}`);
     if (!sameItems(wanted, loaded)) {
       throw new SeedConflict(`Household ${home.key} already has other People in other roles`);
     }
   }
   for (const { worldPerson } of people) {
     const wanted = worldPerson.account_roles.map(
-      (r) => `${r.account_number} ${r.role} ${r.starts_on}`,
+      (r) => `${r.account_number} ${r.role} ${r.starts_on} null`,
     );
     const loaded = roles
       .filter((r) => r.personKey === worldPerson.key)
-      .map((r) => `${r.accountNumber} ${r.role} ${r.startsOn}`);
+      .map((r) => `${r.accountNumber} ${r.role} ${r.startsOn} ${r.endsOn}`);
     if (!sameItems(wanted, loaded)) {
       throw new SeedConflict(`Person ${worldPerson.key} already holds other Account roles`);
     }

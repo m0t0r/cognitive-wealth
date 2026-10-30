@@ -15,17 +15,19 @@ import {
   toPublicHousehold,
   toPublicPerson,
 } from "./dto";
+import { membershipHolds, roleHolds, today } from "./holds";
 
 /**
- * The Firm `firmId`'s Households, by name, with their People and the Account roles each holds.
- * The Firm is passed in, never read from a session. The queries run inside `withFirm`, so
- * row-level security holds them to the Firm, and each still filters by it too (ADR 0020).
+ * The Firm `firmId`'s Households, by name, with the People in them today and the Account roles each
+ * holds today. The Firm is passed in, never read from a session. The queries run inside `withFirm`,
+ * so row-level security holds them to the Firm, and each still filters by it too (ADR 0020).
  */
 export async function listHouseholds(db: Database, firmId: number): Promise<PublicHousehold[]> {
   return withFirm(db, { firmId, query: (tx) => householdsOf(tx, firmId) });
 }
 
 async function householdsOf(db: Database, firmId: number): Promise<PublicHousehold[]> {
+  const on = today();
   const [households, members, roles] = await Promise.all([
     db
       .select()
@@ -36,7 +38,7 @@ async function householdsOf(db: Database, firmId: number): Promise<PublicHouseho
       .select({ householdId: householdMember.householdId, role: householdMember.role, person })
       .from(householdMember)
       .innerJoin(person, and(eq(person.id, householdMember.personId), eq(person.firmId, firmId)))
-      .where(eq(householdMember.firmId, firmId))
+      .where(and(eq(householdMember.firmId, firmId), membershipHolds(on)))
       .orderBy(asc(person.id)),
     db
       .select({ personId: accountRole.personId, role: accountRole, account: custodialAccount })
@@ -45,7 +47,7 @@ async function householdsOf(db: Database, firmId: number): Promise<PublicHouseho
         custodialAccount,
         and(eq(custodialAccount.id, accountRole.accountId), eq(custodialAccount.firmId, firmId)),
       )
-      .where(eq(accountRole.firmId, firmId))
+      .where(and(eq(accountRole.firmId, firmId), roleHolds(on)))
       .orderBy(asc(custodialAccount.accountNumber), asc(accountRole.startsOn), asc(accountRole.id)),
   ]);
 

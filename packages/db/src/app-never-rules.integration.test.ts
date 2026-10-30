@@ -8,10 +8,14 @@
 // `src/schema/` fails type checking here, and a changed SQL name follows the schema.
 import { getTableName, sql } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
+import { setActor } from "./actor";
 import { BETTER_AUTH_TABLES } from "./better-auth-tables";
 import type { connect } from "./connect";
+import { withFirm } from "./firm";
+import { seedFirm } from "./firm-test-data";
 import {
   accountRole,
+  accountRoleHistory,
   auditEvent,
   custodialAccount,
   custodialAccountHistory,
@@ -20,6 +24,7 @@ import {
   custodianDelivery,
   household,
   householdMember,
+  householdMemberHistory,
   person,
   security,
   securityHistory,
@@ -31,6 +36,8 @@ import { test } from "./testing";
 
 // postgres.js's Drizzle type, so `execute` takes the rows' type.
 type PostgresDatabase = ReturnType<typeof connect>["db"];
+
+const INSUFFICIENT_PRIVILEGE = { cause: { code: "42501" } };
 
 /** Rows are added and read, never changed or removed. */
 const FACTS: PgTable[] = [
@@ -48,19 +55,30 @@ const FACTS: PgTable[] = [
 const CUSTODIAN_RECORDS: PgTable[] = [custodialAccount, security];
 
 /**
+ * The CRM: a membership or an Account role is ended with its end date and a Household stays as a
+ * Former client, so a row is never removed (#192), a Prospect's that never signed included.
+ */
+const CRM: PgTable[] = [accountRole, household, householdMember, person];
+
+/**
  * Earlier versions of rows (ADR 0025), which only the `record_history()` trigger writes, so `app`
  * can neither skip a version nor edit or delete one.
  */
-const HISTORY: PgTable[] = [custodialAccountHistory, securityHistory];
+const HISTORY: PgTable[] = [
+  accountRoleHistory,
+  custodialAccountHistory,
+  householdMemberHistory,
+  securityHistory,
+];
 
 const NEVER_UPDATED: PgTable[] = [...FACTS, ...HISTORY];
-const NEVER_DELETED: PgTable[] = [...FACTS, ...CUSTODIAN_RECORDS, ...HISTORY];
+const NEVER_DELETED: PgTable[] = [...FACTS, ...CUSTODIAN_RECORDS, ...CRM, ...HISTORY];
 
 /**
  * Cognitive Wealth's own tables whose rows `app` may change or remove, as far as its grants allow:
- * the CRM (#192, #193) and the seed's record of the world file it loaded.
+ * the seed's record of the world file it loaded.
  */
-const MAY_CHANGE: PgTable[] = [accountRole, household, householdMember, person, worldSeed];
+const MAY_CHANGE: PgTable[] = [worldSeed];
 
 /**
  * Every table in `public` belongs to exactly one, so a new one fails until it's sorted: a fact a
@@ -69,6 +87,7 @@ const MAY_CHANGE: PgTable[] = [accountRole, household, householdMember, person, 
 const GROUPS: Record<string, readonly string[]> = {
   facts: tableNames(FACTS),
   "Custodian records": tableNames(CUSTODIAN_RECORDS),
+  CRM: tableNames(CRM),
   history: tableNames(HISTORY),
   "Better Auth": BETTER_AUTH_TABLES,
   "may change": tableNames(MAY_CHANGE),
@@ -169,14 +188,18 @@ describe("app's never-rules", () => {
     expect(await neverRuleBreaches(migratorOrm)).toEqual(["app may delete custodial_transaction"]);
   });
 
-  test.for(["custodial_account", "security"])(
-    "report app deleting from %s",
-    async (table, { migratorOrm }) => {
-      await migratorOrm.execute(sql`grant delete on table ${sql.identifier(table)} to app`);
+  test.for([
+    "custodial_account",
+    "security",
+    "household",
+    "person",
+    "household_member",
+    "account_role",
+  ])("report app deleting from %s", async (table, { migratorOrm }) => {
+    await migratorOrm.execute(sql`grant delete on table ${sql.identifier(table)} to app`);
 
-      expect(await neverRuleBreaches(migratorOrm)).toEqual([`app may delete ${table}`]);
-    },
-  );
+    expect(await neverRuleBreaches(migratorOrm)).toEqual([`app may delete ${table}`]);
+  });
 
   test("report app updating any column of a fact table", async ({ migratorOrm }) => {
     await migratorOrm.execute(sql`grant update (shares) on table custodial_position to app`);
@@ -214,6 +237,48 @@ describe("app's never-rules", () => {
     await migratorOrm.execute(sql`grant truncate on table session to app`);
 
     expect(await neverRuleBreaches(migratorOrm)).toEqual(["app may truncate session"]);
+  });
+});
+
+// The rules above read the catalog; these are what `app` gets when it tries, inside its Firm.
+describe("app on the CRM tables", () => {
+  const firm = test.extend("firmId", ({ migratorOrm }) => seedFirm(migratorOrm, "larkspur"));
+
+  firm.for(["household", "person", "household_member", "account_role"])(
+    "can't delete from %s",
+    async (table, { orm, firmId }) => {
+      await expect(
+        withFirm(orm, {
+          firmId,
+          query: (tx) => tx.execute(sql`delete from ${sql.identifier(table)}`),
+        }),
+      ).rejects.toMatchObject(INSUFFICIENT_PRIVILEGE);
+    },
+  );
+
+  firm.for([
+    ["household_member", "starts_on", sql`'2026-02-01'`],
+    ["household_member", "role", sql`'dependent'`],
+    ["household_member", "person_id", sql`${1}`],
+    ["household_member", "household_id", sql`${1}`],
+    ["household_member", "firm_id", sql`${1}`],
+    ["account_role", "starts_on", sql`'2026-02-01'`],
+    ["account_role", "role", sql`'beneficiary'`],
+    ["account_role", "person_id", sql`${1}`],
+    ["account_role", "account_id", sql`${1}`],
+    ["account_role", "firm_id", sql`${1}`],
+  ] as const)("can't update %s.%s", async ([table, column, value], { orm, firmId }) => {
+    await expect(
+      withFirm(orm, {
+        firmId,
+        query: async (tx) => {
+          await setActor(tx, { system: "test" });
+          await tx.execute(
+            sql`update ${sql.identifier(table)} set ${sql.identifier(column)} = ${value}`,
+          );
+        },
+      }),
+    ).rejects.toMatchObject(INSUFFICIENT_PRIVILEGE);
   });
 });
 

@@ -13,6 +13,7 @@ import {
 import { WORLD_FIRM_SLUG } from "@repo/db/seed-data";
 import { test } from "@repo/db/testing";
 import { asc, eq } from "drizzle-orm";
+import { endAccountRole, endHouseholdMembership } from "./end";
 import { SeedConflict, seedDevWorld } from "./seed";
 import { InvalidWorldError, type World, householdPeople, parseWorld } from "./world";
 
@@ -50,6 +51,27 @@ async function editInTheApp(db: Database) {
     householdId: reyes!.id,
     personId: child!.id,
     role: "dependent",
+    startsOn: "2026-03-02",
+  });
+}
+
+/** Ends a seeded Account role of Jordan's and their membership, as `app`, as the app would. */
+async function endInTheApp(orm: Database, migratorOrm: Database) {
+  const firmId = await larkspurId(orm);
+  const [home] = await migratorOrm.select().from(household);
+  const [jordan] = await migratorOrm.select().from(person).where(eq(person.firstName, "Jordan"));
+  const [role] = await migratorOrm
+    .select()
+    .from(accountRole)
+    .where(eq(accountRole.personId, jordan!.id));
+  const actor = { system: "test" };
+  await endAccountRole(orm, { firmId, actor, publicId: role!.publicId, endsOn: "2026-04-01" });
+  await endHouseholdMembership(orm, {
+    firmId,
+    actor,
+    householdPublicId: home!.publicId,
+    personPublicId: jordan!.publicId,
+    endsOn: "2026-04-01",
   });
 }
 
@@ -62,6 +84,7 @@ const okafor: World["crm"]["households"][number] = {
     first_name: "Ada",
     last_name: "Okafor",
     born_on: "1985-11-30",
+    joined_on: "2026-03-02",
     account_roles: [],
   },
   co_client: null,
@@ -204,6 +227,13 @@ describe("seedDevWorld", () => {
       "Household reyes already has other People in other roles",
     ],
     [
+      "when a Person joined",
+      (world) => {
+        world.crm.households[0]!.co_client!.joined_on = "2026-02-27";
+      },
+      "Household reyes already has other People in other roles",
+    ],
+    [
       "an Account role",
       (world) => {
         world.crm.households[0]!.co_client!.account_roles[1]!.role = "owner";
@@ -264,6 +294,35 @@ describe("seedDevWorld", () => {
       new SeedConflict("Household reyes is already seeded with other details"),
     );
     expect(await crmRows(migratorOrm)).toEqual(edited);
+  });
+
+  test("leaves a role and membership the app ended when the world file hasn't changed", async ({
+    orm,
+    migratorOrm,
+  }) => {
+    await seedDevWorld(orm, readWorld());
+    await endInTheApp(orm, migratorOrm);
+    const ended = await crmRows(migratorOrm);
+
+    await seedDevWorld(orm, readWorld());
+
+    expect(await crmRows(migratorOrm)).toEqual(ended);
+  });
+
+  // Uniqueness covers only current memberships, so conflict-skipping alone would seat Jordan again.
+  test("refuses a changed world file rather than undo an end, and inserts nothing", async ({
+    orm,
+    migratorOrm,
+  }) => {
+    await seedDevWorld(orm, readWorld());
+    await endInTheApp(orm, migratorOrm);
+    const ended = await crmRows(migratorOrm);
+    const world = parseWorld(readWorld());
+    world.crm.households.push(okafor);
+
+    await expect(seedDevWorld(orm, world)).rejects.toThrow(SeedConflict);
+
+    expect(await crmRows(migratorOrm)).toEqual(ended);
   });
 
   test("remembers the new world once it loads", async ({ orm, migratorOrm }) => {

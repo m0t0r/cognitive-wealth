@@ -13,7 +13,7 @@ import {
   person,
   security,
 } from "@repo/db/schema";
-import { and, asc, eq, inArray, lte, max, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   type HouseholdOverview,
@@ -24,6 +24,7 @@ import {
   toOverviewPersonName,
   toPublicPosition,
 } from "./dto";
+import { membershipHolds, roleHolds, today } from "./holds";
 
 const PublicId = z.uuid();
 
@@ -67,11 +68,11 @@ async function overviewOf(
     .select({ asOf: max(custodianDelivery.asOfDate) })
     .from(custodianDelivery)
     .where(eq(custodianDelivery.firmId, firmId));
-  // Account roles are dated: the ones that count have started by the latest As-of date, the day
-  // the Positions describe, or, before the first Delivery, by today (UTC).
-  const today = new Date().toISOString().slice(0, 10);
-  const rolesOn = sql<string>`coalesce((${latestAsOf}), ${today}::date)`;
-  const started = lte(accountRole.startsOn, rolesOn);
+  // Memberships and Account roles are dated: the ones that count hold on the latest As-of date, the
+  // day the Positions describe, or, before the first Delivery, today (UTC).
+  const heldOn = sql<string>`coalesce((${latestAsOf}), ${today()}::date)`;
+  const memberHolds = membershipHolds(heldOn);
+  const holds = roleHolds(heldOn);
   const [[found], members, owned, membersRoles, [latest]] = await Promise.all([
     db.select().from(household).where(thisHousehold),
     db
@@ -79,7 +80,7 @@ async function overviewOf(
       .from(householdMember)
       .innerJoin(household, and(thisHousehold, eq(household.id, householdMember.householdId)))
       .innerJoin(person, and(eq(person.id, householdMember.personId), eq(person.firmId, firmId)))
-      .where(eq(householdMember.firmId, firmId))
+      .where(and(eq(householdMember.firmId, firmId), memberHolds))
       .orderBy(asc(person.id)),
     db
       .selectDistinct({ account: custodialAccount })
@@ -97,7 +98,8 @@ async function overviewOf(
         and(
           eq(accountRole.firmId, firmId),
           inArray(accountRole.role, HOUSEHOLD_ACCOUNT_ROLES),
-          started,
+          holds,
+          memberHolds,
         ),
       )
       .orderBy(asc(custodialAccount.accountNumber)),
@@ -119,7 +121,12 @@ async function overviewOf(
         and(eq(custodialAccount.id, accountRole.accountId), eq(custodialAccount.firmId, firmId)),
       )
       .where(
-        and(eq(accountRole.firmId, firmId), inArray(accountRole.role, NAMED_ON_ROLES), started),
+        and(
+          eq(accountRole.firmId, firmId),
+          inArray(accountRole.role, NAMED_ON_ROLES),
+          holds,
+          memberHolds,
+        ),
       )
       .orderBy(asc(custodialAccount.accountNumber)),
     latestAsOf,
@@ -150,11 +157,7 @@ async function overviewOf(
           .from(accountRole)
           .innerJoin(person, and(eq(person.id, accountRole.personId), eq(person.firmId, firmId)))
           .where(
-            and(
-              eq(accountRole.firmId, firmId),
-              inArray(accountRole.accountId, accountIds),
-              started,
-            ),
+            and(eq(accountRole.firmId, firmId), inArray(accountRole.accountId, accountIds), holds),
           )
           .orderBy(asc(accountRole.startsOn), asc(accountRole.id)),
     accountIds.length === 0 || asOf === null
@@ -198,7 +201,8 @@ async function overviewOf(
               eq(accountRole.firmId, firmId),
               inArray(accountRole.accountId, namedOnIds),
               inArray(accountRole.role, HOUSEHOLD_ACCOUNT_ROLES),
-              started,
+              holds,
+              memberHolds,
             ),
           )
           .orderBy(sql`${accountRole.role} <> 'owner'`, asc(household.id)),

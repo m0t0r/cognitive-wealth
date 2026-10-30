@@ -19,6 +19,7 @@ import {
   session,
   user,
 } from "./schema";
+import { textArray } from "./sql-array";
 import { test } from "./testing";
 
 // Postgres SQLSTATEs, checked on the driver error Drizzle wraps as `cause`.
@@ -251,6 +252,14 @@ async function createPerson(db: Database, firmId: number) {
   return row!;
 }
 
+const CRM_TABLES = textArray([
+  "account_role",
+  "custodial_account",
+  "household",
+  "household_member",
+  "person",
+]);
+
 // The Firm-scoped tables' own constraints, written as `migrator`, which owns the tables and so
 // isn't held by their row-level security (that's firm-isolation.integration.test.ts).
 describe("households", () => {
@@ -270,6 +279,7 @@ describe("households", () => {
         householdId: home.id,
         personId: stranger.id,
         role: "primary",
+        startsOn: "2026-02-26",
       }),
     ).rejects.toMatchObject(FOREIGN_KEY_VIOLATION);
     await expect(
@@ -292,7 +302,7 @@ describe("households", () => {
       const { id: personId } = await createPerson(orm, firm.id);
       return orm
         .insert(householdMember)
-        .values({ firmId: firm.id, householdId: home.id, personId, role });
+        .values({ firmId: firm.id, householdId: home.id, personId, role, startsOn: "2026-01-01" });
     };
 
     await add("primary");
@@ -301,6 +311,170 @@ describe("households", () => {
     await add("dependent");
     await expect(add("primary")).rejects.toMatchObject(UNIQUE_VIOLATION);
     await expect(add("co_client")).rejects.toMatchObject(UNIQUE_VIOLATION);
+  });
+
+  test("have a Person in a Household once at a time, however often they left", async ({
+    migratorOrm: orm,
+  }) => {
+    const firm = await createOrganization(orm);
+    const home = await createHousehold(orm, firm.id);
+    const { id: personId } = await createPerson(orm, firm.id);
+    const join = (endsOn: string | null = null) =>
+      orm.insert(householdMember).values({
+        firmId: firm.id,
+        householdId: home.id,
+        personId,
+        role: "dependent",
+        startsOn: "2026-01-01",
+        endsOn,
+      });
+
+    await join("2026-01-01");
+    await join("2026-02-01");
+    await join();
+    await expect(join()).rejects.toMatchObject(UNIQUE_VIOLATION);
+  });
+
+  test("refuse a membership that ends before it starts", async ({ migratorOrm: orm }) => {
+    const firm = await createOrganization(orm);
+    const home = await createHousehold(orm, firm.id);
+    const { id: personId } = await createPerson(orm, firm.id);
+
+    await expect(
+      orm.insert(householdMember).values({
+        firmId: firm.id,
+        householdId: home.id,
+        personId,
+        role: "primary",
+        startsOn: "2026-03-02",
+        endsOn: "2026-03-01",
+      }),
+    ).rejects.toMatchObject({
+      cause: { code: "23514", constraint_name: "household_member_ends_on_check" },
+    });
+  });
+
+  test("let a Primary or Co-client's ended place be filled, but hold the rule on current ones", async ({
+    migratorOrm: orm,
+  }) => {
+    const firm = await createOrganization(orm);
+    const home = await createHousehold(orm, firm.id);
+    const add = async ({ role, endsOn }: { role: "primary" | "co_client"; endsOn?: string }) => {
+      const { id: personId } = await createPerson(orm, firm.id);
+      return orm.insert(householdMember).values({
+        firmId: firm.id,
+        householdId: home.id,
+        personId,
+        role,
+        startsOn: "2026-01-01",
+        endsOn,
+      });
+    };
+
+    await add({ role: "primary", endsOn: "2026-01-01" });
+    await add({ role: "primary" });
+    await add({ role: "co_client", endsOn: "2026-01-01" });
+    await add({ role: "co_client" });
+    await expect(add({ role: "primary" })).rejects.toMatchObject(UNIQUE_VIOLATION);
+    await expect(add({ role: "co_client" })).rejects.toMatchObject(UNIQUE_VIOLATION);
+  });
+
+  test("refuse an Account role that ends before it starts, and keep one role per start date", async ({
+    migratorOrm: orm,
+  }) => {
+    const firm = await createOrganization(orm);
+    const { id: personId } = await createPerson(orm, firm.id);
+    const [account] = await orm
+      .insert(custodialAccount)
+      .values({ firmId: firm.id, accountNumber: "CW-000001" })
+      .returning();
+    const add = ({ startsOn, endsOn }: { startsOn: string; endsOn?: string }) =>
+      orm.insert(accountRole).values({
+        firmId: firm.id,
+        personId,
+        accountId: account!.id,
+        role: "owner",
+        startsOn,
+        endsOn,
+      });
+
+    await expect(add({ startsOn: "2026-03-02", endsOn: "2026-03-01" })).rejects.toMatchObject({
+      cause: { code: "23514", constraint_name: "account_role_ends_on_check" },
+    });
+    // Its first day is its last: it never held, and the row says so.
+    await add({ startsOn: "2026-03-02", endsOn: "2026-03-02" });
+    // Across ended rows too, unlike a membership's.
+    await expect(add({ startsOn: "2026-03-02" })).rejects.toMatchObject(UNIQUE_VIOLATION);
+  });
+
+  // Records are kept (#192, as ADR 0021 for Firms): a role and a membership are ended, never deleted
+  // with what they name, whichever role asks.
+  describe("can't be deleted while a membership or Account role names them", () => {
+    /** A Person in a Household, holding a role on an Account. */
+    const linked = test.extend("linked", async ({ migratorOrm: orm }) => {
+      const firm = await createOrganization(orm);
+      const home = await createHousehold(orm, firm.id);
+      const someone = await createPerson(orm, firm.id);
+      const [account] = await orm
+        .insert(custodialAccount)
+        .values({ firmId: firm.id, accountNumber: "CW-000001" })
+        .returning();
+      await orm.insert(householdMember).values({
+        firmId: firm.id,
+        householdId: home.id,
+        personId: someone.id,
+        role: "primary",
+        startsOn: "2026-02-26",
+      });
+      await orm.insert(accountRole).values({
+        firmId: firm.id,
+        personId: someone.id,
+        accountId: account!.id,
+        role: "owner",
+        startsOn: "2026-02-26",
+      });
+      return { homeId: home.id, personId: someone.id, accountId: account!.id };
+    });
+
+    linked.for([
+      ["a Person", "person", "personId"],
+      ["a Household", "household", "homeId"],
+      ["an Account", "custodial_account", "accountId"],
+    ] as const)("%s", async ([, table, key], { migratorOrm: orm, linked: ids }) => {
+      await expect(
+        orm.execute(sql`delete from ${sql.identifier(table)} where id = ${ids[key]}`),
+      ).rejects.toMatchObject(RESTRICT_VIOLATION);
+
+      expect(await orm.$count(person)).toBe(1);
+      expect(await orm.$count(household)).toBe(1);
+      expect(await orm.$count(custodialAccount)).toBe(1);
+      expect(await orm.$count(householdMember)).toBe(1);
+      expect(await orm.$count(accountRole)).toBe(1);
+    });
+  });
+
+  // The test above stops at the links it knows of; this reads every one from the catalog.
+  test("restrict the deletion of everything a link between them names", async ({
+    migratorOrm: orm,
+  }) => {
+    const links = await orm.execute<{ name: string; action: string }>(sql`
+      select c.conname::text as name, c.confdeltype::text as action
+      from pg_constraint c
+      where c.contype = 'f'
+        and c.conrelid = any (${CRM_TABLES}::regclass[])
+        and c.confrelid = any (${CRM_TABLES}::regclass[])
+      order by 1
+    `);
+
+    expect(links.map((link) => link.name)).toEqual(
+      expect.arrayContaining([
+        "account_role_account_fk",
+        "account_role_person_fk",
+        "household_member_household_fk",
+        "household_member_person_fk",
+      ]),
+    );
+    expect(links.filter((link) => link.action !== "r")).toEqual([]);
   });
 
   // The migrations froze the list; the Custodian's contract can grow. A new Registration type in
@@ -329,7 +503,7 @@ describe("households", () => {
     const statements = [
       sql`insert into household (firm_id, name, relationship_status) values (${firm.id}, 'X', 'lead')`,
       sql`insert into custodial_account (firm_id, account_number, registration_type) values (${firm.id}, 'CW-2', '401k')`,
-      sql`insert into household_member (firm_id, household_id, person_id, role) values (${firm.id}, ${home.id}, ${personId}, 'spouse')`,
+      sql`insert into household_member (firm_id, household_id, person_id, role, starts_on) values (${firm.id}, ${home.id}, ${personId}, 'spouse', '2026-01-01')`,
       sql`insert into account_role (firm_id, person_id, account_id, role, starts_on) values (${firm.id}, ${personId}, ${account!.id}, 'trustee', '2026-01-01')`,
     ];
     await Promise.all(

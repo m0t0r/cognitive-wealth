@@ -12,9 +12,10 @@ import {
   security,
 } from "@repo/db/schema";
 import { test } from "@repo/db/testing";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { HouseholdOverview } from "./dto";
+import { endAccountRole, endHouseholdMembership } from "./end";
 import { getHouseholdOverview } from "./overview";
 import { seedDevWorld } from "./seed";
 
@@ -132,7 +133,7 @@ async function householdOfGrace(
   const [jordan] = await db.select().from(person).where(eq(person.firstName, "Jordan"));
   await db
     .insert(householdMember)
-    .values({ firmId, householdId: hers!.id, personId: grace!.id, role: "primary" });
+    .values({ firmId, householdId: hers!.id, personId: grace!.id, role: "primary", startsOn });
   const [ira] = await db
     .insert(custodialAccount)
     .values({ firmId, accountNumber: "CW-000003", registrationType: "traditional_ira" })
@@ -152,6 +153,19 @@ function namedOn(overview: HouseholdOverview | null) {
         `${firstName}: ${accountNumberEnding} ${role}, ${owningHousehold?.name ?? "no Household"}`,
     ),
   );
+}
+
+/** Every member, one line each: "Dana primary". */
+function peopleOn(overview: HouseholdOverview | null) {
+  return overview?.people.map((p) => `${p.firstName} ${p.householdRole}`);
+}
+
+/** Every Account with who holds what on it. */
+function accountsOf(overview: HouseholdOverview | null) {
+  return overview?.accounts.map(({ accountNumberEnding, roles }) => ({
+    accountNumberEnding,
+    roles: roles.map((r) => `${r.person.firstName} ${r.role}`),
+  }));
 }
 
 describe("getHouseholdOverview", () => {
@@ -353,6 +367,134 @@ describe("getHouseholdOverview", () => {
     expect(ours?.accounts.map((a) => a.accountNumberEnding)).toEqual(["0001", "0002"]);
   });
 
+  // The hold rule (#192): an end date is the first day a row no longer holds, so the latest As-of
+  // date, which is the overview's date, decides.
+  describe("on its date", () => {
+    const AS_OF = "2026-03-06";
+
+    test.for([
+      ["on the As-of date", AS_OF, false],
+      ["before it", "2026-03-05", false],
+      ["the day after it", "2026-03-07", true],
+    ] as const)(
+      "an Account role that ended %s shows only if it still held",
+      async ([, endsOn, held], { orm, migratorOrm }) => {
+        const { larkspur } = await seededFirms(orm);
+        await ingested(migratorOrm, { firmId: larkspur, asOfs: ["2026-03-02", AS_OF] });
+        const publicId = await reyesPublicId(migratorOrm);
+        const [role] = await migratorOrm
+          .select({ publicId: accountRole.publicId })
+          .from(accountRole)
+          .innerJoin(person, eq(person.id, accountRole.personId))
+          .where(and(eq(person.firstName, "Jordan"), eq(accountRole.role, "beneficiary")));
+
+        await endAccountRole(orm, {
+          firmId: larkspur,
+          actor: { system: "test" },
+          publicId: role!.publicId,
+          endsOn,
+        });
+
+        const overview = await getHouseholdOverview(orm, { firmId: larkspur, publicId });
+        expect(accountsOf(overview)?.[1]).toEqual({
+          accountNumberEnding: "0002",
+          roles: held ? ["Dana owner", "Jordan beneficiary"] : ["Dana owner"],
+        });
+      },
+    );
+
+    test("a Person who joined after it isn't in the Household yet", async ({
+      orm,
+      migratorOrm,
+    }) => {
+      const { larkspur } = await seededFirms(orm);
+      await ingested(migratorOrm, { firmId: larkspur, asOfs: [AS_OF] });
+      const publicId = await reyesPublicId(migratorOrm);
+      const [home] = await migratorOrm.select().from(household);
+      const [sam] = await migratorOrm
+        .insert(person)
+        .values({ firmId: larkspur, firstName: "Sam", lastName: "Reyes", bornOn: "2015-06-01" })
+        .returning();
+      await migratorOrm.insert(householdMember).values({
+        firmId: larkspur,
+        householdId: home!.id,
+        personId: sam!.id,
+        role: "dependent",
+        startsOn: "2026-03-07",
+      });
+
+      const overview = await getHouseholdOverview(orm, { firmId: larkspur, publicId });
+
+      expect(peopleOn(overview)).toEqual(["Dana primary", "Jordan co_client"]);
+    });
+
+    // Both rows name the same Person; their dates, not a de-duplication, pick the one that holds.
+    test.for([
+      ["before they left", "2026-03-06", ["Dana primary", "Jordan co_client"]],
+      ["while they were away", "2026-03-11", ["Dana primary"]],
+      ["after they rejoined", "2026-03-20", ["Dana primary", "Jordan dependent"]],
+    ] as const)(
+      "a Person who left and rejoined shows once %s, or not at all between",
+      async ([, asOf, people], { orm, migratorOrm }) => {
+        const { larkspur } = await seededFirms(orm);
+        await migratorOrm.insert(custodianDelivery).values({
+          firmId: larkspur,
+          asOfDate: asOf,
+          manifestSha256: `sha-${asOf}`,
+        });
+        const publicId = await reyesPublicId(migratorOrm);
+        const [home] = await migratorOrm.select().from(household);
+        const [jordan] = await migratorOrm
+          .select()
+          .from(person)
+          .where(eq(person.firstName, "Jordan"));
+        await endHouseholdMembership(orm, {
+          firmId: larkspur,
+          actor: { system: "test" },
+          householdPublicId: publicId,
+          personPublicId: jordan!.publicId,
+          endsOn: "2026-03-10",
+        });
+        await migratorOrm.insert(householdMember).values({
+          firmId: larkspur,
+          householdId: home!.id,
+          personId: jordan!.id,
+          role: "dependent",
+          startsOn: "2026-03-15",
+        });
+
+        const overview = await getHouseholdOverview(orm, { firmId: larkspur, publicId });
+
+        expect(peopleOn(overview)).toEqual(people);
+      },
+    );
+
+    test("a Named-on Account's owner who left no longer gives it a Household", async ({
+      orm,
+      migratorOrm,
+    }) => {
+      const { larkspur } = await seededFirms(orm);
+      const reyes = await reyesPublicId(migratorOrm);
+      const mothers = await householdOfGrace(migratorOrm, {
+        firmId: larkspur,
+        jordanRole: "power_of_attorney",
+      });
+      const [grace] = await migratorOrm.select().from(person).where(eq(person.firstName, "Grace"));
+
+      await endHouseholdMembership(orm, {
+        firmId: larkspur,
+        actor: { system: "test" },
+        householdPublicId: mothers,
+        personPublicId: grace!.publicId,
+        endsOn: "2026-03-01",
+      });
+
+      expect(
+        namedOn(await getHouseholdOverview(orm, { firmId: larkspur, publicId: reyes })),
+      ).toEqual(["Jordan: 0003 power_of_attorney, no Household"]);
+    });
+  });
+
   test("lists one Named-on Account per role, by account number and then role, with a null Household for an owner in none", async ({
     orm,
     migratorOrm,
@@ -431,8 +573,20 @@ describe("getHouseholdOverview", () => {
       ])
       .returning();
     await migratorOrm.insert(householdMember).values([
-      { firmId: globex, householdId: owners!.id, personId: owner!.id, role: "primary" },
-      { firmId: globex, householdId: named!.id, personId: beneficiary!.id, role: "primary" },
+      {
+        firmId: globex,
+        householdId: owners!.id,
+        personId: owner!.id,
+        role: "primary",
+        startsOn: "2020-01-02",
+      },
+      {
+        firmId: globex,
+        householdId: named!.id,
+        personId: beneficiary!.id,
+        role: "primary",
+        startsOn: "2020-01-02",
+      },
     ]);
     const [account] = await migratorOrm
       .insert(custodialAccount)
