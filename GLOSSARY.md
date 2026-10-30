@@ -336,6 +336,10 @@ _Avoid_: idiosyncratic risk, specific risk
 How much a bond's or bond fund's price moves when yields change: with a duration of 10, a rise of 1 percentage point lowers the price by about 10%.
 _Avoid_: Maturity (the date a bond repays)
 
+**Carry**:
+The interest a bond fund earns each day just because time passes, before any change in yields: at a 4% yield, about 4% ÷ 365 a day. It's part of the fund's Return, and it leaves the price when the fund pays it out as a dividend.
+_Avoid_: Accrued interest (what a Cash sweep has earned and not yet paid)
+
 **Factor file**:
 The one copy of the Fama-French Factor returns the simulated Custodian prices from, checked against its Pin.
 _Avoid_: Market data, price history
