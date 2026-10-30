@@ -13,8 +13,9 @@ import {
   person,
 } from "@repo/db/schema";
 import { WORLD_FIRM_SLUG } from "@repo/db/seed-data";
+import { endAccountRole, endHouseholdMembership } from "@repo/households";
 import { seedDevWorld } from "@repo/households/seed";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ingestDelivery, localFeedSource } from "@repo/portfolio";
 import type { SeededUser } from "./seed";
 
@@ -69,6 +70,49 @@ export async function seedIngestedWorld(
 }
 
 /**
+ * After `seedIngestedWorld`, Jordan Reyes left the Household, and stopped being the Beneficiary on
+ * Dana's IRA, the day before the latest As-of date. Both go through the domain functions, so this
+ * works as `app` too (`cw verify start --seed`). Jordan stays a joint owner of CW-000001.
+ */
+export async function seedJordanLeftReyes(db: Database): Promise<void> {
+  const [larkspur] = await db
+    .select({ id: organization.id })
+    .from(organization)
+    .where(eq(organization.slug, WORLD_FIRM_SLUG));
+  if (!larkspur) throw new Error(`Seed the world first: no Firm '${WORLD_FIRM_SLUG}'`);
+  const firmId = larkspur.id;
+  const [ids] = await withFirm(db, {
+    firmId,
+    query: (tx) =>
+      tx
+        .select({
+          householdPublicId: household.publicId,
+          personPublicId: person.publicId,
+          rolePublicId: accountRole.publicId,
+        })
+        .from(accountRole)
+        .innerJoin(person, eq(person.id, accountRole.personId))
+        .innerJoin(householdMember, eq(householdMember.personId, person.id))
+        .innerJoin(household, eq(household.id, householdMember.householdId))
+        .where(and(eq(person.seedKey, "jordan-reyes"), eq(accountRole.role, "beneficiary"))),
+  });
+  if (!ids) throw new Error("Seed the world first: no Beneficiary role of 'jordan-reyes'");
+  const actor = { system: "seed" };
+  const endsOn = "2026-03-05";
+  const role = await endAccountRole(db, { firmId, actor, publicId: ids.rolePublicId, endsOn });
+  const membership = await endHouseholdMembership(db, {
+    firmId,
+    actor,
+    householdPublicId: ids.householdPublicId,
+    personPublicId: ids.personPublicId,
+    endsOn,
+  });
+  if (role.status !== "ended" || membership.status !== "ended") {
+    throw new Error(`Ending gave ${role.status} and ${membership.status}`);
+  }
+}
+
+/**
  * After `seedIngestedWorld`, a second Larkspur Household, which the world file doesn't have: Jordan
  * Reyes's mother Grace, owning a Traditional IRA (CW-000003) that names Jordan as its Beneficiary,
  * so the Reyes overview has a Named-on Account to show. Returns her Household's `publicId`.
@@ -101,9 +145,13 @@ export async function seedHouseholdOfGrace(db: Database): Promise<string> {
         .insert(person)
         .values({ firmId, firstName: "Grace", lastName: "Reyes", bornOn: "1952-01-20" })
         .returning();
-      await tx
-        .insert(householdMember)
-        .values({ firmId, householdId: hers!.id, personId: grace!.id, role: "primary" });
+      await tx.insert(householdMember).values({
+        firmId,
+        householdId: hers!.id,
+        personId: grace!.id,
+        role: "primary",
+        startsOn: "2020-01-02",
+      });
       const [ira] = await tx
         .insert(custodialAccount)
         .values({ firmId, accountNumber: "CW-000003", registrationType: "traditional_ira" })

@@ -6,6 +6,7 @@ import type { PgTable } from "drizzle-orm/pg-core";
 import {
   account,
   accountRole,
+  accountRoleHistory,
   auditEvent,
   custodialAccount,
   custodialAccountHistory,
@@ -14,6 +15,7 @@ import {
   custodianDelivery,
   household,
   householdMember,
+  householdMemberHistory,
   invitation,
   member,
   organization,
@@ -95,7 +97,14 @@ export const RECORD_TABLES: readonly RecordTable[] = [
   {
     table: householdMember,
     scope: "firm_id",
-    description: "Which Person is in which Household, and in what role.",
+    description: "Which Person is in which Household, in what role, and until when if they left.",
+  },
+  {
+    table: householdMemberHistory,
+    scope: "firm_id",
+    description:
+      "Memberships' earlier versions: each version an update or deletion replaced, when, and who " +
+      "replaced it.",
   },
   {
     table: custodialAccount,
@@ -112,7 +121,16 @@ export const RECORD_TABLES: readonly RecordTable[] = [
   {
     table: accountRole,
     scope: "firm_id",
-    description: "How each Person holds each Account (owner, beneficiary, …), and since when.",
+    description:
+      "How each Person holds each Account (owner, beneficiary, …), since when, and until when if " +
+      "it ended.",
+  },
+  {
+    table: accountRoleHistory,
+    scope: "firm_id",
+    description:
+      "Account roles' earlier versions: each version an update or deletion replaced, when, and " +
+      "who replaced it.",
   },
   {
     table: custodianDelivery,

@@ -1,5 +1,6 @@
 // Households, People, Accounts and Account roles (GLOSSARY.md), for the app. The world file and the
 // seed are separate entries (`./world`, `./seed`), so the app never bundles the JSON Schema check.
 export type * from "./dto";
+export { type EndResult, endAccountRole, endHouseholdMembership } from "./end";
 export { listHouseholds } from "./households";
 export { getHouseholdOverview } from "./overview";

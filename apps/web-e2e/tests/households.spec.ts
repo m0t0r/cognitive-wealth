@@ -1,6 +1,10 @@
 import { expect, test } from "../fixtures";
 import { recordCspViolations } from "../support/csp";
-import { seedHouseholdOfGrace, seedIngestedWorld } from "../support/households";
+import {
+  seedHouseholdOfGrace,
+  seedIngestedWorld,
+  seedJordanLeftReyes,
+} from "../support/households";
 import { seedUser, uniqueEmail } from "../support/seed";
 
 // What the overview holds, and that another Firm's Household is unknown, is owned by
@@ -104,6 +108,43 @@ test("a member's Named-on Account is listed under them and never counted", async
   await expect(figure("Accounts")).toHaveText("2");
   await expect(figure("Positions")).toHaveText("5");
   expect(await page.content()).not.toContain("CW-00000");
+});
+
+// What holds on which date, and every way a row ends, is owned by the integration tests; here, one
+// Person who left, on the list and the overview.
+test("a Person who left the Household and an Account role that ended no longer show", async ({
+  page,
+  db,
+  signIn,
+}, testInfo) => {
+  const email = uniqueEmail(testInfo, "advisor");
+  const user = await seedUser(db, { email, name: "Ada Advisor" });
+  const publicId = await seedIngestedWorld(db, {
+    advisor: { user, firm: "larkspur", role: "member" },
+  });
+  await seedJordanLeftReyes(db);
+  await signIn(email);
+
+  await page.goto("/households");
+  await expect(page.getByText("Dana Reyes")).toBeVisible();
+  await expect(page.getByText("Jordan Reyes")).toHaveCount(0);
+
+  await page.goto(`/households/${publicId}`);
+  await expect(page.getByText("Dana Reyes (Primary)")).toBeVisible();
+  await expect(page.getByText("Jordan Reyes (Co-client)")).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("region", { name: "Traditional IRA ending in 0002" })
+      .getByRole("list", { name: "Account roles" })
+      .getByRole("listitem"),
+  ).toHaveText(["Dana Reyes · Owner"]);
+  // Jordan still jointly owns this one, whichever Household they're in now.
+  await expect(
+    page
+      .getByRole("region", { name: "Joint ending in 0001" })
+      .getByRole("list", { name: "Account roles" })
+      .getByRole("listitem"),
+  ).toHaveText(["Dana Reyes · Joint owner", "Jordan Reyes · Joint owner"]);
 });
 
 test("another Firm's Household and an unknown one are both not found", async ({

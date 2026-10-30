@@ -92,37 +92,53 @@ export const person = pgTable(
   ],
 );
 
-/** A Person's place in a Household. At most one Primary and one Co-client per Household. */
+/**
+ * `household_member`'s columns besides `id` and `public_id`, which `household_member_history`
+ * (history.ts) copies too (ADR 0025).
+ */
+export const householdMemberColumns = () => ({
+  firmId: firmId(),
+  householdId: bigint("household_id", { mode: "number" }).notNull(),
+  personId: bigint("person_id", { mode: "number" }).notNull(),
+  role: text("role", { enum: HOUSEHOLD_ROLES }).notNull(),
+  // The day the Person joined the Household, so a past date doesn't count them before it.
+  startsOn: date("starts_on", { mode: "string" }).notNull(),
+  // The first day the Person is no longer in the Household, null while they are: the date of the
+  // event (a Valid time, GLOSSARY.md), not the day it was entered, which the history keeps (#192).
+  endsOn: date("ends_on", { mode: "string" }),
+  createdAt: createdAt(),
+});
+
+/**
+ * A Person's place in a Household, ended rather than deleted. It holds on day D when
+ * `starts_on <= D` and (`ends_on` is null or `D < ends_on`). At most one Primary and one Co-client
+ * per Household, among the rows that haven't ended, so a Person can leave and rejoin.
+ */
 export const householdMember = pgTable(
   "household_member",
-  {
-    id: id(),
-    publicId: publicId(),
-    firmId: firmId(),
-    householdId: bigint("household_id", { mode: "number" }).notNull(),
-    personId: bigint("person_id", { mode: "number" }).notNull(),
-    role: text("role", { enum: HOUSEHOLD_ROLES }).notNull(),
-    createdAt: createdAt(),
-  },
+  { id: id(), publicId: publicId(), ...householdMemberColumns() },
   (t) => [
     firmIsolation(),
     foreignKey({
       name: "household_member_household_fk",
       columns: [t.firmId, t.householdId],
       foreignColumns: [household.firmId, household.id],
-    }).onDelete("cascade"),
+    }).onDelete("restrict"),
     foreignKey({
       name: "household_member_person_fk",
       columns: [t.firmId, t.personId],
       foreignColumns: [person.firmId, person.id],
-    }).onDelete("cascade"),
-    unique("household_member_household_id_person_id_unique").on(t.householdId, t.personId),
+    }).onDelete("restrict"),
+    uniqueIndex("household_member_current_person_unique")
+      .on(t.householdId, t.personId)
+      .where(sql`${t.endsOn} is null`),
     // Any number of Dependents, so only the two leading roles are unique.
-    uniqueIndex("household_member_household_id_lead_role_unique")
+    uniqueIndex("household_member_current_lead_role_unique")
       .on(t.householdId, t.role)
-      .where(sql`${t.role} <> 'dependent'`),
+      .where(sql`${t.role} <> 'dependent' and ${t.endsOn} is null`),
     index("household_member_person_id_idx").on(t.personId),
     check("household_member_role_check", knownValue(t.role, HOUSEHOLD_ROLES)),
+    check("household_member_ends_on_check", sql`${t.endsOn} >= ${t.startsOn}`),
   ],
 );
 
@@ -163,31 +179,41 @@ export const custodialAccount = pgTable(
   ],
 );
 
-/** A dated link between a Person and an Account (GLOSSARY.md, "Account role"). */
+/**
+ * `account_role`'s columns besides `id` and `public_id`, which `account_role_history` (history.ts)
+ * copies too (ADR 0025).
+ */
+export const accountRoleColumns = () => ({
+  firmId: firmId(),
+  personId: bigint("person_id", { mode: "number" }).notNull(),
+  accountId: bigint("account_id", { mode: "number" }).notNull(),
+  role: text("role", { enum: ACCOUNT_ROLES }).notNull(),
+  startsOn: date("starts_on", { mode: "string" }).notNull(),
+  // The first day the role no longer holds, null while it does: the date of the event that ended it
+  // (a Valid time, GLOSSARY.md), not the day it was entered, which the history keeps (#192).
+  endsOn: date("ends_on", { mode: "string" }),
+  createdAt: createdAt(),
+});
+
+/**
+ * A dated link between a Person and an Account (GLOSSARY.md, "Account role"), ended rather than
+ * deleted. It holds on day D when `starts_on <= D` and (`ends_on` is null or `D < ends_on`).
+ */
 export const accountRole = pgTable(
   "account_role",
-  {
-    id: id(),
-    publicId: publicId(),
-    firmId: firmId(),
-    personId: bigint("person_id", { mode: "number" }).notNull(),
-    accountId: bigint("account_id", { mode: "number" }).notNull(),
-    role: text("role", { enum: ACCOUNT_ROLES }).notNull(),
-    startsOn: date("starts_on", { mode: "string" }).notNull(),
-    createdAt: createdAt(),
-  },
+  { id: id(), publicId: publicId(), ...accountRoleColumns() },
   (t) => [
     firmIsolation(),
     foreignKey({
       name: "account_role_person_fk",
       columns: [t.firmId, t.personId],
       foreignColumns: [person.firmId, person.id],
-    }).onDelete("cascade"),
+    }).onDelete("restrict"),
     foreignKey({
       name: "account_role_account_fk",
       columns: [t.firmId, t.accountId],
       foreignColumns: [custodialAccount.firmId, custodialAccount.id],
-    }).onDelete("cascade"),
+    }).onDelete("restrict"),
     unique("account_role_person_id_account_id_role_starts_on_unique").on(
       t.personId,
       t.accountId,
@@ -196,6 +222,7 @@ export const accountRole = pgTable(
     ),
     index("account_role_account_id_idx").on(t.accountId),
     check("account_role_role_check", knownValue(t.role, ACCOUNT_ROLES)),
+    check("account_role_ends_on_check", sql`${t.endsOn} >= ${t.startsOn}`),
   ],
 );
 

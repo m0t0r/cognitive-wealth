@@ -35,10 +35,14 @@ export const APP_PRIVILEGES: Record<string, TablePrivileges> = {
   security_price: APPEND_ONLY,
 
   // Only the seed writes these today, and it only inserts.
-  account_role: APPEND_ONLY,
   household: APPEND_ONLY,
-  household_member: APPEND_ONLY,
   person: APPEND_ONLY,
+  // Ended, never deleted (#192): an end date is all that changes, and each change keeps the old
+  // version in the table's history (ADR 0025).
+  account_role: { onTable: ["select", "insert"], columns: { update: ["ends_on"] } },
+  household_member: { onTable: ["select", "insert"], columns: { update: ["ends_on"] } },
+  account_role_history: HISTORY,
+  household_member_history: HISTORY,
 
   // Ingestion brings these up to date from each Delivery (#126), but never their identifiers, and
   // each change keeps the old version in the table's history (ADR 0025).

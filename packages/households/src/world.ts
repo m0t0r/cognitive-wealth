@@ -26,6 +26,7 @@ export interface WorldPerson {
   first_name: string;
   last_name: string;
   born_on: string;
+  joined_on: string;
   account_roles: WorldAccountRole[];
 }
 

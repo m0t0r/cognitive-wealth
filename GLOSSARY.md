@@ -68,7 +68,7 @@ _Avoid_: Account, login
 ## Households
 
 **Household**:
-The group of people a Firm serves together, and the unit of service, billing and planning. A Person who leaves it (a death, a divorce, a Dependent who starts their own) has their membership ended on the day they left, not deleted, so the Household's past still shows who was in it.
+The group of people a Firm serves together, and the unit of service, billing and planning. A Person's membership runs from the day they joined. A Person who leaves it (a death, a divorce, a Dependent who starts their own) has their membership ended on the day they left, not deleted, so the Household's past still shows who was in it.
 _Avoid_: Client (as an entity), family, relationship
 
 **Person**:

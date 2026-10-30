@@ -97,6 +97,8 @@ class Person(_Strict):
     first_name: str
     last_name: str
     born_on: date
+    joined_on: date
+    """The day they joined the Household this entry is in."""
     account_roles: list[AccountRole] = []
     """How this Person is linked to Accounts. Pydantic copies a default list for each instance,
     so, unlike a plain Python default argument, it is never shared."""
