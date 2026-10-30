@@ -171,3 +171,6 @@ The simulated custodian, the book of record for holdings ([ADR 0009](../../docs/
 | `d - timedelta(days=3)`: the date three days earlier           | `d.subtract({ days: 3 })` on a `Temporal.PlainDate`       |
 | `f"{7:02d}"` is `07`: padded with zeros to two places          | `String(7).padStart(2, "0")`                              |
 | `# fmt: skip` after a statement: Ruff leaves its layout alone  | an Oxfmt ignore comment above a statement                 |
+| `a[i], a[j] = a[j], a[i]`: swaps two items, no temporary       | `[a[i], a[j]] = [a[j], a[i]]`                             |
+| `def pick[T](items: Sequence[T]) -> T:` (a generic function)   | `function pick<T>(items: readonly T[]): T`                |
+| `for n, (a, b) in enumerate(zip(xs, ys), start=1):`            | `xs.forEach((a, i) => …)`, with `ys[i]` and `i + 1`       |

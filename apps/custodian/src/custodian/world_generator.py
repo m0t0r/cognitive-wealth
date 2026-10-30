@@ -53,7 +53,7 @@ class _LifeStage:
     """A stage of life a Household's Primary is in (docs/product.md). It decides their age and
     their Dependents, and isn't written to the file: `born_on` carries it."""
 
-    households: int
+    household_count: int
     youngest: int
     oldest: int
     most_dependents: int
@@ -65,11 +65,11 @@ class _LifeStage:
 # people born before that (26 U.S.C. 401(a)(9)(C)(v), docs/learn/02-account-types.md).
 _LIFE_STAGES = (
     # Young high earners
-    _LifeStage(households=18, youngest=28, oldest=44, most_dependents=3),
+    _LifeStage(household_count=18, youngest=28, oldest=44, most_dependents=3),
     # Pre-retirees
-    _LifeStage(households=20, youngest=45, oldest=64, most_dependents=2),
+    _LifeStage(household_count=20, youngest=45, oldest=64, most_dependents=2),
     # Retirees taking RMDs
-    _LifeStage(households=22, youngest=73, oldest=90, most_dependents=0),
+    _LifeStage(household_count=22, youngest=73, oldest=90, most_dependents=0),
 )
 
 type _RelationshipStatus = Literal["prospect", "client", "former_client"]
@@ -82,7 +82,7 @@ _CO_CLIENT_SHARES_LAST_NAME_CHANCE = 0.8
 _CO_CLIENT_MOST_YEARS_APART = 6
 _YOUNGEST_ADULT_AT_FIRST_CHILD = 20
 _OLDEST_DEPENDENT = 22
-"""A student a parent still supports, as Dependents usually are (GLOSSARY.md)."""
+"""Old enough to be a student a parent still supports: this slice's simple choice, not a rule."""
 
 _FIRM = Firm(name="Larkspur Wealth Partners")
 """The Firm `cw db seed` makes, which refuses a world naming any other."""
@@ -118,7 +118,7 @@ def generate_world(seed: int) -> WorldFile:
     # One stream shares out the fixed numbers of each kind of Household, and gives each a surname
     # of its own, so the Households list never shows the same name twice.
     plan = stream(f"{seed}:plan")
-    stages = shuffled(plan, [stage for stage in _LIFE_STAGES for _ in range(stage.households)])
+    stages = shuffled(plan, [stage for stage in _LIFE_STAGES for _ in range(stage.household_count)])
     statuses: list[_RelationshipStatus] = shuffled(
         plan, [status for status, count in _STATUS_COUNTS.items() for _ in range(count)]
     )
@@ -236,11 +236,11 @@ def _world_generate(options: WorldGenerateOptions) -> Done[WorldGenerateOutput]:
     if not options.dry_run:
         try:
             options.out.write_text(world_text(world))
-        except FileNotFoundError:
+        # OSError covers a folder that isn't there, a folder given as the file, and no permission.
+        except OSError as error:
             raise CliError(
                 code="invalid_input",
-                message=f"The folder {options.out.parent} doesn't exist: create it, or pick another"
-                " --out",
+                message=f"Can't write the world file: {error}. Pick another --out",
             ) from None
 
     households = world.crm.households

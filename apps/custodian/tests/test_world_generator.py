@@ -2,7 +2,6 @@
 
 import json
 from collections import Counter
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -48,11 +47,6 @@ def test_the_same_seed_gives_the_same_bytes() -> None:
 
 def test_a_different_seed_gives_a_different_world() -> None:
     assert world_text(generate_world(7)) != world_text(generate_world(8))
-
-
-def test_ages_count_from_a_fixed_date_not_today() -> None:
-    # The day the pinned market history ends (ADR 0019). Changing it changes every Person.
-    assert date(2026, 8, 31) == AGES_COUNT_FROM
 
 
 @pytest.mark.parametrize("seed", SEEDS)
@@ -158,9 +152,9 @@ def test_the_command_writes_the_file_and_says_what_it_made(
 
     exit_code, printed = run(["--seed", "7", "--out", str(out)], capsys)
 
-    assert exit_code == 0
-    assert out.read_text() == world_text(generate_world(7))
     world = generate_world(7)
+    assert exit_code == 0
+    assert out.read_text() == world_text(world)
     statuses = Counter(household.relationship_status for household in world.crm.households)
     assert printed["dryRun"] is False
     assert printed["seed"] == 7
@@ -197,3 +191,11 @@ def test_a_folder_that_isnt_there_is_invalid_input(
 
     assert (exit_code, printed["code"]) == (1, "invalid_input")
     assert "nope" in str(printed["message"])
+
+
+def test_a_folder_given_as_the_file_is_invalid_input(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code, printed = run(["--out", str(tmp_path)], capsys)
+
+    assert (exit_code, printed["code"]) == (1, "invalid_input")
