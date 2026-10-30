@@ -56,7 +56,7 @@ When a decision depends on how finance works in the real world (how a Reversal c
 
 ## A new ADR is listed in two places
 
-An ADR in `docs/adr/` adds, in the same commit, its row to the Decisions table in `docs/architecture.md` and its node (with an edge from each ADR it builds on) to `docs/diagrams/decisions.mmd`, re-rendered with `pnpm docs:diagrams`, and updates the diagram's `alt` text there. A consequence that promises work in another issue matches what that issue's spec asks for.
+An ADR in `docs/adr/` adds, in the same commit, its row to the Decisions table in `docs/architecture.md` and its node (with an edge from each ADR it builds on) to `docs/diagrams/decisions.mmd`, re-rendered with `pnpm docs:diagrams`, and updates the diagram's `alt` text there. Keep the row's cells within the table's current widths (68 characters for the ADR link, 104 for the Decision, as written, so `\|` counts as two), shortening the row rather than widening a column: a wider cell makes Oxfmt re-pad every row, and the diff shows the whole table rewritten. A consequence that promises work in another issue matches what that issue's spec asks for.
 
 ## Worked numbers in ADRs and issue briefs
 
