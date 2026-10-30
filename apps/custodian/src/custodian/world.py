@@ -34,6 +34,7 @@ from custodian.models import RegistrationType
 __all__ = [
     "INVALID_WORLDS_PATH",
     "SCHEMA_PATH",
+    "WORLD_GENERATED_PATH",
     "WORLD_V0_PATH",
     "AccountRole",
     "CrmHalf",
@@ -51,7 +52,11 @@ __all__ = [
 # apps/ to the repo root.
 _WORLD = Path(__file__).parents[4] / "world"
 WORLD_V0_PATH = _WORLD / "v0.json"
-"""World v0, written by hand: one Household, until the generator (slices 21 to 23) exists."""
+"""World v0, written by hand: one Household. Everything reads it by default until #52 moves the
+loaders to the generated world."""
+WORLD_GENERATED_PATH = _WORLD / "generated.json"
+"""The generated world, which `pnpm --filter custodian world:generate` writes. Households and
+People so far: the Accounts come in #52, and nothing loads this file by default until then."""
 SCHEMA_PATH = _WORLD / "schema.json"
 INVALID_WORLDS_PATH = _WORLD / "invalid"
 """World files that each break one rule, listed in `cases.json` with the field to name."""

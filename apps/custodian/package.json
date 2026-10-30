@@ -12,6 +12,7 @@
     "test": "uv run pytest --ignore=tests/integration",
     "test:integration": "uv run pytest tests/integration",
     "db:migrate": "uv run alembic upgrade head",
+    "world:generate": "uv run python -m custodian.world_generator",
     "world:load": "uv run python -m custodian.load",
     "feed:write": "uv run python -m custodian.feed",
     "feed:examples": "uv run python -m tests.integration.example_deliveries",

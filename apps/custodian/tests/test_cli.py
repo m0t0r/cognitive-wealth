@@ -181,7 +181,7 @@ def test_llms_lists_every_custodian_command(capsys: pytest.CaptureFixture[str]) 
 
     assert exit_code == 0
     manifest = capsys.readouterr().out
-    for name in ("world:load", "feed:write", "yields:write"):
+    for name in ("world:generate", "world:load", "feed:write", "yields:write"):
         assert f"| `pnpm --filter custodian {name}` |" in manifest
 
 
@@ -192,7 +192,7 @@ def test_llms_in_json_gives_each_commands_options_and_output(
 
     assert exit_code == 0
     commands = {c["name"]: c for c in json.loads(capsys.readouterr().out)["commands"]}
-    assert list(commands) == ["world:load", "feed:write", "yields:write"]
+    assert list(commands) == ["world:generate", "world:load", "feed:write", "yields:write"]
     assert "dryRun" in commands["world:load"]["options"]["properties"]
     assert "rebuildNeeded" in commands["yields:write"]["output"]["properties"]
 

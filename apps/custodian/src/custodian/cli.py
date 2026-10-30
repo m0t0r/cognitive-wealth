@@ -275,8 +275,9 @@ def _commands() -> list[_Described]:
     from custodian.feed import COMMAND as feed_write
     from custodian.load import COMMAND as world_load
     from custodian.treasury_yields import COMMAND as yields_write
+    from custodian.world_generator import COMMAND as world_generate
 
-    return [world_load, feed_write, yields_write]
+    return [world_generate, world_load, feed_write, yields_write]
 
 
 def _manifest(output_format: Format) -> str | dict[str, object]:

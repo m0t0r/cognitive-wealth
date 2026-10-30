@@ -34,6 +34,7 @@ From the repo root, through the package scripts (each calls `uv run`):
 | `pnpm --filter custodian test`             | pytest, without the database tests (no Docker needed)                            |
 | `pnpm --filter custodian test:integration` | pytest against Postgres in Testcontainers, in random order                       |
 | `pnpm --filter custodian db:migrate`       | Alembic migrations to head, as `DATABASE_URL` (+ `DATABASE_PASSWORD_FILE`)       |
+| `pnpm --filter custodian world:generate`   | Writes `world/generated.json` from a seed: Households and People so far          |
 | `pnpm --filter custodian world:load`       | Loads `world/v0.json`, the Security catalog and the ledger fixture; idempotent   |
 | `pnpm --filter custodian world:schema`     | Regenerates `world/schema.json` from the world file's models                     |
 | `pnpm --filter custodian yields:write`     | Rebuilds `market/treasury-yields.csv` from the Treasury; by hand, when Pin moves |
@@ -44,7 +45,7 @@ From the repo root, through the package scripts (each calls `uv run`):
 | `pnpm --filter custodian format`           | Ruff format (`format:check` to check only)                                       |
 | `pnpm --filter custodian check-types`      | pyright, strict mode                                                             |
 
-`world:load`, `feed:write` and `yields:write` keep `pnpm cw`'s contract (ADR 0026, #236), so an agent reads them the way it reads `cw`. Each prints its result as data: TOON by default, JSON with `--json`. A failure exits 1 with `{ code, message, retryable, cta }` (`no_database`, `build_record_differs`, `load_conflict`, …), and `cta` names the command to run next: after `world:load`, the `feed:write` for the ledger's last day; after `feed:write`, `pnpm cw custodian ingest`. A `yields:write` that changed the file says `rebuildNeeded: true` and points at "Rebuilding it from empty" below, but never as a `cta`: the rebuild deletes the local custodian data, so an agent asks the user first. Each takes `--dry-run`, which writes nothing, and `--schema` prints its options and output. `--llms` on any of them lists all three (`--llms --json` adds each one's options and output). A relative path option (`--root`, `--world`, `--ledger`) is read from the folder the command was typed in, as in `cw`, though pnpm runs the script in `apps/custodian`. `cli.py` is the runner they share.
+`world:generate`, `world:load`, `feed:write` and `yields:write` keep `pnpm cw`'s contract (ADR 0026, #236), so an agent reads them the way it reads `cw`. Each prints its result as data: TOON by default, JSON with `--json`. A failure exits 1 with `{ code, message, retryable, cta }` (`no_database`, `build_record_differs`, `load_conflict`, …), and `cta` names the command to run next: after `world:load`, the `feed:write` for the ledger's last day; after `feed:write`, `pnpm cw custodian ingest`. A `yields:write` that changed the file says `rebuildNeeded: true` and points at "Rebuilding it from empty" below, but never as a `cta`: the rebuild deletes the local custodian data, so an agent asks the user first. Each takes `--dry-run`, which writes nothing, and `--schema` prints its options and output. `--llms` on any of them lists all four (`--llms --json` adds each one's options and output). A relative path option (`--root`, `--world`, `--ledger`, `--out`) is read from the folder the command was typed in, as in `cw`, though pnpm runs the script in `apps/custodian`. `cli.py` is the runner they share.
 
 The root `pnpm dev`, `lint`, `format:check`, `check-types`, `test` and `test:integration` include the custodian. A git worktree is served at `https://<branch>.custodian.cognitive-wealth.localhost`, and `PORTLESS=0` falls back to `http://127.0.0.1:8000`. A worktree has no custodian database of its own, so `world:load` and `feed:write` refuse there (`no_database`); its Cognitive Wealth database gets the example Deliveries in `fixtures/feed/` instead ([docs/dev-sign-in.md](../../docs/dev-sign-in.md), "In a git worktree"). FastAPI's interactive API docs are at `/docs` (Swagger UI): the routes, and under **Schemas** every row of the Custodian feed and the Manifest, with each column's description and format. `/redoc` shows the same document, but lists only the schemas a route uses, so the feed's rows appear there once a route returns them. Both pages load their scripts from a CDN, so they need a network connection. The document itself is at `/openapi.json`, and committed as `openapi.json`: `@repo/custodian-client` generates Cognitive Wealth's `fetch` client and Zod schemas from it.
 
@@ -89,6 +90,8 @@ src/custodian/models.py    SQLAlchemy models: Security, SecurityPrice, Account, 
 src/custodian/database.py  an engine from DATABASE_URL and DATABASE_PASSWORD_FILE
 src/custodian/cli.py       the scripts' runner: cw's output, error codes, cta, --schema and --llms
 src/custodian/world.py     the world file's format, as Pydantic models
+src/custodian/sampling.py  seeded random helpers that stay the same across Python versions
+src/custodian/world_generator.py  world:generate: a seed in, a world file out
 src/custodian/ledger_fixture.py  the hand-written ledger's format
 src/custodian/load.py      world:load: the world's custodian half, the catalog and the ledger
 src/custodian/positions.py Positions and Settled cash rebuilt from the Ledger, as of a date
@@ -103,7 +106,7 @@ market/                    the Factor file's Pin, the committed Treasury yields,
 fixtures/factor-file/      the tests' made-up Factor file, under its SHA-256, and its Pin
 fixtures/invalid-security-catalogs/  catalogs that each break one rule, listed in cases.json
 fixtures/ledger-v0.json    Dana's week from docs/learn/01, plus the IRA's first day
-../../world/               the world file (v0.json) and its JSON Schema, shared with the seed
+../../world/               the world files (v0.json, generated.json) and their JSON Schema, shared with the seed
 ../../world/invalid/       world files that each break one rule, which both loaders must reject
 migrations/                Alembic: env.py and versions/
 docker/initdb/             the roles script custodian-db runs on its first start
