@@ -411,7 +411,7 @@ The list is from [NYSE: Holidays and Trading Hours](https://www.nyse.com/trade/h
 
 **Short answer:** the Factor file can't say which future days are Business days, so the calendar has to be a fixed input of its own.
 
-Up to the Factor file's last day, 31 August 2026, its rows are the Business days. After that there are no rows to read, but the world continues. The NYSE publishes its holidays "for 2026, 2027, and 2028" (NYSE page above). So the world needs a list that goes past the Factor file, and it must follow the rule every input follows: changing it is a deliberate rebuild, because it would change which days exist. #49 decides how the list is kept, and what happens past its last year.
+Up to the Factor file's last day, 31 August 2026, its rows are the Business days. After that there are no rows to read, but the world continues. The NYSE publishes its holidays "for 2026, 2027, and 2028" (NYSE page above). So the world needs a calendar that goes past the Factor file, and it must follow the rule every input follows: changing it is a deliberate rebuild, because it would change which days exist. [ADR 0027](../adr/0027-daily-prices-are-a-recipe-over-the-market-inputs.md) keeps it as NYSE's own holiday rule, written in the custodian's code, so there is no list to run out; the NYSE's published years are that code's test.
 
 One-off closures show why it's fixed rather than live. The NYSE announced 9 January 2025's closure only ten days ahead, on 30 December 2024 (the ICE press release above). If the real NYSE closes for a day in the future, the world doesn't follow it, in the same way the world keeps using resampled Returns "even once newer real data exists" ([docs/product.md](../product.md)).
 
@@ -431,15 +431,15 @@ Several parts of the world read the calendar, so there should be one:
 
 The ledger primer promised this. The Factor file and yields end on Monday 31 August 2026. Say the laptop's last Close is Friday 28 August, and it starts again on Thursday 10 September:
 
-| Close                   | Returns from                                                           |
-| ----------------------- | ---------------------------------------------------------------------- |
-| Mon 31 Aug              | The last real day in the Factor file and yields                        |
-| Tue 1 to Fri 4 Sep      | Resampled: past days picked at random, with the date as the seed (#46) |
-| Sat 5, Sun 6, Mon 7 Sep | No Close: a weekend and Labor Day                                      |
-| Tue 8, Wed 9 Sep        | Resampled in the same way                                              |
-| Thu 10 Sep              | That evening's Close, resampled too                                    |
+| Close                   | Returns from                                          |
+| ----------------------- | ----------------------------------------------------- |
+| Mon 31 Aug              | The last real day in the Factor file and yields       |
+| Tue 1 to Fri 4 Sep      | Resampled: blocks of past days picked at random (#46) |
+| Sat 5, Sun 6, Mon 7 Sep | No Close: a weekend and Labor Day                     |
+| Tue 8, Wed 9 Sep        | Resampled in the same way                             |
+| Thu 10 Sep              | That evening's Close, resampled too                   |
 
-Those days are realistic, but not real, as the prices primer said (Part 6). Because the seed is the date, the same day gives the same Returns whenever it's closed. The Sweep rate needs the same kind of rule after that date (#47).
+Those days are realistic, but not real, as the prices primer said (Part 6). Which past day a date copies depends only on the seed and the date, so the same day gives the same Returns whenever it's closed. The Sweep rate needs the same kind of rule after that date (#47).
 
 The first run on an empty database, the **Backfill**, is the same loop as well: there's no last Close, so it starts from the world's first day and works through about 250 Closes for each year of history. Which day is the first is a decision in #50, so this primer doesn't pick one.
 
