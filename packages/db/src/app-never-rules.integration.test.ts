@@ -6,7 +6,7 @@
 //
 // The names are the schema's Drizzle tables and columns, not strings: dropping or renaming one in
 // `src/schema/` fails type checking here, and a changed SQL name follows the schema.
-import { getTableName, sql } from "drizzle-orm";
+import { getTableColumns, getTableName, sql } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { setActor } from "./actor";
 import { BETTER_AUTH_TABLES } from "./better-auth-tables";
@@ -256,25 +256,22 @@ describe("app on the CRM tables", () => {
     },
   );
 
-  firm.for([
-    ["household_member", "starts_on", sql`'2026-02-01'`],
-    ["household_member", "role", sql`'dependent'`],
-    ["household_member", "person_id", sql`${1}`],
-    ["household_member", "household_id", sql`${1}`],
-    ["household_member", "firm_id", sql`${1}`],
-    ["account_role", "starts_on", sql`'2026-02-01'`],
-    ["account_role", "role", sql`'beneficiary'`],
-    ["account_role", "person_id", sql`${1}`],
-    ["account_role", "account_id", sql`${1}`],
-    ["account_role", "firm_id", sql`${1}`],
-  ] as const)("can't update %s.%s", async ([table, column, value], { orm, firmId }) => {
+  // Every column but `ends_on`, read from the schema, so a later column is covered too. `default`,
+  // the one value Postgres takes for every column, `id` included, so only the grant can refuse it.
+  const OTHER_COLUMNS = [accountRole, householdMember].flatMap((table) =>
+    Object.values(getTableColumns(table))
+      .filter(({ name }) => name !== "ends_on")
+      .map(({ name }) => [getTableName(table), name] as const),
+  );
+
+  firm.for(OTHER_COLUMNS)("can't update %s.%s", async ([table, column], { orm, firmId }) => {
     await expect(
       withFirm(orm, {
         firmId,
         query: async (tx) => {
           await setActor(tx, { system: "test" });
           await tx.execute(
-            sql`update ${sql.identifier(table)} set ${sql.identifier(column)} = ${value}`,
+            sql`update ${sql.identifier(table)} set ${sql.identifier(column)} = default`,
           );
         },
       }),
