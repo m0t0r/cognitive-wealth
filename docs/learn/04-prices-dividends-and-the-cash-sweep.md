@@ -27,7 +27,7 @@ The primer climbs in three levels. Each level uses only what the levels before i
 
 On a first read, it's fine to stop after Level 1, take a break, and come back. Level 3 makes most sense once Levels 1 and 2 feel familiar.
 
-Not covered here: the Close itself and its order of events (#48's primer), tax on dividends and interest ([the Account types primer](02-account-types.md) covers it), and how an Account's performance is measured (phase 2).
+Not covered here: the Close itself and its order of events ([the Close primer](06-the-close.md)), tax on dividends and interest ([the Account types primer](02-account-types.md) covers it), and how an Account's performance is measured (phase 2).
 
 ## Part 1: Prices and Returns (Level 1)
 
@@ -408,14 +408,14 @@ That's not a whole number of cents, and it isn't rounded. It's Accrued interest,
 
 Two things to notice:
 
-- **In the world, interest builds up every calendar day, weekends included.** Prices only move on Business days, but money in the sweep earns interest on Saturdays and Sundays too. The agreement says interest accrues from "the date of deposit" "through the business day preceding the date of withdrawal", at 1/365 of the yearly rate a day, but doesn't say how weekends are counted. Counting every calendar day, 365 a year, is the world's choice, and fits a daily rate of 1/365.
+- **In the world, interest builds up every calendar day, weekends included.** Prices only move on Business days, but money in the sweep earns interest on Saturdays and Sundays too. The agreement says interest accrues from "the date of deposit" at its banks, "through the business day preceding the date of withdrawal", at 1/365 of the yearly rate a day, but doesn't say how weekends are counted. Counting every calendar day, 365 a year, is the world's choice, and fits a daily rate of 1/365.
 - **Why the ledger primer's interest was different.** Its $1.15 on Friday 6 March was paid at the end of a single week, to keep the week short. This primer follows the agreement's rule from Saturday 7 March, the first day after that week.
 
 ### How does it add up over the month?
 
 **Short answer:** 25 days of daily interest, from 7 to 31 March, compounded, then rounded once to cents, give **$16.23**.
 
-Dana's cash is $6,476.65 from 7 to 16 March (10 days) and $6,491.65 from 17 March, when the dividend arrives, to 31 March (15 days). Interest on the dividend starts on the day it arrives.
+Dana's cash is $6,476.65 from 7 to 16 March (10 days) and $6,491.65 from 17 March, when the dividend arrives, to 31 March (15 days). Interest on the dividend starts on the day it arrives. That's the world's rule, a simplification: real firms often start later ([the Close primer](06-the-close.md), Part 6).
 
 | Day       | Cash     | Today's interest, on cash + Accrued interest  | Accrued interest so far |
 | --------- | -------- | --------------------------------------------- | ----------------------- |
@@ -560,7 +560,7 @@ A money market fund sweep also explains the $1.00 price. Most money market funds
 
 **Short answer:** the world's sweep is a simplification, called a bank sweep but paying a Sweep rate that follows Treasury yields, the way a money market fund's does.
 
-The world's Cash sweep is named Larkspur Bank Sweep ([the Custodian feed primer](03-custodian-feed-and-ingestion.md), Part 3), and its Sweep rate comes from Treasury yields ([docs/product.md](../product.md)). A real bank sweep's rate is the firm's choice, and the SEC says bank sweeps "often pay less interest" than money market fund sweeps, whose dividends "generally reflect short term interest rates". A Sweep rate that follows Treasury bills, less a margin, is closer to a money market fund's. #47 decides how far below Treasury yields the world's Sweep rate sits, and, since yields are published only on Business days, which rate a Saturday or Sunday uses.
+The world's Cash sweep is named Larkspur Bank Sweep ([the Custodian feed primer](03-custodian-feed-and-ingestion.md), Part 3), and its Sweep rate comes from Treasury yields ([docs/product.md](../product.md)). A real bank sweep's rate is the firm's choice, and the SEC says bank sweeps "often pay less interest" than money market fund sweeps, whose dividends "generally reflect short term interest rates". A Sweep rate that follows Treasury bills, less a margin, is closer to a money market fund's. #47 decides how far below Treasury yields the world's Sweep rate sits, and, since no yields are published at weekends or on some holidays ([the Close primer](06-the-close.md), Part 6), which rate those days use.
 
 Two more things the world leaves out: tiers (a higher rate for a bigger balance), and rates that differ between Accounts.
 
@@ -589,7 +589,7 @@ What follows is what this primer's examples assume. The exact recipes are for #4
 - **#46, prices:** yesterday's price × (1 + the day's Return), minus the dividend on an Ex-dividend date. The Return comes from that day's Factor returns, or, after the Factor file ends, resampled ones, seeded by the date. The price is then rounded by a rule #46 names.
 - **#47, Accrued interest:** every calendar day, at the Sweep rate ÷ 365 (366 in a leap year), on cash plus Accrued interest, kept at full precision.
 
-**Turned into Transactions by the Close** (#48's primer, built in #49):
+**Turned into Transactions by the Close** ([the Close primer](06-the-close.md), built in #49):
 
 - **A dividend** on each Pay date, for each Account holding the Security, by Trade date, at the Close of the Business day before the Ex-dividend date: shares × amount per share, rounded to cents, half to even.
 - **An interest Transaction** once a month: the Accrued interest rounded once to cents, half to even. This primer pays it on the last day of the month, a Business day in March 2026. When a month ends on a weekend, #47 decides whether the Saturday and Sunday are paid with that month or the next.

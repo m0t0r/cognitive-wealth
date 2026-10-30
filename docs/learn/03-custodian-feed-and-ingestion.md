@@ -26,7 +26,7 @@ The primer climbs in three levels. Each level uses only what the levels before i
 
 On a first read, it's fine to stop after Level 1, take a break, and come back.
 
-Not covered here: Reconciliation and Breaks in depth (phase 2, though Part 6 previews them), what each column may hold (the row models in `apps/custodian/src/custodian/feed.py`, which the contract in #38 publishes), and how the Close works out each day's numbers (the Close primer, #48).
+Not covered here: Reconciliation and Breaks in depth (phase 2, though Part 6 previews them), what each column may hold (the row models in `apps/custodian/src/custodian/feed.py`, which the contract in #38 publishes), and how the Close works out each day's numbers ([the Close primer](06-the-close.md)).
 
 ## Part 1: How does Cognitive Wealth learn what happened? (Level 1)
 
