@@ -431,7 +431,9 @@ describe("getHouseholdOverview", () => {
     // Both rows name the same Person; their dates, not a de-duplication, pick the one that holds.
     test.for([
       ["before they left", "2026-03-06", ["Dana primary", "Jordan co_client"]],
+      ["the day they left", "2026-03-10", ["Dana primary"]],
       ["while they were away", "2026-03-11", ["Dana primary"]],
+      ["the day they rejoined", "2026-03-15", ["Dana primary", "Jordan dependent"]],
       ["after they rejoined", "2026-03-20", ["Dana primary", "Jordan dependent"]],
     ] as const)(
       "a Person who left and rejoined shows once %s, or not at all between",

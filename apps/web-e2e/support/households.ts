@@ -81,7 +81,7 @@ export async function seedJordanLeftReyes(db: Database): Promise<void> {
     .where(eq(organization.slug, WORLD_FIRM_SLUG));
   if (!larkspur) throw new Error(`Seed the world first: no Firm '${WORLD_FIRM_SLUG}'`);
   const firmId = larkspur.id;
-  const [ids] = await withFirm(db, {
+  const [publicIds] = await withFirm(db, {
     firmId,
     query: (tx) =>
       tx
@@ -96,15 +96,20 @@ export async function seedJordanLeftReyes(db: Database): Promise<void> {
         .innerJoin(household, eq(household.id, householdMember.householdId))
         .where(and(eq(person.seedKey, "jordan-reyes"), eq(accountRole.role, "beneficiary"))),
   });
-  if (!ids) throw new Error("Seed the world first: no Beneficiary role of 'jordan-reyes'");
+  if (!publicIds) throw new Error("Seed the world first: no Beneficiary role of 'jordan-reyes'");
   const actor = { system: "seed" };
   const endsOn = "2026-03-05";
-  const role = await endAccountRole(db, { firmId, actor, publicId: ids.rolePublicId, endsOn });
+  const role = await endAccountRole(db, {
+    firmId,
+    actor,
+    publicId: publicIds.rolePublicId,
+    endsOn,
+  });
   const membership = await endHouseholdMembership(db, {
     firmId,
     actor,
-    householdPublicId: ids.householdPublicId,
-    personPublicId: ids.personPublicId,
+    householdPublicId: publicIds.householdPublicId,
+    personPublicId: publicIds.personPublicId,
     endsOn,
   });
   if (role.status !== "ended" || membership.status !== "ended") {
