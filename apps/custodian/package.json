@@ -21,7 +21,7 @@
     "openapi:write": "uv run python -m custodian.main"
   },
   "devDependencies": {
-    "portless": "0.15.8"
+    "portless": "0.15.12"
   },
   "portless": {
     "name": "custodian.cognitive-wealth",
