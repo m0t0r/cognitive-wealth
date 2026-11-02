@@ -56,7 +56,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm --filter @repo/db deploy --prod --legacy --store-dir /pnpm/store /out/db
 
 # --- migrate: one-shot job, connects as the DDL-owning `migrator` role
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:a6c34457f6da4295807e051411c7783739c65b997a324fed14e4fa292615ae91 AS migrate
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:b8cec4b2f2126ff7bd034ec9ac207ffb3272667dfdc48376e3b035d3270549ba AS migrate
 WORKDIR /app
 ENV NODE_ENV=production
 # Owned by root and read-only to the `nonroot` (65532) user that runs it.
@@ -65,7 +65,7 @@ USER nonroot
 CMD ["src/migrate.ts"]
 
 # --- web: distroless (no shell or package manager), non-root, code not writable by the process
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:a6c34457f6da4295807e051411c7783739c65b997a324fed14e4fa292615ae91 AS web
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:b8cec4b2f2126ff7bd034ec9ac207ffb3272667dfdc48376e3b035d3270549ba AS web
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
