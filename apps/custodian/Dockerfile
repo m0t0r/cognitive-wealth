@@ -14,7 +14,7 @@ FROM ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d
 
 # --- python: the interpreter both stages share. The virtualenv's `python` is a symlink to this
 # image's interpreter, so the build and runtime stages must start from the same one.
-FROM python:3.15.2-slim-trixie@sha256:c4158543ecb725b99e57d129dfd43d761d4c43e4577b5e23326aabb223cf7f4e AS python
+FROM python:3.15.2-slim-trixie@sha256:8c13a3f37a6a5b71498228e902c4b9f51c1f7900d49fabf71f9a650c6120e0d0 AS python
 
 # --- build: the locked runtime dependencies and the custodian, in a virtualenv
 FROM python AS build
