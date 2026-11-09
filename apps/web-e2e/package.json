@@ -23,7 +23,7 @@
     "@repo/typescript-config": "workspace:*",
     "@testcontainers/postgresql": "12.2.1",
     "@testcontainers/redis": "12.2.1",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "drizzle-orm": "0.45.4",
     "testcontainers": "12.2.1",
     "typescript": "7.0.2"
