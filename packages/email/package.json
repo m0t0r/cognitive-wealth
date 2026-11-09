@@ -19,10 +19,10 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@react-email/render": "2.1.1",
-    "nodemailer": "10.2.1",
-    "react-email": "6.11.3",
-    "resend": "6.34.1"
+    "@react-email/render": "2.2.0",
+    "nodemailer": "10.3.1",
+    "react-email": "6.11.6",
+    "resend": "6.37.0"
   },
   "devDependencies": {
     "@react-email/ui": "6.11.3",
