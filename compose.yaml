@@ -29,7 +29,7 @@ x-hardening: &hardening
 services:
   db:
     <<: *hardening
-    image: postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    image: postgres:18.7-alpine@sha256:75dcac3dfb1cd01ca3536910bbc84128759362f8b118bf8c55b38a94f68f3b73
     # Run as the image's `postgres` user from the start, so the entrypoint needs no root capabilities.
     user: "70:70"
     environment:
@@ -58,7 +58,7 @@ services:
   # `custodian-migrate` connects as `migrator`, `custodian` as `app`.
   custodian-db:
     <<: *hardening
-    image: postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    image: postgres:18.7-alpine@sha256:75dcac3dfb1cd01ca3536910bbc84128759362f8b118bf8c55b38a94f68f3b73
     user: "70:70"
     environment:
       POSTGRES_DB: custodian
