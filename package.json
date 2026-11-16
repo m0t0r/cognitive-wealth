@@ -31,11 +31,11 @@
     "cw": "node packages/cli/src/cli.ts"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.0",
     "eslint-plugin-turbo": "2.11.10",
-    "oxfmt": "0.74.0",
-    "oxlint": "1.89.0",
-    "oxlint-tsgolint": "7.0.2004",
+    "oxfmt": "0.78.0",
+    "oxlint": "1.93.0",
+    "oxlint-tsgolint": "7.0.2006",
     "turbo": "2.11.10",
     "typescript": "7.0.2"
   },
