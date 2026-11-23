@@ -24,7 +24,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@paulirish/trace_engine": "0.0.67",
+    "@paulirish/trace_engine": "0.0.68",
     "@repo/db": "workspace:*",
     "@repo/testing": "workspace:*"
   },
